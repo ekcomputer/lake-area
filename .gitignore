@@ -3,3 +3,4 @@ mean_distance.html
 *.json
 LEV_zonal_EE_batch copy.ipynb
 *copy.ipynb
+debug*
