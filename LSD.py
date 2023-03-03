@@ -148,14 +148,16 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             self['Region'] = name
 
     @classmethod
-    def from_shapefile(cls, path, area_var=None, region_var=None, idx_var=None, name='unamed', _areaConversionFactor=1, regions=None): #**kwargs): #name='unamed', area_var='Area', region_var='NaN', idx_var='OID_'): # **kwargs
-        ''' Load from disk if not in memory'''
+    def from_shapefile(cls, path, area_var=None, region_var=None, idx_var=None, name=None, _areaConversionFactor=1, regions=None): #**kwargs): #name='unamed', area_var='Area', region_var='NaN', idx_var='OID_'): # **kwargs
+        ''' Load from shapefile on disk.'''
         columns = [col for col in [idx_var, area_var, region_var] if col is not None] # allows 'region_var' to be None
         df = pyogrio.read_dataframe(path, read_geometry=False, use_arrow=True, columns=columns)
+        if name is None:
+            name = os.path.basename(path).replace('.shp','')
         return cls(df, name=name, area_var=area_var, region_var=region_var, idx_var=idx_var, _areaConversionFactor=_areaConversionFactor, regions=regions)
     
     @classmethod
-    def from_paths(cls, file_pattern, area_var, region_var, idx_var, name='unamed', _areaConversionFactor=1, regions=None, exclude=None):
+    def from_paths(cls, file_pattern, area_var=None, region_var=None, idx_var=None, name='unamed', _areaConversionFactor=1, regions=None, exclude=None):
         '''Load in serial with my custom class
          (can be parallelized with multiprocessing Pool.map). Help from ChatGPT
          '''
@@ -164,11 +166,11 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         dfs = [] # create an empty list to store the loaded shapefiles
 
         ## Filter out raw regions
-        shapefiles = [file for file in shapefiles if not any(name in file for name in exclude)]
+        shapefiles = [file for file in shapefiles if not any(fname in file for fname in exclude)]
 
         # loop through the shapefiles and load each one using Geopandas
         for shpfile in shapefiles:
-            lsd = cls.from_shapefile(shpfile, area_var=area_var, region_var=region_var, idx_var=idx_var, name=os.path.basename(shpfile).replace('.shp',''), _areaConversionFactor=_areaConversionFactor)
+            lsd = cls.from_shapefile(shpfile, area_var=area_var, region_var=region_var, idx_var=idx_var, _areaConversionFactor=_areaConversionFactor)
             dfs.append(lsd)
         
         # merge all the loaded shapefiles into a single GeoDataFrame
@@ -258,11 +260,11 @@ if __name__=='__main__':
 
     ## (testing pyogrio function)
     # gdf_cir_lsd = pyogrio.read_dataframe('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
-    # lsd_cir = LSD(gdf_cir_lsd, name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+    # lsd_cir = LSD(gdf_cir_lsd, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
     ## Loading PeRL LSD
     perl_exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
-    lsd_perl = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/*.shp', area_var='AREA', region_var=None, idx_var=None, exclude=perl_exclude)
+    lsd_perl = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/*.shp', area_var='AREA', region_var=None, idx_var=None, name='perl', exclude=perl_exclude)
 
     ## Load in serial with my custom class (can be parallelized with multiprocessing Pool.map). Help from ChatGPT
     # Define the file pattern
