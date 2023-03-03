@@ -98,18 +98,22 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         Parameters
         ----------
+        df : pandas.DataFrame or geopandas.GeoDataframe
+            Dataframe to convert to LSD
         name : str
             Name of dataset
-        areaConversionFactor : float
-            Denominator for unit conversion. 1 for km2, 1e6 for m2
+        area_var : string, optional
+            Indicate which variable refers to shape area.
         region_var : string, optional
             To indicate which region if multiple regions in dataset
-        Regions : list, optional, default None
-            If provided, will transform numeric regions to text
         idx_var: string, optional
             Index variable
         name_var: string, optional
-            Name of variable that gives name of dataset (e.g. CIR or perl)
+            Name of variable that gives name of dataset (e.g. CIR or perl). Defaults to 'unamed'.
+        areaConversionFactor : float, optional, defaults to 1.
+            Denominator for unit conversion. 1 for km2, 1e6 for m2
+        regions : list, optional
+            If provided, will transform numeric regions to text
         ''' 
         columns = [col for col in [idx_var, area_var, region_var, name_var] if col is not None] # allows 'region_var' to be None
         super().__init__(df[columns]) # This inititates the class as a DataFrame and sets self to be the output. By importing a slice, we avoid mutating the original var for 'df'
@@ -148,18 +152,24 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             self['Region'] = name
 
     @classmethod
-    def from_shapefile(cls, path, area_var=None, region_var=None, idx_var=None, name=None, _areaConversionFactor=1, regions=None): #**kwargs): #name='unamed', area_var='Area', region_var='NaN', idx_var='OID_'): # **kwargs
-        ''' Load from shapefile on disk.'''
+    def from_shapefile(cls, path, name=None, area_var=None, region_var=None, idx_var=None, **kwargs): #**kwargs): #name='unamed', area_var='Area', region_var='NaN', idx_var='OID_'): # **kwargs
+        ''' 
+        Load from shapefile on disk.
+        Accepts all arguments to LSD.
+        '''
         columns = [col for col in [idx_var, area_var, region_var] if col is not None] # allows 'region_var' to be None
         df = pyogrio.read_dataframe(path, read_geometry=False, use_arrow=True, columns=columns)
         if name is None:
             name = os.path.basename(path).replace('.shp','')
-        return cls(df, name=name, area_var=area_var, region_var=region_var, idx_var=idx_var, _areaConversionFactor=_areaConversionFactor, regions=regions)
+        return cls(df, name=name, area_var=area_var, region_var=region_var, idx_var=idx_var, **kwargs)
     
     @classmethod
-    def from_paths(cls, file_pattern, area_var=None, region_var=None, idx_var=None, name='unamed', _areaConversionFactor=1, regions=None, exclude=None):
+    def from_paths(cls, file_pattern, name='unamed', area_var=None, region_var=None, idx_var=None, exclude=None, **kwargs):
         '''Load in serial with my custom class
          (can be parallelized with multiprocessing Pool.map). Help from ChatGPT
+
+         Exclude: array_like
+            An array of filepaths or unique strings within files to skip loading.
          '''
         # Define the file pattern
         shapefiles = glob(file_pattern)
@@ -170,7 +180,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         # loop through the shapefiles and load each one using Geopandas
         for shpfile in shapefiles:
-            lsd = cls.from_shapefile(shpfile, area_var=area_var, region_var=region_var, idx_var=idx_var, _areaConversionFactor=_areaConversionFactor)
+            lsd = cls.from_shapefile(shpfile, area_var=area_var, region_var=region_var, idx_var=idx_var, **kwargs)
             dfs.append(lsd)
         
         # merge all the loaded shapefiles into a single GeoDataFrame
@@ -264,26 +274,7 @@ if __name__=='__main__':
 
     ## Loading PeRL LSD
     perl_exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
-    lsd_perl = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/*.shp', area_var='AREA', region_var=None, idx_var=None, name='perl', exclude=perl_exclude)
-
-    ## Load in serial with my custom class (can be parallelized with multiprocessing Pool.map). Help from ChatGPT
-    # Define the file pattern
-    file_pattern = '/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/*.shp'
-    shapefiles = glob(file_pattern)
-
-    dfs = [] # create an empty list to store the loaded shapefiles
-
-    ## Filter out raw regions in PeRL
-    shapefiles = [file for file in shapefiles if not any(name in file for name in perl_exclude)]
-
-    # loop through the shapefiles and load each one using Geopandas
-    for shpfile in shapefiles:
-        lsd_perl = LSD.from_shapefile(shpfile, area_var='AREA', region_var=None, idx_var=None, name=os.path.basename(shpfile).replace('.shp',''), _areaConversionFactor=1000000) # gpd.read_file(shpfile, engine='pyogrio')
-        dfs.append(lsd_perl)
-
-    # merge all the loaded shapefiles into a single GeoDataFrame
-    lsd_perl = LSD.concat(dfs, ignore_index=True) #, crs=gdfs[0].crs)
-    lsd_perl.name='perl'
+    lsd_perl = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=perl_exclude)
 
     ## Combine PeRL and CIR
     lsd = LSD.concat((lsd_cir, lsd_perl), broadcast_name=True, ignore_index=True)
