@@ -92,7 +92,7 @@ def weightedStd(x, w):
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
     '''Lake size distribution'''
-    def __init__(self, df, name='unamed', area_var='Area', region_var=None, idx_var=None, name_var=None, _areaConversionFactor=1, regions=None):
+    def __init__(self, df, name=None, area_var=None, region_var=None, idx_var=None, name_var=None, _areaConversionFactor=1, regions=None):
         '''
         Loads df or gdf and creates copy only with relevant var names
 
@@ -104,8 +104,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             Denominator for unit conversion. 1 for km2, 1e6 for m2
         region_var : string, optional
             To indicate which region if multiple regions in dataset
-        Regions : list, default None
-            If provided, will transform numberic regions to text
+        Regions : list, optional, default None
+            If provided, will transform numeric regions to text
         idx_var: string, optional
             Index variable
         name_var: string, optional
@@ -113,6 +113,14 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ''' 
         columns = [col for col in [idx_var, area_var, region_var, name_var] if col is not None] # allows 'region_var' to be None
         super().__init__(df[columns]) # This inititates the class as a DataFrame and sets self to be the output. By importing a slice, we avoid mutating the original var for 'df'
+
+        ## Add default name
+        if name == None:
+            name='unamed'
+
+        ## Compute areas if they don't exist
+        if area_var == None:
+            pass
 
         ## rename vars
         if region_var is not None:
@@ -139,22 +147,39 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         if region_var is None: # auto-name region from name if it's not given
             self['Region'] = name
 
+    @classmethod
+    def from_shapefile(cls, path, area_var=None, region_var=None, idx_var=None, name='unamed', _areaConversionFactor=1, regions=None): #**kwargs): #name='unamed', area_var='Area', region_var='NaN', idx_var='OID_'): # **kwargs
+        ''' Load from disk if not in memory'''
+        columns = [col for col in [idx_var, area_var, region_var] if col is not None] # allows 'region_var' to be None
+        df = pyogrio.read_dataframe(path, read_geometry=False, use_arrow=True, columns=columns)
+        return cls(df, name=name, area_var=area_var, region_var=region_var, idx_var=idx_var, _areaConversionFactor=_areaConversionFactor, regions=regions)
+    
+    @classmethod
+    def from_paths(cls, file_pattern, area_var, region_var, idx_var, name='unamed', _areaConversionFactor=1, regions=None, exclude=None):
+        '''Load in serial with my custom class
+         (can be parallelized with multiprocessing Pool.map). Help from ChatGPT
+         '''
+        # Define the file pattern
+        shapefiles = glob(file_pattern)
+        dfs = [] # create an empty list to store the loaded shapefiles
+
+        ## Filter out raw regions
+        shapefiles = [file for file in shapefiles if not any(name in file for name in exclude)]
+
+        # loop through the shapefiles and load each one using Geopandas
+        for shpfile in shapefiles:
+            lsd = cls.from_shapefile(shpfile, area_var=area_var, region_var=region_var, idx_var=idx_var, name=os.path.basename(shpfile).replace('.shp',''), _areaConversionFactor=_areaConversionFactor)
+            dfs.append(lsd)
+        
+        # merge all the loaded shapefiles into a single GeoDataFrame
+        lsd = LSD.concat(dfs, ignore_index=True) #, crs=gdfs[0].crs)
+        lsd.name=name
+        return lsd
+
     def reindex_regions(self, regions):
         ''' Where regions is a list of region names corresponding to the numbers in the existing inedex. 2 is hard-coded in for now and refers to the 1-based indexing of the CIR shapefile and skips the final region (which is just the previous ones summed).'''
         self['Region'] = np.array(regions)[self['Region'].values - 2]
         
-    @classmethod
-    def from_shapefile(cls, path, area_var, region_var, idx_var, name='unamed', _areaConversionFactor=1, regions=None): #**kwargs): #name='unamed', area_var='Area', region_var='NaN', idx_var='OID_'): # **kwargs
-        ''' Load from disk if not in memory'''
-        columns = [col for col in [idx_var, area_var, region_var] if col is not None] # allows 'region_var' to be None
-        df = pyogrio.read_dataframe(path, read_geometry=False, use_arrow=True, columns=columns)
-        # if region_var is not None:
-        #     df = pyogrio.read_dataframe(path, read_geometry=False, use_arrow=True, columns=[area_var, region_var, idx_var])
-        # else:
-        #     df = pyogrio.read_dataframe(path, read_geometry=False, use_arrow=True, columns=[area_var, idx_var])
-        # cls.__init__(cls, df, name=name, area_var=area_var, region_var=region_var, idx_var=idx_var) # **kwargs
-        return cls(df, name=name, area_var=area_var, region_var=region_var, idx_var=idx_var, _areaConversionFactor=_areaConversionFactor, regions=regions)
-    
     def regions(self):
         ''' Return unique regions names if not already generated.'''
         if self._regions is None:
@@ -236,11 +261,14 @@ if __name__=='__main__':
     # lsd_cir = LSD(gdf_cir_lsd, name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
     ## Loading PeRL LSD
+    perl_exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
+    lsd_perl = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/*.shp', area_var='AREA', region_var=None, idx_var=None, exclude=perl_exclude)
+
     ## Load in serial with my custom class (can be parallelized with multiprocessing Pool.map). Help from ChatGPT
     # Define the file pattern
     file_pattern = '/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/*.shp'
     shapefiles = glob(file_pattern)
-    perl_exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
+
     dfs = [] # create an empty list to store the loaded shapefiles
 
     ## Filter out raw regions in PeRL
