@@ -7,6 +7,7 @@
 # 1. plot both LSD as survivor functions in log-log space (see functions from TGRS paper)
 
 ## Imports
+import argparse
 import os
 import numpy as np
 from glob import glob
@@ -103,10 +104,10 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         name : str
             Name of dataset
         area_var : string, optional
-            Indicate which variable refers to shape area.
+            Indicate which variable refers to shape area. Default is to first attempt with area_var = 'Area_km2'.
         region_var : string, optional
             To indicate which region if multiple regions in dataset
-        idx_var: string, optional
+        idx_var: string, optional. Default is to first attempt with idx_var = 'index'.
             Index variable
         name_var: string, optional
             Name of variable that gives name of dataset (e.g. CIR or perl). Defaults to 'unamed'.
@@ -115,14 +116,25 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         regions : list, optional
             If provided, will transform numeric regions to text
         ''' 
+
+        ## Check if proper column headings exist (this might occur if I am initiating from a merged group of existing LSD objects)
+        if 'idx_'+name in df.columns:
+            idx_var = 'idx_'+name
+        if 'Area_km2' in df.columns:
+            area_var = 'Area_km2'
+        if 'Region' in df.columns:
+            region_var = 'Region'
+        
+        ## Choose which columns to keep (based on function arguments, or existing vars with default names that have become arguments)
         columns = [col for col in [idx_var, area_var, region_var, name_var] if col is not None] # allows 'region_var' to be None
-        super().__init__(df[columns]) # This inititates the class as a DataFrame and sets self to be the output. By importing a slice, we avoid mutating the original var for 'df'
+        super().__init__(df[columns]) # This inititates the class as a DataFrame and sets self to be the output. By importing a slice, we avoid mutating the original var for 'df'. Problem here is that subsequent functions might not recognize the class as an LSD. CAn I re-write without using super()?
 
         ## Add default name
         if name == None:
             name='unamed'
 
-        ## Compute areas if they don't exist
+        ## Here, can all this be skipped if I somehow know I'm importing an LSD which simply has class DataFrame because it came from pd.concat or pd.query??
+        ## Compute areas if they don't exist (check for case in which they exist under proper field name [Area_km2], but area_var is not provided)
         if area_var == None:
             pass
 
@@ -210,13 +222,15 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         
         Example: LSD.concat((lsd1, lsd2))
         '''
-        if broadcast_name:
+        if broadcast_name: # if combining multiple lsds from different sources
             for lsd in lsds:
                 lsd['Name'] = lsd.name
                 name_var = 'Name'
-        else: 
+                name='multi'
+        else: # if loading in lsds from same source, but different files
             name_var = None
-        return cls(pd.concat(lsds, **kwargs), lsds[0].name, area_var='Area_km2', region_var='Region', name_var=name_var) # use attributes from first LSD in list # I don't like that I have to repeat these here. Will be a pain if I add more essential attributes.
+            name=lsds[0].name
+        return cls(pd.concat(lsds), name=name, name_var=name_var)
 
     def truncate(self, min:float, max:float=np.inf):
         '''Truncates LSD by keeping only lakes >= min threshold [and < max threshold] '''
@@ -260,6 +274,16 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             ax.legend(loc= 'center left', bbox_to_anchor=(1.04, 0.5)) # legend on right (see https://stackoverflow.com/a/43439132/7690975)
 
 if __name__=='__main__':
+
+    ## Testing mode or no.
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test", default=False,
+                        help="Whether to run in test mode or not (default=False)")
+    args = parser.parse_args()
+    if args.test == 'True':
+        print('Test mode.')
+        pass
+    
     ## Testing from shapefile
     # lsd = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
     # lsd = LSD.from_shapefile('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None)
