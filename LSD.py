@@ -230,7 +230,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         else: # if loading in lsds from same source, but different files
             name_var = None
             name=lsds[0].name
-        return cls(pd.concat(lsds), name=name, name_var=name_var)
+        return cls(pd.concat(lsds), name=name, name_var=name_var) # Need to re-init before returning because pd.DataFrame.concat is a function, not method and can't return in-place. Therefore, it returns a pd.DataFrame object that needs to be converted back to a LSd.
 
     def truncate(self, min:float, max:float=np.inf):
         '''Truncates LSD by keeping only lakes >= min threshold [and < max threshold] '''
@@ -273,28 +273,53 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         if plotLegend:
             ax.legend(loc= 'center left', bbox_to_anchor=(1.04, 0.5)) # legend on right (see https://stackoverflow.com/a/43439132/7690975)
 
-if __name__=='__main__':
-
-    ## Testing mode or no.
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--test", default=False,
-                        help="Whether to run in test mode or not (default=False)")
-    args = parser.parse_args()
-    if args.test == 'True':
-        print('Test mode.')
-        pass
-    
+def runTests():
+    '''Practicing loading and functions/methods with/without various arguments.
+    Can pause and examine classes to inspect attributes.'''
     ## Testing from shapefile
-    # lsd = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
-    # lsd = LSD.from_shapefile('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None)
+    lsd_from_shp = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
+    lsd_from_shp = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area')
+    lsd_from_shp = LSD.from_shapefile('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None)
+    print('\tPassed load from shapefile.')
+    
+    ## Testing from gdf
+    gdf = pyogrio.read_dataframe('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
+    lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4')
+    regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
+    lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+    print('\tPassed load from gdf.')
+    
+    ## Loading from dir
+    exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
+    lsd_from_dir = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/y*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=exclude)
+
+    ## Test concat
+    lsd_concat = LSD.concat((lsd_from_shp, lsd_from_gdf))
+    lsd_concat = LSD.concat((lsd_from_shp, lsd_from_gdf), broadcast_name=True)
+    print('\tPassed concat.')
+
+    ## Test truncate
+    lsd_concat.truncate(0.01, 20)
+    print('\tPassed truncate.')
+    pass
+    
+## Testing mode or no.
+parser = argparse.ArgumentParser()
+parser.add_argument("--test", default=False,
+                    help="Whether to run in test mode or not (default=False)")
+args = parser.parse_args()
+if args.test == 'True':
+    print('Test mode.')
+    __name__ ='__test__'
+
+if __name__=='__test__':
+    runTests()
+    
+if __name__=='__main__':
 
     ## Loading from CIR gdf 
     regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
     lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
-
-    ## (testing pyogrio function)
-    # gdf_cir_lsd = pyogrio.read_dataframe('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
-    # lsd_cir = LSD(gdf_cir_lsd, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
     ## Loading PeRL LSD
     perl_exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
@@ -435,4 +460,5 @@ if __name__=='__main__':
 * write out x
 * find a way to relate to flux estimates
 * Re-define LSD so if called with no args but proper column names it returns a LSD correctly.
+* Use fid_as_index argument when loading with pyarrow
 '''
