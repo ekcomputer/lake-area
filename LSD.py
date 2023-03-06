@@ -91,9 +91,10 @@ def weightedStd(x, w):
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
     '''Lake size distribution'''
-    def __init__(self, df, name=None, area_var=None, region_var=None, idx_var=None, name_var=None, _areaConversionFactor=1, regions=None, computeArea=False):
+    def __init__(self, df, name=None, area_var=None, region_var=None, idx_var=None, name_var=None, _areaConversionFactor=1, regions=None, computeArea=False, **kwargs):
         '''
-        Loads df or gdf and creates copy only with relevant var names
+        Loads df or gdf and creates copy only with relevant var names.
+        If called with additional arguments (e.g. attributes from LSD class that is having a pd operation applied to it), they will be added as attributes
 
         Parameters
         ----------
@@ -131,6 +132,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         if 'geometry' in df.columns: # if I am computing geometry
             geometry_var = 'geometry'
         else: geometry_var = None
+
         ## Choose which columns to keep (based on function arguments, or existing vars with default names that have become arguments)
         columns = [col for col in [idx_var, area_var, region_var, name_var, geometry_var] if col is not None] # allows 'region_var' to be None
         super().__init__(df[columns]) # This inititates the class as a DataFrame and sets self to be the output. By importing a slice, we avoid mutating the original var for 'df'. Problem here is that subsequent functions might not recognize the class as an LSD. CAn I re-write without using super()?
@@ -152,24 +154,43 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         ## Assert
         assert np.all(self.Area_km2 > 0), "Not all lakes have area > 0."
-          
-        ## Add attributes
+
+        ## Add attributes from input variables that get used in this class def
         self.name = name
-        self._orig_area_var = area_var
-        self._orig_region_var = region_var
-        self._orig_idx_var = idx_var
-        self._regions = None # np.unique(self.Region)
-        self._truncated = False
-        self._truncation = (np.nan, np.nan)
+        self.orig_area_var = area_var
+        self.orig_region_var = region_var
+        self.orig_idx_var = idx_var
+
+        ## Add default passthrough attributes that get used (or re-used) by methods. Put all remaining attributes here.
+        self.regions_ = None # np.unique(self.Region) # retain, if present
+        self.isTruncated = False
+        self.truncationLimits = None
+        self.isBinned = False
+        self.bins = None
+
+        ## Add passthrough attributes if they are given as kwargs (e.g. after calling a Pandas function). This overwrites defaults defined above.
+        ## Any new attributes I create in future methods: ensure they start with '_' if I don't want them passed out.
+        ## Examples: is_binned, orig_area_var, orig_region_var, orig_idx_var
+        for attr, val in kwargs.items():
+            setattr(self, attr, val)
+
+        ## Set new attributes (Ensure only executed first time upon definition...)
         if _areaConversionFactor !=1:
             self.Area_km2 = self.Area_km2/_areaConversionFactor
         if regions is not None:
-            self.reindex_regions(regions)
+            self.reindexregions_(regions)
         if idx_var is None: # if loaded from shapefile that didn't have an explicit index column
             self.reset_index(inplace=True)
         if region_var is None: # auto-name region from name if it's not given
             self['Region'] = name
 
+    def get_public_attrs(self):
+        public_attrs = {}
+        for attr, value in self.__dict__.items():
+            if not attr.startswith('_'):
+                public_attrs[attr] = value
+        return public_attrs
+    
     @classmethod
     def from_shapefile(cls, path, name=None, area_var=None, region_var=None, idx_var=None, **kwargs): #**kwargs): #name='unamed', area_var='Area', region_var='NaN', idx_var='OID_'): # **kwargs
         ''' 
@@ -212,15 +233,18 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         lsd.name=name
         return lsd
 
-    def reindex_regions(self, regions):
+    def reindexregions_(self, regions):
         ''' Where regions is a list of region names corresponding to the numbers in the existing inedex. 2 is hard-coded in for now and refers to the 1-based indexing of the CIR shapefile and skips the final region (which is just the previous ones summed).'''
         self['Region'] = np.array(regions)[self['Region'].values - 2]
         
     def regions(self):
-        ''' Return unique regions names if not already generated.'''
-        if self._regions is None:
-            self._regions = np.unique(self.Region)
-        return self._regions
+        ''' 
+        Return unique regions names if not already generated.
+        No need to call regions_ directly, which will re-compute every time.  
+            '''
+        if self.regions_ is None:
+            self.regions_ = np.unique(self.Region)
+        return self.regions_
         
     @classmethod # not sure if necessary
     def concat(cls, lsds, broadcast_name=False, **kwargs): 
@@ -249,22 +273,35 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         Truncates LSD by keeping only lakes >= min threshold [and < max threshold].
         Always performed inplace.
         '''
-        self.query("(Area_km2 >= @min) and (Area_km2 < @max)", inplace=True, **kwargs)
-        self._truncated=True
-        self._truncation=(min, max)
+        pd.DataFrame.query(self, "(Area_km2 >= @min) and (Area_km2 < @max)", inplace=True, **kwargs)
+        self.isTruncated=True
+        self.truncationLimits=(min, max)
     
-    @classmethod # not sure if necessary
     def query(self, expr, inplace=False):
         '''
         Runs np.DataFrame.query and returns an LSD of results. 
         When inplace=False, output is re-generated as an LSD. When inplace=True, output LSD class is unchanged.
         '''
         if inplace == True:
-            self.query(expr, inplace=inplace) # true
+            pd.DataFrame.query(self, expr, inplace=inplace) # true
         else:
-            return cls(self.query(expr, inplace=inplace)) # false
-
-
+            attrs = self.get_public_attrs()
+            return LSD(pd.DataFrame.query(self, expr, inplace=inplace), **attrs) # false
+        
+    def area_fraction(self, limit):
+        '''
+        Compute the fraction of areas from lakes < area given by lim, only if not computed already.
+        Creates attribute A_[n]_ where n=0.001, 0.01, etc.
+        No need to call A_0.001_ directly, because it may not exist.
+        '''
+        attr = f'A_{limit}_' # dynamically-named attribute
+        if attr in self.get_public_attrs():
+            return getattr(self, attr)
+        else:
+            area_fraction = LSD(self).truncate(0, limit).Area_km2.sum()/self.Area_km2.sum() # re-create LSD without any params just to create a copy
+            setattr(self, attr, area_fraction)
+            return area_fraction
+        
     ## Plotting
     def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, **kwargs):
         '''
@@ -283,15 +320,15 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         if groupby_name==False: # wish there was a way to do this without both plots in the if/then statement
             for region in self.regions():
-                plotECDFByValue(self.query('Region == @region').Area_km2, ax=ax, alpha=0.4, label=region, **kwargs)
+                plotECDFByValue(pd.DataFrame.query(self, 'Region == @region').Area_km2, ax=ax, alpha=0.4, label=region, **kwargs)
 
         else:
             # cmap = colors.Colormap('Pastel1')
             names = np.unique(self['Name'])
             cmap = plt.cm.get_cmap('Paired', len(names))
             for j, name in enumerate(names):
-                for i, region in enumerate(np.unique(self.query('Name == @name').Region)): # can't use .regions() after using DataFrame.query because it returns a DataFrame
-                    plotECDFByValue(self.query('Region == @region').Area_km2, ax=ax, alpha=0.6, label=name, color=cmap(j), **kwargs)
+                for i, region in enumerate(np.unique(pd.DataFrame.query(self, 'Name == @name').Region)): # can't use .regions() after using DataFrame.query because it returns a DataFrame
+                    plotECDFByValue(pd.DataFrame.query(self, 'Region == @region').Area_km2, ax=ax, alpha=0.6, label=name, color=cmap(j), **kwargs)
 
         ## repeat for all
         if all:
