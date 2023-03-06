@@ -73,7 +73,7 @@ def plotECDFByValue(values, reverse=True, ax=None, **kwargs):
         X = np.sort(values)[-1::-1] # highest comes first bc I reversed order
     else:
         X = np.sort(values)
-    S = np.cumsum(X) # cumulative sum, starting with highest values
+    S = np.cumsum(X) # cumulative sum, starting with highest [lowest, if reverse=False] values
     if not ax:
         _, ax = plt.subplots()
     ax.plot(X, S/np.sum(X), **kwargs) 
@@ -84,8 +84,6 @@ def plotECDFByValue(values, reverse=True, ax=None, **kwargs):
     ax.set_xlabel('Lake area')
     # return S
 
-## Test
-# plotECDFByValue(gdf_cir_lsd.Area)
 def weightedStd(x, w):
     '''Computes standard deviation of values given as group means x, with weights w'''
     return np.sqrt((np.average((x-np.average(x, weights=w, axis=0))**2, weights=w, axis=0)).astype('float'))
@@ -93,7 +91,7 @@ def weightedStd(x, w):
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
     '''Lake size distribution'''
-    def __init__(self, df, name=None, area_var=None, region_var=None, idx_var=None, name_var=None, _areaConversionFactor=1, regions=None):
+    def __init__(self, df, name=None, area_var=None, region_var=None, idx_var=None, name_var=None, _areaConversionFactor=1, regions=None, computeArea=False):
         '''
         Loads df or gdf and creates copy only with relevant var names
 
@@ -115,7 +113,13 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             Denominator for unit conversion. 1 for km2, 1e6 for m2
         regions : list, optional
             If provided, will transform numeric regions to text
+        computeArea : Boolean, default:False
+            If provided, will compute Area from geometry. Doesn't need a crs, but needs user input for 'areaConversionFactor.'
         ''' 
+
+        ## Add default name
+        if name == None:
+            name='unamed'
 
         ## Check if proper column headings exist (this might occur if I am initiating from a merged group of existing LSD objects)
         if 'idx_'+name in df.columns:
@@ -124,19 +128,21 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             area_var = 'Area_km2'
         if 'Region' in df.columns:
             region_var = 'Region'
-        
+        if 'geometry' in df.columns: # if I am computing geometry
+            geometry_var = 'geometry'
+        else: geometry_var = None
         ## Choose which columns to keep (based on function arguments, or existing vars with default names that have become arguments)
-        columns = [col for col in [idx_var, area_var, region_var, name_var] if col is not None] # allows 'region_var' to be None
+        columns = [col for col in [idx_var, area_var, region_var, name_var, geometry_var] if col is not None] # allows 'region_var' to be None
         super().__init__(df[columns]) # This inititates the class as a DataFrame and sets self to be the output. By importing a slice, we avoid mutating the original var for 'df'. Problem here is that subsequent functions might not recognize the class as an LSD. CAn I re-write without using super()?
 
-        ## Add default name
-        if name == None:
-            name='unamed'
-
-        ## Here, can all this be skipped if I somehow know I'm importing an LSD which simply has class DataFrame because it came from pd.concat or pd.query??
-        ## Compute areas if they don't exist (check for case in which they exist under proper field name [Area_km2], but area_var is not provided)
-        if area_var == None:
-            pass
+        ## Compute areas if they don't exist
+        if computeArea == True:
+            if area_var is None:
+                gdf = gpd.GeoDataFrame(geometry=self.geometry)
+                self['Area_km2'] = gdf.area
+                self.drop(columns='geometry', inplace=True)
+            else:
+                raise ValueError('area_var is provided, but computeArea is set to True.')
 
         ## rename vars
         if region_var is not None:
@@ -146,7 +152,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         ## Assert
         assert np.all(self.Area_km2 > 0), "Not all lakes have area > 0."
-
+          
         ## Add attributes
         self.name = name
         self._orig_area_var = area_var
@@ -170,9 +176,13 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         Accepts all arguments to LSD.
         '''
         columns = [col for col in [idx_var, area_var, region_var] if col is not None] # allows 'region_var' to be None
-        df = pyogrio.read_dataframe(path, read_geometry=False, use_arrow=True, columns=columns)
+        read_geometry = False
+        if 'computeArea' in kwargs:
+            if kwargs['computeArea']==True:
+                read_geometry = True
+        df = pyogrio.read_dataframe(path, read_geometry=read_geometry, use_arrow=True, columns=columns)
         if name is None:
-            name = os.path.basename(path).replace('.shp','')
+            name = os.path.basename(path).replace('.shp','').replace('.zip','')
         return cls(df, name=name, area_var=area_var, region_var=region_var, idx_var=idx_var, **kwargs)
     
     @classmethod
@@ -188,7 +198,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         dfs = [] # create an empty list to store the loaded shapefiles
 
         ## Filter out raw regions
-        shapefiles = [file for file in shapefiles if not any(fname in file for fname in exclude)]
+        if exclude is not None:
+            shapefiles = [file for file in shapefiles if not any(fname in file for fname in exclude)]
 
         # loop through the shapefiles and load each one using Geopandas
         for shpfile in shapefiles:
@@ -248,7 +259,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         
         ## colors
         # rainbow_cycler = cycler
-        sns.set_palette("colorblind",len(regions) ) # colors from https://stackoverflow.com/a/46152327/7690975 Other option is: `from cycler import cycler; `# ax.set_prop_cycle(rainbow_cycler), plt(... prop_cycle=rainbow_cycler, )
+        sns.set_palette("colorblind", len(regions)) # colors from https://stackoverflow.com/a/46152327/7690975 Other option is: `from cycler import cycler; `# ax.set_prop_cycle(rainbow_cycler), plt(... prop_cycle=rainbow_cycler, )
 
         ## plot
         fig, ax = plt.subplots() # figsize=(5,3)
@@ -302,6 +313,8 @@ def runTests():
     lsd_concat.truncate(0.01, 20)
     print('\tPassed truncate.')
     pass
+
+    ## Test compute area from geometry
     
 ## Testing mode or no.
 parser = argparse.ArgumentParser()
@@ -325,12 +338,18 @@ if __name__=='__main__':
     perl_exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
     lsd_perl = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=perl_exclude)
 
-    ## Combine PeRL and CIR
-    lsd = LSD.concat((lsd_cir, lsd_perl), broadcast_name=True, ignore_index=True)
+    ## Loading from Mullen
+    lsd_mullen = LSD.from_paths('/mnt/g/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/*_3Y_lakes-and-ponds.zip', _areaConversionFactor=1000000, name='Mullen', computeArea=True) # '/mnt/g/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/[A-Z][A-Z]_08*.zip'
+
+    ## Combine PeRL and CIR and Mullen
+    lsd = LSD.concat((lsd_cir, lsd_perl, lsd_mullen), broadcast_name=True, ignore_index=True)
 
     ## plot
     lsd.truncate(0.0001, 10)
-    lsd.plot_lsd(all=True, plotLegend=True, groupby_name=True)
+    lsd.plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=True)
+
+    ## YF compare
+    LSD(lsd.query("Region=='YF_3Y_lakes-and-ponds' or Region=='Yukon Flats Basin'"), name='compare').plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=False)
 
     ## Cycle through 14 regions and compute additional stats
     df_cir_rec = pd.DataFrame(columns = ['Region_ID', 'Region', 'Lake_area', 'stat', 'A_0.001', 'A_0.001_cor', 'A_0.01_cor', 'A_0.01', 'A_g100m', 'A_g1', 'PeRL_pnd_f']) # cir recomputed, for double checking A_0.001 from paper; A_0.001_cor excludes the largest lakes like in PeRL, but uses native CIR min size of 40 m2; computing A_0.01 analogous to PeRL pond fraction, PeRL_pnd for equivalent to perl analysis (min is 100 m2, max is 1 km2), A_g100m, for lakes > 100 m2, analogous to PeRL, F_g1 for area of lakes larger than PeRL maximum size, 'PeRL_all' to simulate perl size domain, and 'PeRL_pnd_f' which is perl pond divided perl all # 'PeRL_pnd', 'PeRL_all'
@@ -461,4 +480,5 @@ if __name__=='__main__':
 * find a way to relate to flux estimates
 * Re-define LSD so if called with no args but proper column names it returns a LSD correctly.
 * Use fid_as_index argument when loading with pyarrow
+* Preserve og index when concatenating so I can look up lakes from raw file (combine with above re: fid)
 '''
