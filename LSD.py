@@ -160,6 +160,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         self._orig_idx_var = idx_var
         self._regions = None # np.unique(self.Region)
         self._truncated = False
+        self._truncation = (np.nan, np.nan)
         if _areaConversionFactor !=1:
             self.Area_km2 = self.Area_km2/_areaConversionFactor
         if regions is not None:
@@ -241,13 +242,29 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         else: # if loading in lsds from same source, but different files
             name_var = None
             name=lsds[0].name
-        return cls(pd.concat(lsds), name=name, name_var=name_var) # Need to re-init before returning because pd.DataFrame.concat is a function, not method and can't return in-place. Therefore, it returns a pd.DataFrame object that needs to be converted back to a LSd.
+        return cls(pd.concat(lsds, **kwargs), name=name, name_var=name_var, _truncation=...) # Need to re-init before returning because pd.DataFrame.concat is a function, not method and can't return in-place. Therefore, it returns a pd.DataFrame object that needs to be converted back to a LSd.
 
-    def truncate(self, min:float, max:float=np.inf):
-        '''Truncates LSD by keeping only lakes >= min threshold [and < max threshold] '''
-        self.query("(Area_km2 >= @min) and (Area_km2 < @max)", inplace=True)
+    def truncate(self, min:float, max:float=np.inf, **kwargs):
+        '''
+        Truncates LSD by keeping only lakes >= min threshold [and < max threshold].
+        Always performed inplace.
+        '''
+        self.query("(Area_km2 >= @min) and (Area_km2 < @max)", inplace=True, **kwargs)
         self._truncated=True
+        self._truncation=(min, max)
     
+    @classmethod # not sure if necessary
+    def query(self, expr, inplace=False):
+        '''
+        Runs np.DataFrame.query and returns an LSD of results. 
+        When inplace=False, output is re-generated as an LSD. When inplace=True, output LSD class is unchanged.
+        '''
+        if inplace == True:
+            self.query(expr, inplace=inplace) # true
+        else:
+            return cls(self.query(expr, inplace=inplace)) # false
+
+
     ## Plotting
     def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, **kwargs):
         '''
@@ -259,7 +276,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         
         ## colors
         # rainbow_cycler = cycler
-        sns.set_palette("colorblind", len(regions)) # colors from https://stackoverflow.com/a/46152327/7690975 Other option is: `from cycler import cycler; `# ax.set_prop_cycle(rainbow_cycler), plt(... prop_cycle=rainbow_cycler, )
+        sns.set_palette("colorblind", len(self.regions())) # colors from https://stackoverflow.com/a/46152327/7690975 Other option is: `from cycler import cycler; `# ax.set_prop_cycle(rainbow_cycler), plt(... prop_cycle=rainbow_cycler, )
 
         ## plot
         fig, ax = plt.subplots() # figsize=(5,3)
