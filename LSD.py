@@ -160,6 +160,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         self.orig_area_var = area_var
         self.orig_region_var = region_var
         self.orig_idx_var = idx_var
+        self.name_var = name_var # important, because otherwise re-initiating won't know to retain this column
 
         ## Add default passthrough attributes that get used (or re-used) by methods. Put all remaining attributes here.
         self.regions_ = None # np.unique(self.Region) # retain, if present
@@ -266,16 +267,23 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         else: # if loading in lsds from same source, but different files
             name_var = None
             name=lsds[0].name
-        return cls(pd.concat(lsds, **kwargs), name=name, name_var=name_var, _truncation=...) # Need to re-init before returning because pd.DataFrame.concat is a function, not method and can't return in-place. Therefore, it returns a pd.DataFrame object that needs to be converted back to a LSd.
+        return cls(pd.concat(lsds, **kwargs), name=name, name_var=name_var) # Need to re-init before returning because pd.DataFrame.concat is a function, not method and can't return in-place. Therefore, it returns a pd.DataFrame object that needs to be converted back to a LSD.
 
-    def truncate(self, min:float, max:float=np.inf, **kwargs):
+    def truncate(self, min:float, max:float=np.inf, inplace=False, **kwargs):
         '''
         Truncates LSD by keeping only lakes >= min threshold [and < max threshold].
         Always performed inplace.
         '''
-        pd.DataFrame.query(self, "(Area_km2 >= @min) and (Area_km2 < @max)", inplace=True, **kwargs)
-        self.isTruncated=True
-        self.truncationLimits=(min, max)
+        if inplace == True:
+            pd.DataFrame.query(self, "(Area_km2 >= @min) and (Area_km2 < @max)", inplace=inplace, **kwargs) # true inplace
+            self.isTruncated=True
+            self.truncationLimits=(min, max)
+        else:
+            attrs = self.get_public_attrs()
+            lsd = LSD(pd.DataFrame.query(self, "(Area_km2 >= @min) and (Area_km2 < @max)", inplace=inplace, **kwargs), **attrs) # false    
+            lsd.isTruncated=True
+            lsd.truncationLimits=(min, max)           
+            return lsd         
     
     def query(self, expr, inplace=False):
         '''
@@ -294,11 +302,11 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         Creates attribute A_[n]_ where n=0.001, 0.01, etc.
         No need to call A_0.001_ directly, because it may not exist.
         '''
-        attr = f'A_{limit}_' # dynamically-named attribute
+        attr = f'_A_{limit}' # dynamically-named attribute (_ prefix means it won't get copied over after a truncation or concat)
         if attr in self.get_public_attrs():
             return getattr(self, attr)
         else:
-            area_fraction = LSD(self).truncate(0, limit).Area_km2.sum()/self.Area_km2.sum() # re-create LSD without any params just to create a copy
+            area_fraction = self.truncate(0, limit).Area_km2.sum()/self.Area_km2.sum()
             setattr(self, attr, area_fraction)
             return area_fraction
         
@@ -369,6 +377,10 @@ def runTests():
     pass
 
     ## Test compute area from geometry
+
+    ## Test area fraction
+    lsd_from_gdf.area_fraction(1)
+    print('\tPassed area_fraction.')
     
 ## Testing mode or no.
 parser = argparse.ArgumentParser()
@@ -399,18 +411,28 @@ if __name__=='__main__':
     lsd = LSD.concat((lsd_cir, lsd_perl, lsd_mullen), broadcast_name=True, ignore_index=True)
 
     ## plot
-    lsd.truncate(0.0001, 10)
-    lsd.plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=True)
+    lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=True)
 
     # ## YF compare
     # LSD(lsd.query("Region=='YF_3Y_lakes-and-ponds' or Region=='Yukon Flats Basin'"), name='compare').plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=False)
 
     ## Load WBD
     lsd_wbd = LSD.from_shapefile('/mnt/g/Other/Feng-High-res-inland-surface-water-tundra-boreal-NA/edk_out/fixed_geoms/WBD.shp', area_var='Area', name='WBD', idx_var='OBJECTID')
+    lsd_wbd.truncate(0.001, inplace=True)
 
     ## Plot WBD
     lsd_wbd.plot_lsd(reverse=False, all=False)
 
+    ## Estimate area fraction
+    lsd_wbd.area_fraction(0.1)
+    lsd_wbd.area_fraction(0.01)
+    lsd_wbd.area_fraction(0.001)
+
+    lsd.area_fraction(0.1)
+    lsd.area_fraction(0.01)
+    lsd.area_fraction(0.001)  
+
+    ## Legacy stuff
     ## Cycle through 14 regions and compute additional stats
     df_cir_rec = pd.DataFrame(columns = ['Region_ID', 'Region', 'Lake_area', 'stat', 'A_0.001', 'A_0.001_cor', 'A_0.01_cor', 'A_0.01', 'A_g100m', 'A_g1', 'PeRL_pnd_f']) # cir recomputed, for double checking A_0.001 from paper; A_0.001_cor excludes the largest lakes like in PeRL, but uses native CIR min size of 40 m2; computing A_0.01 analogous to PeRL pond fraction, PeRL_pnd for equivalent to perl analysis (min is 100 m2, max is 1 km2), A_g100m, for lakes > 100 m2, analogous to PeRL, F_g1 for area of lakes larger than PeRL maximum size, 'PeRL_all' to simulate perl size domain, and 'PeRL_pnd_f' which is perl pond divided perl all # 'PeRL_pnd', 'PeRL_all'
     for i, region in enumerate(range(2, 16)): # no region 1
