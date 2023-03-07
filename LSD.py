@@ -10,6 +10,7 @@
 import argparse
 import os
 import numpy as np
+from scipy import stats
 from glob import glob
 from matplotlib import pyplot as plt
 from matplotlib.colors import Colormap
@@ -103,6 +104,24 @@ def weightedStd(x, w):
     '''Computes standard deviation of values given as group means x, with weights w'''
     return np.sqrt((np.average((x-np.average(x, weights=w, axis=0))**2, weights=w, axis=0)).astype('float'))
 
+def confidence_interval(x):
+    '''
+    A function to compute the confidence interval for each region group of summed lake areas in a size bin.
+    
+    Parameters
+    ----------
+    x : array-like (np.Array, pandas.DataFrame, or pd.Series)
+        Array whose rows will act as input into function
+    '''
+    n = len(x)
+    m = x.mean(numeric_only=True)
+    se = x.sem(numeric_only=True)
+    h = se * stats.t.ppf((1 + 0.95) / 2, n - 1)
+    out = pd.Series({'mean': m, 'lower': m - h, 'upper': m + h})
+
+    ## Set greater than 0
+    return np.maximum(out, 0)
+    
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
     '''Lake size distribution'''
@@ -377,7 +396,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
 class BinnedLSD():
     '''This class represents lakes as area bins with summed areas.'''
-    def __init__(self, lsd, btm, top, nbins=100):
+    def __init__(self, lsd, btm, top, nbins=100, ci=True):
         '''
         Bins will have left end closed and right end open
         Parameters
@@ -390,21 +409,66 @@ class BinnedLSD():
             Rightmost edge of top bin 
         nbins : int
             Number of bins to use for np.geomspace.
+        ci : Boolean
+            Compute confidence interval by breaking down by region.
         '''
-        # lsd=LSD(lsd) # create copy
+        lsd=LSD(lsd) # create copy
+        self.nbins = nbins
         self.bin_edges = np.concatenate((np.geomspace(btm, top, nbins), [np.inf])).round(6)
         self.area_bins = pd.IntervalIndex.from_breaks(self.bin_edges, closed='left')
-        labels = pd.cut(lsd.Area_km2, self.area_bins, right=False)
-        self.binnedValues = lsd.Area_km2.groupby(labels).sum(numeric_only=True)
+        lsd['labels'] = pd.cut(lsd.Area_km2, self.area_bins, right=False)
+        self.isNormalized = False # init
+
+        ## Bin
+        if ci:
+            ## First, group by region and area bin and take sum of each bin
+            group_sums = lsd.groupby(['Region', 'labels']).Area_km2.sum(numeric_only=True)
+
+            ## Normalize before binning
+            # self.normalize()
+            divisor = group_sums.loc[:, group_sums.index.get_level_values(1)[-1]] # sum of lake areas in largest bin for each region
+            group_sums /= divisor
+            self.isNormalized = True
+
+            # Compute the confidence interval for each group along the second index
+            self.binnedValues = group_sums.groupby(level=1).apply(confidence_interval)
+            self.hasCI = True
+        else:
+            self.binnedValues = lsd.groupby('labels').Area_km2.sum(numeric_only=True)
+            self.hasCI = False
         self.isBinned = True
         self.isExtrap = False
+        self.labels = lsd.labels # copy to the new class
         pass
+    
+    def normalize(self):
+        '''Divide bins by the largest bin.'''
+        pass
+        self.isNormalized = True
 
-    def plot(self):
+    def plot(self, show_rightmost=False):
         '''To roughly visualize bins.'''
-        plt.bar(self.bin_edges[:-1], self.binnedValues)
-        plt.bar(range(len(self.bin_edges)-1), self.binnedValues)
+        binned_values = self.binnedValues.copy() # create copy to modify
+        diff=0
+        ## Remove last bin, if desired
+        if show_rightmost == False:
+            binned_values.drop(index=binned_values.index.get_level_values(0)[-1], inplace=True)
+            diff=1 # subtract from number of bin edges to get plot x axis
+
+        # plt.bar(self.bin_edges[:-1], binned_values)
+        if self.hasCI:
+            ## Convert confidence interval vals to anomalies
+            ci = binned_values.loc[:, ['lower', 'upper']].to_numpy().reshape((self.nbins-diff,2)).T
+            # upper = binned_values.loc[:, ['upper']].to_numpy()
+            # lower = binned_values.loc[:, ['lower']].to_numpy()
+            mean = binned_values.loc[:, ['mean']].to_numpy()
+            # yerr = np.array([mean-lower, upper-mean])
+            yerr = np.abs(ci-mean)
+            plt.bar(range(self.nbins-diff), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
+        else:  # Needs testing
+            plt.bar(range(self.nbins-diff), binned_values)
         plt.yscale('log')
+        return
 
     def predictFlux(self, temp):
         '''
@@ -416,18 +480,18 @@ class BinnedLSD():
 def runTests():
     '''Practicing loading and functions/methods with/without various arguments.
     Can pause and examine classes to inspect attributes.'''
-    ## Testing from shapefile
-    lsd_from_shp = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
-    lsd_from_shp = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area')
-    lsd_from_shp = LSD.from_shapefile('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None, _areaConversionFactor=1e6)
-    print('\tPassed load from shapefile.')
+    # ## Testing from shapefile
+    # lsd_from_shp = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
+    # lsd_from_shp = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area')
+    # lsd_from_shp = LSD.from_shapefile('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None, _areaConversionFactor=1e6)
+    # print('\tPassed load from shapefile.')
     
-    # ## Testing from gdf
-    # gdf = pyogrio.read_dataframe('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
-    # lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4')
-    # regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    # lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
-    # print('\tPassed load from gdf.')
+    ## Testing from gdf
+    gdf = pyogrio.read_dataframe('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
+    lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4')
+    regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
+    lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+    print('\tPassed load from gdf.')
     
     # ## Loading from dir
     # exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
@@ -450,8 +514,10 @@ def runTests():
     # print('\tPassed area_fraction.')
     
     ## Test binnedLSD
-    binned = BinnedLSD(lsd_from_shp, 0.0001, 0.1)
-
+    binned = BinnedLSD(lsd_from_gdf.truncate(0,np.inf), 0.0001, 0.1)
+    binned.plot()
+    
+    pass
 ## Testing mode or no.
 parser = argparse.ArgumentParser()
 parser.add_argument("--test", default=False,
