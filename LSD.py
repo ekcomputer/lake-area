@@ -84,6 +84,21 @@ def plotECDFByValue(values, reverse=True, ax=None, **kwargs):
     ax.set_xlabel('Lake area')
     # return S
 
+def plotEPDFByValue(values, ax=None, **kwargs):
+    '''Cumulative histogram by value (lake area), not count. Creates, but doesn't return fig, ax if they are not provided. No binning used.'''
+    X = np.sort(values)
+    S = np.cumsum(X) # cumulative sum, starting with lowest values
+    if not ax:
+        _, ax = plt.subplots()
+    ax.plot(X, X/np.sum(X), **kwargs) 
+
+    ## Viz params
+    ax.set_xscale('log')
+    # ax.set_yscale('log')
+    ax.set_ylabel('Fraction of total area')
+    ax.set_xlabel('Lake area')
+    # return S
+
 def weightedStd(x, w):
     '''Computes standard deviation of values given as group means x, with weights w'''
     return np.sqrt((np.average((x-np.average(x, weights=w, axis=0))**2, weights=w, axis=0)).astype('float'))
@@ -309,9 +324,23 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             area_fraction = self.truncate(0, limit).Area_km2.sum()/self.Area_km2.sum()
             setattr(self, attr, area_fraction)
             return area_fraction
-        
+    
+    def extrapolate(self, refBinnedLSD, bottomLim, topLim):
+        '''
+        Extrapolate by filling empty bins below the dataset's resolution
+        ''' 
+        # returns a binnedLSD   
+        # give error if trying to extrapolate to a smaller area than is present in ref distrib
+        pass
+    
+    def predictFlux(self, temp):
+        '''
+        Predict methane flux based on area bins and temperature
+        '''
+        pass
+
     ## Plotting
-    def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, **kwargs):
+    def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=True, **kwargs):
         '''
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False)
         groupby_name : boolean
@@ -346,42 +375,83 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         if plotLegend:
             ax.legend(loc= 'center left', bbox_to_anchor=(1.04, 0.5)) # legend on right (see https://stackoverflow.com/a/43439132/7690975)
 
+class BinnedLSD():
+    '''This class represents lakes as area bins with summed areas.'''
+    def __init__(self, lsd, btm, top, nbins=100):
+        '''
+        Bins will have left end closed and right end open
+        Parameters
+        ----------
+        lsd : LSD
+            Lake-size distribution class to bin
+        btm : float 
+            Leftmost edge of bottom bin 
+        top : float
+            Rightmost edge of top bin 
+        nbins : int
+            Number of bins to use for np.geomspace.
+        '''
+        # lsd=LSD(lsd) # create copy
+        self.bin_edges = np.concatenate((np.geomspace(btm, top, nbins), [np.inf])).round(6)
+        self.area_bins = pd.IntervalIndex.from_breaks(self.bin_edges, closed='left')
+        labels = pd.cut(lsd.Area_km2, self.area_bins, right=False)
+        self.binnedValues = lsd.Area_km2.groupby(labels).sum(numeric_only=True)
+        self.isBinned = True
+        self.isExtrap = False
+        pass
+
+    def plot(self):
+        '''To roughly visualize bins.'''
+        plt.bar(self.bin_edges[:-1], self.binnedValues)
+        plt.bar(range(len(self.bin_edges)-1), self.binnedValues)
+        plt.yscale('log')
+
+    def predictFlux(self, temp):
+        '''
+        Predict methane flux based on area bins and temperature
+        '''
+        pass
+    
+
 def runTests():
     '''Practicing loading and functions/methods with/without various arguments.
     Can pause and examine classes to inspect attributes.'''
     ## Testing from shapefile
     lsd_from_shp = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
     lsd_from_shp = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area')
-    lsd_from_shp = LSD.from_shapefile('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None)
+    lsd_from_shp = LSD.from_shapefile('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None, _areaConversionFactor=1e6)
     print('\tPassed load from shapefile.')
     
-    ## Testing from gdf
-    gdf = pyogrio.read_dataframe('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
-    lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4')
-    regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
-    print('\tPassed load from gdf.')
+    # ## Testing from gdf
+    # gdf = pyogrio.read_dataframe('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
+    # lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4')
+    # regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
+    # lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+    # print('\tPassed load from gdf.')
     
-    ## Loading from dir
-    exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
-    lsd_from_dir = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/y*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=exclude)
+    # ## Loading from dir
+    # exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
+    # lsd_from_dir = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/y*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=exclude)
 
-    ## Test concat
-    lsd_concat = LSD.concat((lsd_from_shp, lsd_from_gdf))
-    lsd_concat = LSD.concat((lsd_from_shp, lsd_from_gdf), broadcast_name=True)
-    print('\tPassed concat.')
+    # ## Test concat
+    # lsd_concat = LSD.concat((lsd_from_shp, lsd_from_gdf))
+    # lsd_concat = LSD.concat((lsd_from_shp, lsd_from_gdf), broadcast_name=True)
+    # print('\tPassed concat.')
 
-    ## Test truncate
-    lsd_concat.truncate(0.01, 20)
-    print('\tPassed truncate.')
-    pass
+    # ## Test truncate
+    # lsd_concat.truncate(0.01, 20)
+    # print('\tPassed truncate.')
+    # pass
 
-    ## Test compute area from geometry
+    # ## Test compute area from geometry
 
-    ## Test area fraction
-    lsd_from_gdf.area_fraction(1)
-    print('\tPassed area_fraction.')
+    # ## Test area fraction
+    # lsd_from_gdf.area_fraction(1)
+    # print('\tPassed area_fraction.')
     
+    ## Test binnedLSD
+    binned = BinnedLSD(lsd_from_shp, 0.0001, 0.1)
+
 ## Testing mode or no.
 parser = argparse.ArgumentParser()
 parser.add_argument("--test", default=False,
