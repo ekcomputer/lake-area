@@ -504,6 +504,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
                 plotECDFByValue(pd.DataFrame.query(self, 'Region == @region').Area_km2, ax=ax, alpha=0.4, label=region, **kwargs)
 
         else:
+            assert 'Name' in self.columns, "LSD is missing 'Name' column."
             # cmap = colors.Colormap('Pastel1')
             names = np.unique(self['Name'])
             cmap = plt.cm.get_cmap('Paired', len(names))
@@ -795,6 +796,13 @@ if __name__=='__main__':
 
     ## Plot WBD
     lsd_wbd.plot_lsd(reverse=False, all=False)
+
+    ## Combine WBD with my HR dataset
+    # lsd.name='HR datasets'
+    setattr(lsd, 'name', 'HR datasets')
+    lsd['Region'] = 'NaN' # Hot fix to tell it not to plot a curve for each region
+    lsd_compare = LSD.concat((lsd.truncate(0.001, 50), lsd_wbd.truncate(0.001, 50)), broadcast_name=True, ignore_index=True)
+    lsd_compare.plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=True)
 
     ## Estimate area fraction
     lsd_wbd.area_fraction(0.1)
