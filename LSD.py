@@ -10,6 +10,7 @@
 from warnings import warn
 import argparse
 import os
+import math
 import numpy as np
 from scipy import stats
 from glob import glob
@@ -69,20 +70,67 @@ def findNearest(arr, val):
     index = difference_array.argmin()
     return index
 
-def plotECDFByValue(values, reverse=True, ax=None, **kwargs):
-    '''Cumulative histogram by value (lake area), not count. Creates, but doesn't return fig, ax if they are not provided. By default, CDF order is reversed to emphasize addition of small lakes (flips over ahorizontal axis).'''
+def ECDFByValue(values, reverse=True):
+    """
+    Returns sorted values and their cumsum.
+    Called by plotECDFByValue.
+
+    Parameters
+    ----------
+    values (array-like) : Values for histogram
+
+    Returns
+    -------
+    X : sorted array
+    X : cumsum of sorted array
+
+    """
     if reverse:
         X = np.sort(values)[-1::-1] # highest comes first bc I reversed order
     else:
         X = np.sort(values)
     S = np.cumsum(X) # cumulative sum, starting with highest [lowest, if reverse=False] values
+    return X, S
+
+
+def plotECDFByValue(values=None, reverse=True, ax=None, normalized=True, X=None, S=None, **kwargs):
+    '''
+    Cumulative histogram by value (lake area), not count.
+    Creates, but doesn't return fig, ax if they are not provided. By default, CDF order is reversed to emphasize addition of small lakes (flips over ahorizontal axis).
+    Required to provide either values or X and S
+    
+    Parameters
+    ----------
+    values (array-like) : Values for histogram
+    reverse (True) : Plot ascending from right
+    ax (optional) : matplotlib axis for plot
+    normalized (True) : Whether y-intercept should be 1
+    X
+    S
+    Returns
+    -------
+    X : sorted array
+    X : cumsum of sorted array    
+    '''
+    if values is None and (X is None or S is None):
+        raise ValueError("Must provide either 'values' or 'X' and 'S'.")
+    if X is not None and values is not None:
+        raise ValueError("Both 'values' and 'X' were provided.")
+    if X is None and S is None:
+        X, S = ECDFByValue(values, reverse=reverse) # compute
+
+    if normalized:
+        S = S/np.sum(X)
+        ylabel = 'Cumulative fraction of total area'
+    else:
+        ylabel = 'Cumulative area (km2)'
     if not ax:
         _, ax = plt.subplots()
-    ax.plot(X, S/np.sum(X), **kwargs) 
+    ax.plot(X, S, **kwargs) 
 
     ## Viz params
     ax.set_xscale('log')
-    ax.set_ylabel('Cumulative fraction of total area')
+    ax.set_ylabel(ylabel)
     ax.set_xlabel('Lake area')
     # return S
 
@@ -129,6 +177,10 @@ def public_attrs(self):
         if not attr.startswith('_'):
             public_attrs_dict[attr] = value
     return public_attrs_dict 
+
+def interval_geometric_mean(interval):
+    '''calculate the geometric mean of an interval'''
+    return math.sqrt(interval.left * interval.right)
    
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
@@ -383,7 +435,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         
         ## Perform the extrapolation (bin self by its bottom truncation limit to the indexTopLim, and simply multiply it by the normalized refBinnedLSD to do the extrapolation)!
         index_region_sum = self.truncate(ref_BinnedLSD.topEdge, ref_BinnedLSD.truncationLimits[1]).Area_km2.sum() # Sum all area in LSD in the index region, defined by the topEdge and top-truncation limit of the ref LSD.
-        binned_values = ref_BinnedLSD.binnedValues[:-3] * index_region_sum # remove the last three entries, which are mean, lower, upper for the bin that goes to np.inf (hard-coded, assumed ref_BinnedLSD.hasCI == True)
+        last = ref_BinnedLSD.binnedValues.index.get_level_values(0).max() # last index with infinity to drop (use as mask)
+        binned_values = ref_BinnedLSD.binnedValues.drop(index=last) * index_region_sum # remove the last entries, which are mean, lower, upper for the bin that goes to np.inf
         
         ## Return in place a new attribute called extrapLSD which is an instance of a binnedLSD
         self.extrapLSD = BinnedLSD(btm=ref_BinnedLSD.btmEdge, top=ref_BinnedLSD.topEdge, nbins=ref_BinnedLSD.nbins, has_ci=ref_BinnedLSD.hasCI, binned_values=binned_values)
@@ -426,11 +479,15 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         pass
 
     ## Plotting
-    def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=True, **kwargs):
+    def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, **kwargs):
         '''
-        Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False)
+        Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
+        
+        Parameters
+        ----------
         groupby_name : boolean
             Group plots by dataset name, given by variable 'Name'
+        returns: ax
         '''
         ## Cumulative histogram by value (lake area), not count
         
@@ -439,7 +496,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         sns.set_palette("colorblind", len(self.regions())) # colors from https://stackoverflow.com/a/46152327/7690975 Other option is: `from cycler import cycler; `# ax.set_prop_cycle(rainbow_cycler), plt(... prop_cycle=rainbow_cycler, )
 
         ## plot
-        fig, ax = plt.subplots() # figsize=(5,3)
+        if ax==None:
+            _, ax = plt.subplots() # figsize=(5,3)
 
         if groupby_name==False: # wish there was a way to do this without both plots in the if/then statement
             for region in self.regions():
@@ -460,6 +518,34 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ## Legend
         if plotLegend:
             ax.legend(loc= 'center left', bbox_to_anchor=(1.04, 0.5)) # legend on right (see https://stackoverflow.com/a/43439132/7690975)
+
+        return ax
+    
+    def plot_extrap_lsd(self, plotLegend=True, ax=None, **kwargs):
+        '''
+        Plots LSD using both measured and extrapolated values. 
+        Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
+        
+        Parameters
+        ----------
+        groupby_name : boolean
+            Group plots by dataset name, given by variable 'Name'
+        
+        returns: ax
+        '''       
+        ## plot
+        if ax==None:
+            _, ax = plt.subplots() # figsize=(5,3)
+        X, S = ECDFByValue(self.Area_km2, reverse=False)
+        geom_means = np.array(list(map(interval_geometric_mean, self.extrapLSD.binnedValues.loc[:, 'mean'].index))) # take geom mean of each interval
+        X = np.concatenate((geom_means, X))
+        S += self.extrapLSD.sumAreas() # add to original cumsum
+        S = np.concatenate((np.cumsum(self.extrapLSD.binnedValues[:, 'mean']), S)) # pre-pend the binned vals
+
+        ## Add error bars
+        plotECDFByValue(ax=ax, alpha=0.4, color='black', label='All', X=X, S=S, normalized=False, reverse=False, **kwargs)
+
+        return ax
 
 class BinnedLSD():
     '''This class represents lakes as area bins with summed areas.'''
@@ -506,7 +592,7 @@ class BinnedLSD():
             ## Bin
             if has_ci:
                 ## First, group by region and area bin and take sum of each bin
-                group_sums = lsd.groupby(['Region', 'labels']).Area_km2.sum(numeric_only=True)
+                group_sums = lsd.groupby(['Region', 'labels']).Area_km2.sum(numeric_only=True) # HERE bug?
 
                 ## Normalize before binning
                 # self.normalize()
@@ -664,8 +750,9 @@ def runTests():
     lsd_hl.sumAreas()
 
     ## Plot
-
     lsd_hl.extrapLSD.plot()
+    ax = lsd_hl.plot_lsd(reverse=False, normalized=False)
+    lsd_hl.plot_extrap_lsd(ax=ax)
     pass
 
 ## Testing mode or no.
