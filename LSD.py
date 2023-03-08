@@ -563,15 +563,26 @@ class BinnedLSD():
             return self.binnedValues.loc[:,'mean'].sum()
     
     def plot(self, show_rightmost=False):
-        '''To roughly visualize bins.'''
+        '''
+        To roughly visualize bins.
+        
+        show_rightmost : Boolean
+            Show remainder bin on right (ignored if self.isExtrapolated==True)
+        '''
         binned_values = self.binnedValues.copy() # create copy to modify
         diff=0
         ## Remove last bin, if desired
-        if show_rightmost == False:
-            binned_values.drop(index=binned_values.index.get_level_values(0)[-1], inplace=True)
-            diff=1 # subtract from number of bin edges to get plot x axis
-
+        if self.isExtrapolated==False:
+            if show_rightmost == False: # if I need to cut off rightmost bin
+                binned_values.drop(index=binned_values.index.get_level_values(0)[-1], inplace=True)
+                diff+=1 # subtract from number of bin edges to get plot x axis
+        else: # if extrapolated
+            diff+=1
+        
+        ## Plot
+        fig, ax = plt.subplots()
         # plt.bar(self.bin_edges[:-1], binned_values)
+
         if self.hasCI:
             ## Convert confidence interval vals to anomalies
             ci = binned_values.loc[:, ['lower', 'upper']].to_numpy().reshape((self.nbins-diff,2)).T
@@ -580,10 +591,16 @@ class BinnedLSD():
             mean = binned_values.loc[:, ['mean']].to_numpy()
             # yerr = np.array([mean-lower, upper-mean])
             yerr = np.abs(ci-mean)
-            plt.bar(range(self.nbins-diff), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
+            ax.bar(range(self.nbins-diff), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
         else:  # Needs testing
-            plt.bar(range(self.nbins-diff), binned_values)
-        plt.yscale('log')
+            ax.bar(range(self.nbins-diff), binned_values)
+        
+        ax.set_yscale('log')
+        ax.set_xlabel('Bin number')
+        if self.isNormalized:
+            ax.set_ylabel('Fraction of large lake area')
+        else:
+            ax.set_ylabel('km2')
         return
 
     def predictFlux(self, temp):
@@ -648,6 +665,7 @@ def runTests():
 
     ## Plot
 
+    lsd_hl.extrapLSD.plot()
     pass
 
 ## Testing mode or no.
