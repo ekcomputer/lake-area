@@ -340,6 +340,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         Compute the fraction of areas from lakes < area given by lim, only if not computed already.
         Creates attribute A_[n]_ where n=0.001, 0.01, etc.
         No need to call A_0.001_ directly, because it may not exist.
+
+        TODO: add option to include extrapolation in estimate.
         '''
         attr = f'_A_{limit}' # dynamically-named attribute (_ prefix means it won't get copied over after a truncation or concat)
         if attr in self.get_public_attrs():
@@ -397,6 +399,26 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         self.refBinnedLSD = ref_BinnedLSD
         return
     
+    def sumAreas(self, ci=False, includeExtrap=True):
+        '''
+        Sums all lake area in distribution.
+        
+        Parameters
+        ----------
+        ci : Boolean
+            Whether to output the lower and upper confidence intervals.
+        includeExtrap : Boolean
+            Whether to include any extrapolated areas, if present
+        '''
+        measured_sum = self.Area_km2.sum()
+        if includeExtrap:
+            assert hasattr(self, 'extrapLSD'), "LSD doesn't include an extrapLSD attribute."
+            if ci==False:
+                return self.extrapLSD.sumAreas(ci=ci) + measured_sum
+            else:
+                return tuple((np.array(self.extrapLSD.sumAreas(ci=ci)) + measured_sum)) # convert to tuple, as is common for python fxns to return
+        else:
+            return measured_sum
     def predictFlux(self, temp):
         '''
         Predict methane flux based on area bins and temperature
@@ -616,13 +638,18 @@ def runTests():
     binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.1)
     binned.plot()
 
-    ## Test extrapolate
+    ## Test extrapolate on small data
     lsd_hl.truncate(0.1, np.inf, inplace=True) # Beware chaining unless I return a new variable.
     lsd_hl.extrapolate(binned, 0.0001)
     
     ## Compare extrapolated sums
     lsd_hl.extrapLSD.sumAreas()
+    lsd_hl.sumAreas()
+
+    ## Plot
+
     pass
+
 ## Testing mode or no.
 parser = argparse.ArgumentParser()
 parser.add_argument("--test", default=False,
