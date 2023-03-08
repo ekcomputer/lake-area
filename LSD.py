@@ -202,6 +202,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         self.truncationLimits = None
         self.isBinned = False
         self.bins = None
+        self.refBinnedLSD = None # Not essential to pre-set this
 
         ## Add passthrough attributes if they are given as kwargs (e.g. after calling a Pandas function). This overwrites defaults defined above.
         ## Any new attributes I create in future methods: ensure they start with '_' if I don't want them passed out.
@@ -344,12 +345,32 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             setattr(self, attr, area_fraction)
             return area_fraction
     
-    def extrapolate(self, refBinnedLSD, bottomLim, topLim):
+    def extrapolate(self, refBinnedLSD, bottomLim):
         '''
         Extrapolate by filling empty bins below the dataset's resolution
         ''' 
         # returns a binnedLSD   
         # give error if trying to extrapolate to a smaller area than is present in ref distrib
+
+        self.refBinnedLSD = refBinnedLSD # make sure this is not a shallow copy...
+
+        ## Check validity
+        # assert self.isTruncated # can correct for this
+        assert self.refBinnedLSD.isTruncated, "Reference binnedLSD must be top truncated or its bin estimates will be highly variable."
+        assert self.isTruncated, "LSD should be bottom-truncated when used for extrapolation to be explicit."
+        assert self.truncationLimits[0] == self.refBinnedLSD.topEdge, f"Mismatch between LSD bottom truncation limit ({self.truncationLimits[0]} and ref binned LSD top edge ({self.refBinnedLSD.topEdge}))"
+        assert bottomLim >= self.refBinnedLSD.btmEdge, f"You are trying to extrapolate to {bottomLim}, but ref binned LSD only goes to {self.refBinnedLSD.topEdge}." 
+        assert self.refBinnedLSD.isNormalized
+        
+        self.extrapLSD = BinnedLSD()...
+        # When performing the extrap, make damn sure that the top truncation of the index LSD used for multiplication is same as the top truncation of the ref distrib index/normalization portion (e.g. top truncation limit):
+        self.extrapLSD.indexTopLim = self.refBinnedLSD.truncationLimits[1] # since bottom of index region matches, ensure top does as well in definition.
+        # Now, bin self by its bottom truncation limit to the indexTopLim, and simply multiply it by the normalized refBinnedLSD to do the extrapolation!
+
+        ## Return in place a new attribute called extrapLSD which is an instance of a binnedLSD
+        self.extrapLSD.isExtrapolated=True
+        self.extrapLSD.bottomLim = bottomLim
+        self.extrapLSD.topLim = self.refBinnedLSD.topEdge
         pass
     
     def predictFlux(self, temp):
@@ -398,7 +419,8 @@ class BinnedLSD():
     '''This class represents lakes as area bins with summed areas.'''
     def __init__(self, lsd, btm, top, nbins=100, ci=True):
         '''
-        Bins will have left end closed and right end open
+        Bins will have left end closed and right end open.
+        When creating this class to extrapolate a LSD, ensure that lsd is top-truncated to ~1km to reduce variability in bin sums. This chosen top limit will be used as the upper limit to the index region (used for normalization) and will be applied to the target LSD used for extrapolation.
         Parameters
         ----------
         lsd : LSD
@@ -412,7 +434,10 @@ class BinnedLSD():
         ci : Boolean
             Compute confidence interval by breaking down by region.
         '''
-        lsd=LSD(lsd) # create copy
+        attrs = lsd.get_public_attrs() # This ensures I can pass through all the attributes of parent LSD
+        lsd = LSD(lsd, **attrs) # create copy
+        self.btmEdge = btm
+        self.topEdge = top
         self.nbins = nbins
         self.bin_edges = np.concatenate((np.geomspace(btm, top, nbins), [np.inf])).round(6)
         self.area_bins = pd.IntervalIndex.from_breaks(self.bin_edges, closed='left')
@@ -438,14 +463,20 @@ class BinnedLSD():
             self.hasCI = False
         self.isBinned = True
         self.isExtrap = False
-        self.labels = lsd.labels # copy to the new class
+        for attr in ['isTruncated', 'truncationLimits', 'name', 'labels']: # copy attribute from parent LSD (note 'labels' is added in earlier this method)
+            setattr(self, attr, getattr(lsd, attr))
         pass
     
-    def normalize(self):
-        '''Divide bins by the largest bin.'''
-        pass
-        self.isNormalized = True
+    # def normalize(self):
+    #     '''Divide bins by the largest bin.'''
+    #     pass
+    #     self.isNormalized = True
 
+    def FromExtrap():
+        '''Creates a class similar to binnedLSD,'''
+
+        pass
+    
     def plot(self, show_rightmost=False):
         '''To roughly visualize bins.'''
         binned_values = self.binnedValues.copy() # create copy to modify
@@ -487,11 +518,11 @@ def runTests():
     # print('\tPassed load from shapefile.')
     
     ## Testing from gdf
-    gdf = pyogrio.read_dataframe('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
-    lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4')
-    regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
-    print('\tPassed load from gdf.')
+    # gdf = pyogrio.read_dataframe('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
+    # lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4')
+    # regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
+    # lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+    # print('\tPassed load from gdf.')
     
     # ## Loading from dir
     # exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
@@ -512,10 +543,18 @@ def runTests():
     # ## Test area fraction
     # lsd_from_gdf.area_fraction(1)
     # print('\tPassed area_fraction.')
-    
+
+    ## Load with proper parameters
+    lsd_hl = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
+    regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
+    lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+
     ## Test binnedLSD
-    binned = BinnedLSD(lsd_from_gdf.truncate(0,np.inf), 0.0001, 0.1)
+    binned = BinnedLSD(lsd_cir.truncate(0.0001,1, inplace=False), 0.0001, 0.1)
     binned.plot()
+
+    ## Test extrapolate
+    lsd_hl.extrapolate(binned, 0.0001, 0.1)
     
     pass
 ## Testing mode or no.
@@ -699,4 +738,7 @@ if __name__=='__main__':
 * Re-define LSD so if called with no args but proper column names it returns a LSD correctly.
 * Use fid_as_index argument when loading with pyarrow
 * Preserve og index when concatenating so I can look up lakes from raw file (combine with above re: fid)
+
+NOTES:
+* Every time a create an LSD() object in a function from an existing LSD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
 '''
