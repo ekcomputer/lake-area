@@ -597,14 +597,17 @@ class BinnedLSD():
 
                 ## Normalize before binning
                 # self.normalize()
-                divisor = group_sums.loc[:, group_sums.index.get_level_values(1)[-1]] # sum of lake areas in largest bin for each region
+                divisor = group_sums.loc[:, group_sums.index.get_level_values(1)[-1]] # sum of lake areas in largest bin for each region (Careful: can't be == 0 !!) ## HERE: remove regions that create infs (or do it in extrapolate() )!
                 group_sums /= divisor
+
+                ## Remove any regions with w/o lakes in the index size bin that cause dividing by zero
+                group_sums = group_sums.loc[(divisor.loc[divisor!=0]).index] # or could simply drop all infs, since every bin in a region will be inf if one bin is
                 self.isNormalized = True
 
-                # Compute the confidence interval for each group along the second index
+                # Compute the mean and confidence interval for each group along the second index
                 self.binnedValues = group_sums.groupby(level=1).apply(confidence_interval)
                 self.hasCI = True
-            else: # not maintaining this branch
+            else: # not maintaining this branch, could use it to avoid throwing out data from regions w/o lakes in the index size bin
                 self.binnedValues = lsd.groupby('labels').Area_km2.sum(numeric_only=True)
                 self.hasCI = False
             for attr in ['isTruncated', 'truncationLimits', 'name', 'labels']: # copy attribute from parent LSD (note 'labels' is added in earlier this method)
