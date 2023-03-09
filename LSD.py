@@ -554,7 +554,6 @@ class BinnedLSD():
         '''
         Bins will have left end closed and right end open.
         When creating this class to extrapolate a LSD, ensure that lsd is top-truncated to ~1km to reduce variability in bin sums. This chosen top limit will be used as the upper limit to the index region (used for normalization) and will be applied to the target LSD used for extrapolation.
-
         When creating from an lsd, give lsd, btm, top [, nbins, has_ci] arguments. When creating from existing binned values (e.g.) from extrapolation, give btm, top, nbins, has_ci and binnedValues args.
         
         Parameters
@@ -592,8 +591,9 @@ class BinnedLSD():
 
             ## Bin
             if has_ci:
-                ## First, group by region and area bin and take sum of each bin
-                group_sums = lsd.groupby(['Region', 'labels']).Area_km2.sum(numeric_only=True) # HERE bug?
+                ## First, group by region and area bin and take sum and counts of each bin
+                group_sums = lsd.groupby(['Region', 'labels']).Area_km2.sum(numeric_only=True)
+                group_counts = lsd.groupby(['Region', 'labels']).Area_km2.count()
 
                 ## Normalize before binning
                 # self.normalize()
@@ -602,17 +602,26 @@ class BinnedLSD():
 
                 ## Remove any regions with w/o lakes in the index size bin that cause dividing by zero
                 group_sums = group_sums.loc[(divisor.loc[divisor!=0]).index] # or could simply drop all infs, since every bin in a region will be inf if one bin is
+                group_counts = group_counts.loc[(divisor.loc[divisor!=0]).index]
+                
                 self.isNormalized = True
 
                 # Compute the mean and confidence interval for each group along the second index
                 self.binnedValues = group_sums.groupby(level=1).apply(confidence_interval)
+                self.binnedCounts = group_counts.groupby(level=1).sum()
                 self.hasCI = True
+
             else: # not maintaining this branch, could use it to avoid throwing out data from regions w/o lakes in the index size bin
                 self.binnedValues = lsd.groupby('labels').Area_km2.sum(numeric_only=True)
                 self.hasCI = False
+                self.binnedCounts = np.nan
             for attr in ['isTruncated', 'truncationLimits', 'name', 'labels']: # copy attribute from parent LSD (note 'labels' is added in earlier this method)
                 setattr(self, attr, getattr(lsd, attr))
             
+            ## Check
+            if self.binnedCounts.values[0] == 0:
+                warn('The first bin has count zero. Did you set the lowest bin edge < the lower truncation limit of the dataset?')   
+                    
         else: # used for extrapolation
             assert btm is not None and top is not None and nbins is not None and has_ci is not None, "If 'binned_values' argument is given, so must be 'btm', 'top', 'nbins', and 'has_ci'."
             self.bin_edges = 'See self.refBinnedLSD'
@@ -620,7 +629,8 @@ class BinnedLSD():
             self.isNormalized = False
             self.hasCI = has_ci # retain from arg
             self.binnedValues = binned_values # retain from arg
-            
+            self.binnedCounts = 'See self.refBinnedLSD'
+        
         ## More common args at end
         self.isBinned = True
 
