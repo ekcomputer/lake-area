@@ -780,7 +780,7 @@ def runTests():
     ## Plot
     lsd_hl.extrapLSD.plot()
     ax = lsd_hl.plot_lsd(reverse=False, normalized=False)
-    lsd_hl.plot_extrap_lsd(ax=ax)
+    lsd_hl.plot_extrap_lsd(ax=ax, normalized=False)
     pass
 
 ## Testing mode or no.
@@ -798,11 +798,19 @@ if __name__=='__test__':
 if __name__=='__main__':
 
     ## Loading from CIR gdf 
-    regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+    print('Load HR...')
+    regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta',
+               'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River',
+               'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North',
+               'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
+    lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp',
+                area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
     ## Loading PeRL LSD
-    perl_exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
+    perl_exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617',
+                    'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707',
+                    'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx',
+                    'bar00120080730_qb_nplaea.shp']
     lsd_perl = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=perl_exclude)
 
     ## Loading from Mullen
@@ -812,153 +820,63 @@ if __name__=='__main__':
     lsd = LSD.concat((lsd_cir, lsd_perl, lsd_mullen), broadcast_name=True, ignore_index=True)
 
     ## plot
-    lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=True)
+    # lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=True)
 
     # ## YF compare
     # LSD(lsd.query("Region=='YF_3Y_lakes-and-ponds' or Region=='Yukon Flats Basin'"), name='compare').plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=False)
 
     ## Load WBD
+    print('Load WBD...')
     lsd_wbd = LSD.from_shapefile('/mnt/g/Other/Feng-High-res-inland-surface-water-tundra-boreal-NA/edk_out/fixed_geoms/WBD.shp', area_var='Area', name='WBD', idx_var='OBJECTID')
     lsd_wbd.truncate(0.001, inplace=True)
 
     ## Plot WBD
-    lsd_wbd.plot_lsd(reverse=False, all=False)
+    # lsd_wbd.plot_lsd(reverse=False, all=False)
 
-    ## Combine WBD with my HR dataset
-    # lsd.name='HR datasets'
-    setattr(lsd, 'name', 'HR datasets')
-    lsd['Region'] = 'NaN' # Hot fix to tell it not to plot a curve for each region
-    lsd_compare = LSD.concat((lsd.truncate(0.001, 50), lsd_wbd.truncate(0.001, 50)), broadcast_name=True, ignore_index=True)
-    lsd_compare.plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=True)
+    ## Combine WBD with HR dataset for plotting comparison
+    # setattr(lsd, 'name', 'HR datasets')
+    # lsd['Region'] = 'NaN' # Hot fix to tell it not to plot a curve for each region
+    # lsd_compare = LSD.concat((lsd.truncate(0.001, 50), lsd_wbd.truncate(0.001, 50)), broadcast_name=True, ignore_index=True)
+    # lsd_compare.plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=True)
 
     ## Estimate area fraction
-    lsd_wbd.area_fraction(0.1)
-    lsd_wbd.area_fraction(0.01)
-    lsd_wbd.area_fraction(0.001)
+    # lsd_wbd.area_fraction(0.1)
+    # lsd_wbd.area_fraction(0.01)
+    # lsd_wbd.area_fraction(0.001)
 
-    lsd.area_fraction(0.1)
-    lsd.area_fraction(0.01)
-    lsd.area_fraction(0.001)  
+    # lsd.area_fraction(0.1)
+    # lsd.area_fraction(0.01)
+    # lsd.area_fraction(0.001)  
 
-    ## Legacy stuff
-    ## Cycle through 14 regions and compute additional stats
-    df_cir_rec = pd.DataFrame(columns = ['Region_ID', 'Region', 'Lake_area', 'stat', 'A_0.001', 'A_0.001_cor', 'A_0.01_cor', 'A_0.01', 'A_g100m', 'A_g1', 'PeRL_pnd_f']) # cir recomputed, for double checking A_0.001 from paper; A_0.001_cor excludes the largest lakes like in PeRL, but uses native CIR min size of 40 m2; computing A_0.01 analogous to PeRL pond fraction, PeRL_pnd for equivalent to perl analysis (min is 100 m2, max is 1 km2), A_g100m, for lakes > 100 m2, analogous to PeRL, F_g1 for area of lakes larger than PeRL maximum size, 'PeRL_all' to simulate perl size domain, and 'PeRL_pnd_f' which is perl pond divided perl all # 'PeRL_pnd', 'PeRL_all'
-    for i, region in enumerate(range(2, 16)): # no region 1
-        if region!=15: 
-            gdf_tmp = gdf_cir_lsd.query('Region4 == @region')
-        else:
-            gdf_tmp = gdf_cir_lsd # compute over all
-        df_cir_rec.loc[i, 'Region_ID'] = region
-        df_cir_rec.loc[i, 'Region'] = regions[i]
-        df_cir_rec.loc[i, 'Lake_area'] = gdf_tmp.Area.sum()
-        df_cir_rec.loc[i, 'A_0.001'] = gdf_tmp.query('(Area < 0.001)').Area.sum() / df_cir_rec.loc[i, 'Lake_area'] * 100
-        df_cir_rec.loc[i, 'A_0.001_cor'] = gdf_tmp.query('(Area < 0.001)').Area.sum() / gdf_tmp.query('(Area < 1)').Area.sum() * 100
-        df_cir_rec.loc[i, 'A_0.01_cor'] = gdf_tmp.query('(Area < 0.01)').Area.sum() / gdf_tmp.query('(Area < 1)').Area.sum() * 100
-        df_cir_rec.loc[i, 'A_0.01'] = gdf_tmp.query('(Area < 0.01)').Area.sum() / df_cir_rec.loc[i, 'Lake_area'] * 100
-        df_cir_rec.loc[i, 'A_g1'] = gdf_tmp.query('(Area >= 1)').Area.sum() / df_cir_rec.loc[i, 'Lake_area'] * 100    
-        df_cir_rec.loc[i, 'A_g100m'] = gdf_tmp.query('(Area >= 0.0001)').Area.sum() / df_cir_rec.loc[i, 'Lake_area'] * 100
-        df_cir_rec.loc[i, 'PeRL_pnd_f'] = gdf_tmp.query('(Area >= 0.0001) and  (Area < 0.01)').Area.sum() / \
-            gdf_tmp.query('(Area >= 0.0001) and  (Area < 1)').Area.sum() * 100
-        df_cir_rec.loc[i, 'HL_pnd_f_4'] = gdf_tmp.query('(Area >= 0.0001) and  (Area < 0.1)').Area.sum() / \
-            gdf_tmp.query('(Area >= 0.0001) and  (Area < 1)').Area.sum() * 100 # Pond fraction, as defined by HydroLakes lower limit and upper limit defined by CIR # 4 means that lower limit is 10^-4
-        df_cir_rec.loc[i, 'HL_pnd_r_4'] = gdf_tmp.query('(Area >= 0.0001) and  (Area < 0.1)').Area.sum() / \
-            gdf_tmp.query('(Area >= 0.1) and  (Area < 1)').Area.sum() * 100 # Pond fraction, as defined by HydroLakes lower limit and upper limit defined by CIR (fraction, not ratio, so it can be used as divident for extrapolation from mid lakes)
-        df_cir_rec.loc[i, 'HL_pnd_r_3'] = gdf_tmp.query('(Area >= 0.001) and  (Area < 0.1)').Area.sum() / \
-            gdf_tmp.query('(Area >= 0.1) and  (Area < 1)').Area.sum() * 100 # to compare to WBD
-        df_cir_rec.loc[i, 'HL_pnd_r_2'] = gdf_tmp.query('(Area >= 0.01) and  (Area < 0.1)').Area.sum() / \
-            gdf_tmp.query('(Area >= 0.1) and  (Area < 1)').Area.sum() * 100 # to compare to Sheng
+    ## Load hydrolakes
+    print('Load HL...')
+    lsd_hl = LSD.from_shapefile('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp', area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None)
 
-    ## Re-index
-    df_cir_rec.set_index('Region', inplace=True)
+    ## Extrapolate
+    tmin, tmax = (0.001,30)
+    emin, emax = (tmin, 0.5)
+    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), emin, emax) # reference distrib (try 5, 0.5 as second args)
+    lsd_hl.truncate(emax, np.inf, inplace=True) # Beware chaining unless I return a new variable. # Try 0.1
+    lsd_hl.extrapolate(binned_ref, tmin)
 
-    ## Calculate means and uncertainties for pond percentage from BAWLD
+    ## Plot to verify HL extrapolation
+    ax = lsd_hl.plot_lsd(all=False, reverse=False, normalized=False)
+    lsd_hl.plot_extrap_lsd(ax=ax, label='HL-extrapolated')
+    ax.set_title(f'truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
 
-    ## Lookup table with ratios for extrapolation
-    ratio_cols = ['HL_pnd_r_4', 'HL_pnd_r_3', 'HL_pnd_r_2']
-    ratio_table = pd.DataFrame({
-        'All': df_cir_rec.loc['All', 'HL_pnd_r_4':'HL_pnd_r_2'],
-        'Std': weightedStd(df_cir_rec.drop(index='All')[ratio_cols], df_cir_rec.drop(index='All')['Lake_area']), # [:, 'HL_pnd_r_4':'HL_pnd_r_2']
-        'Std_unwt': df_cir_rec.drop(index='All')[ratio_cols].std(), # unweighted std dev (dont use)
-        'Quant5': df_cir_rec.drop(index='All')[ratio_cols].quantile(0.05),
-        'Quant95': df_cir_rec.drop(index='All')[ratio_cols].quantile(0.95)}) 
+    ## print number of ref lakes:
+    len(lsd_hl)
+    lsd_hl.refBinnedLSD.binnedCounts.sum()
+    lsd_hl.extrapLSD.sumAreas()
 
-    ## Pre-add/subt to get upper and lower values based on std, for simplicity and thrift later on
-    ratio_table['Lower'] = ratio_table.All - ratio_table.Std
-    ratio_table['Upper'] = ratio_table.All + ratio_table.Std
+    ## Compare extrapolation to WBD:
+    # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
+    ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=True, color='r')
+    lsd_hl.truncate(0.001, 1000).plot_extrap_lsd(label='HL-extrapolated', normalized=True, ax=ax)
+    ax.set_title(f'truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
 
-    ## Load grid and lake gdfs
-    gdf = pyogrio.read_dataframe(gdf_bawld_pth, read_geometry=True, use_arrow=True) # grid cells
-    df = pyogrio.read_dataframe(gdf_HL_jn_pth, columns=['BAWLDCell_', 'Shp_Area', 'BAWLDLong', 'BAWLDLat', '0-5', '5-50', '50-95','95-100'], read_geometry=False, use_arrow=True) # lakes (load as df to save mem)
-
-    # Loop over grid cells (TODO: rewrite as a map or map_async)
-    for i in tqdm(range(len(gdf))): # 10 # len(gdf)
-        ## Select only lakes in cell (based on pour point)
-        cell_id = gdf.loc[i, 'Cell_ID'] # called BAWLD_Cell in df
-        df_tmp = df.query(f'BAWLDCell_==@cell_id')
-
-        ## compute area stats:
-        ## Occurence stats
-        gdf.loc[i, 'HL_area'] = df_tmp.Shp_Area.sum() # all HL-observable lakes
-        gdf.loc[i, '0_5_area'] = np.nansum(df_tmp['0-5']/100 * df_tmp.Shp_Area) # Total area in an occurence bin
-        gdf.loc[i, '5_50_area'] = np.nansum(df_tmp['5-50']/100 * df_tmp.Shp_Area) # Total area in an occurence bin 
-        gdf.loc[i, '50_95_area'] = np.nansum(df_tmp['50-95']/100 * df_tmp.Shp_Area) # Total area in an occurence bin
-        gdf.loc[i, '95_100_area'] = np.nansum(df_tmp['95-100']/100 * df_tmp.Shp_Area) # Total area in an occurence bin
-        
-        ## Occ stats normalized by total lake area
-        if gdf.loc[i, 'HL_area'] > 0:
-            gdf.loc[i, '0_5_per'] = gdf.loc[i, '0_5_area'] / gdf.loc[i, 'HL_area'] * 100
-            gdf.loc[i, '5_50_per'] = gdf.loc[i, '5_50_area'] / gdf.loc[i, 'HL_area'] * 100
-            gdf.loc[i, '50_95_per'] = gdf.loc[i, '50_95_area'] / gdf.loc[i, 'HL_area'] * 100
-            gdf.loc[i, '95_100_per'] = gdf.loc[i, '95_100_area'] / gdf.loc[i, 'HL_area'] * 100
-
-        ## extrapolations
-        gdf.loc[i, 'Ppnd_area'] = df_tmp.query('(Shp_Area >= 0.0001) and  (Shp_Area < 0.01)').Shp_Area.sum() # perl ponds (will always be 0 for HL)
-        gdf.loc[i, 'Plk_area'] = df_tmp.query('(Shp_Area >= 0.01) and  (Shp_Area < 1)').Shp_Area.sum() # perl lakes (not ponds)
-        gdf.loc[i, 'Mid_lk_area'] = df_tmp.query('(Shp_Area >= 0.1) and  (Shp_Area < 1)').Shp_Area.sum() # Mid lakes (if I used 0.3 cutoff, I could include all CIR sites) to use for extrapolation
-        gdf.loc[i, 'Lg_lk_area'] = df_tmp.query('(Shp_Area >= 1)').Shp_Area.sum() # Large lakes (add to extrapolation)
-        gdf.loc[i, 'Extrap4'] = (1 + ratio_table.loc['HL_pnd_r_4', 'All'] / 100) * gdf.loc[i, 'Mid_lk_area'] + gdf.loc[i, 'Lg_lk_area'] # Hpond extrap 10 e-4
-        gdf.loc[i, 'Extrap4_l'] = (1 + ratio_table.loc['HL_pnd_r_4', 'Lower'] / 100) * gdf.loc[i, 'Mid_lk_area'] + gdf.loc[i, 'Lg_lk_area']
-        gdf.loc[i, 'Extrap4_u'] = (1 + ratio_table.loc['HL_pnd_r_4', 'Upper'] / 100) * gdf.loc[i, 'Mid_lk_area'] + gdf.loc[i, 'Lg_lk_area']
-        gdf.loc[i, 'Extrap3'] = (1 + ratio_table.loc['HL_pnd_r_3', 'All'] / 100) * gdf.loc[i, 'Mid_lk_area'] + gdf.loc[i, 'Lg_lk_area']
-        gdf.loc[i, 'Extrap3_l'] = (1 + ratio_table.loc['HL_pnd_r_3', 'Lower'] / 100) * gdf.loc[i, 'Mid_lk_area'] + gdf.loc[i, 'Lg_lk_area']
-        gdf.loc[i, 'Extrap3_u'] = (1 + ratio_table.loc['HL_pnd_r_3', 'Upper'] / 100) * gdf.loc[i, 'Mid_lk_area'] + gdf.loc[i, 'Lg_lk_area']
-        gdf.loc[i, 'Extrap2'] = (1 + ratio_table.loc['HL_pnd_r_2', 'All'] / 100) * gdf.loc[i, 'Mid_lk_area'] + gdf.loc[i, 'Lg_lk_area']
-        gdf.loc[i, 'Extrap2_l'] = (1 + ratio_table.loc['HL_pnd_r_2', 'Lower'] / 100) * gdf.loc[i, 'Mid_lk_area'] + gdf.loc[i, 'Lg_lk_area']
-        gdf.loc[i, 'Extrap2_u'] = (1 + ratio_table.loc['HL_pnd_r_2', 'Upper'] / 100) * gdf.loc[i, 'Mid_lk_area'] + gdf.loc[i, 'Lg_lk_area']
-        gdf.loc[i, 'Meg_lk_area'] = df_tmp.query('(Shp_Area >= 5000)').Shp_Area.sum() # Mega lakes (often subtracted from upscaling)
-
-    ## INfo on result
-    df[['50-95', 'Shp_Area']] # km2 for HL
-    gdf[['5_50_area', '50_95_area', '50_95_per', 'HL_area']]
-    gdf.loc[20:25,['5_50_area', '50_95_area', '50_95_per', 'HL_area', 'Cell_ID']]
-
-    ## Write out
-    gdf.to_csv(area_extrap_pth)
-    print(f'Wrote file: {area_extrap_pth}')
-
-    ## Write out as shapefile
-    # pyogrio.write_dataframe(gdf, area_extrap_pth.replace('.csv','.shp')) # Why so slow...150 min??
-    area_extrap_pth_shp = area_extrap_pth.replace('.csv','.shp')
-    gdf.to_file(area_extrap_pth_shp)
-    print(f'Wrote file: {area_extrap_pth_shp}')
-
-    ## Check
-    gdf.iloc[250:260,:]
-    gdf.Hpnd_extrap4.sum()
-    gdf.HL_area.sum()
-
-    ## Plot total area as function of extrapolated min. size
-
-    sums = gdf.sum()
-    plt.errorbar([0.1, 0.01, 0.001, 0.0001], [sums.HL_area, sums.Hpnd_extrap2, sums.Hpnd_extrap3, sums.Hpnd_extrap4],
-        yerr=[0, sums.Hpnd_extrap2-sums.Hpnd_extrap2_l, sums.Hpnd_extrap3-sums.Hpnd_extrap3_l, sums.Hpnd_extrap4-sums.Hpnd_extrap4_l],
-        capsize=4, fmt='.-b', label='Predicted')
-    plt.plot([0.1, 0.01, 0.001], [746137.7599999998, 805675.0937146356, 819091.9657548245], '.-r', label='Lake inventories') # Paste summed values from lake databases here
-    plt.xscale('log')
-    plt.xlabel('Minimum lake size ($km^2$)')
-    plt.ylabel('Total lake area ($km^2$)')
-    plt.title(f'region: {roi_region}')
-    plt.legend()
+    pass
+################
 
 # TODO: 
 '''
