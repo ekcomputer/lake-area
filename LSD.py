@@ -120,7 +120,7 @@ def plotECDFByValue(values=None, reverse=True, ax=None, normalized=True, X=None,
         X, S = ECDFByValue(values, reverse=reverse) # compute
 
     if normalized:
-        S = S/np.sum(X)
+        S = S/S[-1] # S/np.sum(X) has unintended result when using for extrapolated, when S is not entirely derived from X
         ylabel = 'Cumulative fraction of total area'
     else:
         ylabel = 'Cumulative area (km2)'
@@ -132,7 +132,7 @@ def plotECDFByValue(values=None, reverse=True, ax=None, normalized=True, X=None,
     ax.set_xscale('log')
     ax.set_ylabel(ylabel)
     ax.set_xlabel('Lake area')
-    # return S
+    return
 
 def plotEPDFByValue(values, ax=None, **kwargs):
     '''Cumulative histogram by value (lake area), not count. Creates, but doesn't return fig, ax if they are not provided. No binning used.'''
@@ -522,7 +522,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         return ax
     
-    def plot_extrap_lsd(self, plotLegend=True, ax=None, **kwargs):
+    def plot_extrap_lsd(self, plotLegend=True, ax=None, normalized=False, **kwargs):
         '''
         Plots LSD using both measured and extrapolated values. 
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
@@ -544,7 +544,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         S = np.concatenate((np.cumsum(self.extrapLSD.binnedValues[:, 'mean']), S)) # pre-pend the binned vals
 
         ## Add error bars
-        plotECDFByValue(ax=ax, alpha=0.4, color='black', label='All', X=X, S=S, normalized=False, reverse=False, **kwargs)
+        plotECDFByValue(ax=ax, alpha=0.4, color='black', X=X, S=S, normalized=normalized, reverse=False, **kwargs)
+        ax.legend()
 
         return ax
 
