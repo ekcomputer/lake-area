@@ -603,7 +603,7 @@ class BinnedLSD():
 
             attrs = lsd.get_public_attrs() # This ensures I can pass through all the attributes of parent LSD
             lsd = LSD(lsd, **attrs) # create copy
-            self.bin_edges = np.concatenate((np.geomspace(btm, top, nbins), [np.inf])).round(6)
+            self.bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6)
             self.area_bins = pd.IntervalIndex.from_breaks(self.bin_edges, closed='left')
             lsd['labels'] = pd.cut(lsd.Area_km2, self.area_bins, right=False)
             self.isNormalized = False # init
@@ -704,10 +704,10 @@ class BinnedLSD():
 
         if self.hasCI:
             ## Convert confidence interval vals to anomalies
-            yerr = binnedVals2Error(binned_values, self.nbins-diff)
-            ax.bar(range(self.nbins-diff), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
+            yerr = binnedVals2Error(binned_values, self.nbins)
+            ax.bar(range(self.nbins), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
         else:  # Needs testing
-            ax.bar(range(self.nbins-diff), binned_values)
+            ax.bar(range(self.nbins), binned_values)
         
         ax.set_yscale('log')
         ax.set_xlabel('Bin number')
