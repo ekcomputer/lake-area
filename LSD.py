@@ -92,12 +92,11 @@ def ECDFByValue(values, reverse=True):
     S = np.cumsum(X) # cumulative sum, starting with highest [lowest, if reverse=False] values
     return X, S
 
-
 def plotECDFByValue(values=None, reverse=True, ax=None, normalized=True, X=None, S=None, **kwargs):
     '''
     Cumulative histogram by value (lake area), not count.
     Creates, but doesn't return fig, ax if they are not provided. By default, CDF order is reversed to emphasize addition of small lakes (flips over ahorizontal axis).
-    Required to provide either values or X and S
+    Required to provide either values or X and S. 'reverse' has no effect if X and S are provided.
     
     Parameters
     ----------
@@ -170,6 +169,13 @@ def confidence_interval(x):
 
     ## Set greater than 0
     return np.maximum(out, 0)
+
+def binnedVals2Error(binned_values, n):
+    '''Convert BinnedLSD.binnedValues to error bars for plotting. May need to subtract 1 from n.'''
+    ci = binned_values.loc[:, ['lower', 'upper']].to_numpy().reshape((n,2)).T
+    mean = binned_values.loc[:, ['mean']].to_numpy()
+    yerr = np.abs(ci-mean)
+    return yerr
 
 def public_attrs(self):
     public_attrs_dict = {}
@@ -522,7 +528,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         return ax
     
-    def plot_extrap_lsd(self, plotLegend=True, ax=None, normalized=False, **kwargs):
+    def plot_extrap_lsd(self, plotLegend=True, ax=None, normalized=False, error_bars=False, **kwargs):
         '''
         Plots LSD using both measured and extrapolated values. 
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
@@ -531,10 +537,11 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ----------
         groupby_name : boolean
             Group plots by dataset name, given by variable 'Name'
-        
+        error_bars : boolean
+            Whether to include error bars (not recommended, since this plots a CDF)
         returns: ax
         '''       
-        ## plot
+        ## Prepare values
         if ax==None:
             _, ax = plt.subplots() # figsize=(5,3)
         X, S = ECDFByValue(self.Area_km2, reverse=False)
@@ -544,6 +551,17 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         S = np.concatenate((np.cumsum(self.extrapLSD.binnedValues[:, 'mean']), S)) # pre-pend the binned vals
 
         ## Add error bars
+        if error_bars == True and self.extrapLSD.hasCI:
+
+            ## as error bars (miniscule)
+            # yerr = binnedVals2Error(self.extrapLSD.binnedValues, self.extrapLSD.nbins-1)
+            # # yerr = np.concatenate((np.cumsum(yerr[0])[np.newaxis, :], np.cumsum(yerr[1])[np.newaxis, :])) # don't need to cumsum errors
+            # ax.errorbar(geom_means, np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), xerr=None, yerr=yerr, fmt='none', )
+
+            ## as area plot
+            ax.stackplot(geom_means, self.extrapLSD.binnedValues.loc[:, 'upper'] - self.extrapLSD.binnedValues.loc[:, 'lower'], )
+        
+        ## Plot
         plotECDFByValue(ax=ax, alpha=0.4, color='black', X=X, S=S, normalized=normalized, reverse=False, **kwargs)
         ax.legend()
 
@@ -686,12 +704,7 @@ class BinnedLSD():
 
         if self.hasCI:
             ## Convert confidence interval vals to anomalies
-            ci = binned_values.loc[:, ['lower', 'upper']].to_numpy().reshape((self.nbins-diff,2)).T
-            # upper = binned_values.loc[:, ['upper']].to_numpy()
-            # lower = binned_values.loc[:, ['lower']].to_numpy()
-            mean = binned_values.loc[:, ['mean']].to_numpy()
-            # yerr = np.array([mean-lower, upper-mean])
-            yerr = np.abs(ci-mean)
+            yerr = binnedVals2Error(binned_values, self.nbins-diff)
             ax.bar(range(self.nbins-diff), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
         else:  # Needs testing
             ax.bar(range(self.nbins-diff), binned_values)
