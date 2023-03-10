@@ -669,13 +669,13 @@ class BinnedLSD():
         '''
         binned_values = self.binnedValues.copy() # create copy to modify
         diff=0
+
         ## Remove last bin, if desired
         if self.isExtrapolated==False:
             if show_rightmost == False: # if I need to cut off rightmost bin
                 binned_values.drop(index=binned_values.index.get_level_values(0)[-1], inplace=True)
+            else:
                 diff+=1 # subtract from number of bin edges to get plot x axis
-        else: # if extrapolated
-            diff+=1
         
         ## Plot
         fig, ax = plt.subplots()
@@ -683,7 +683,7 @@ class BinnedLSD():
 
         if self.hasCI:
             ## Convert confidence interval vals to anomalies
-            yerr = binnedVals2Error(binned_values, self.nbins)
+            yerr = binnedVals2Error(binned_values, self.nbins+diff)
             ax.bar(range(self.nbins), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
         else:  # Needs testing
             ax.bar(range(self.nbins), binned_values)
