@@ -503,7 +503,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         return ax
     
-    def plot_extrap_lsd(self, plotLegend=True, ax=None, normalized=False, error_bars=False, **kwargs):
+    def plot_extrap_lsd(self, plotLegend=True, ax=None, normalized=False, reverse=False, error_bars=False, **kwargs):
         '''
         Plots LSD using both measured and extrapolated values. 
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
@@ -529,17 +529,21 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         if error_bars == True and self.extrapLSD.hasCI:
 
             ## as error bars (miniscule)
-            # yerr = binnedVals2Error(self.extrapLSD.binnedValues, self.extrapLSD.nbins-1)
-            # # yerr = np.concatenate((np.cumsum(yerr[0])[np.newaxis, :], np.cumsum(yerr[1])[np.newaxis, :])) # don't need to cumsum errors
+            yerr = binnedVals2Error(self.extrapLSD.binnedValues, self.extrapLSD.nbins)
+            # yerr = np.concatenate((np.cumsum(yerr[0][-1::-1])[-1::-1][np.newaxis, :], np.cumsum(yerr[1][-1::-1])[-1::-1][np.newaxis, :])) # don't need to cumsum errors?
+            
+            ## As errorbar (replaced by area plot)
             # ax.errorbar(geom_means, np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), xerr=None, yerr=yerr, fmt='none', )
-
+            
             ## as area plot
-            ax.stackplot(geom_means, self.extrapLSD.binnedValues.loc[:, 'upper'] - self.extrapLSD.binnedValues.loc[:, 'lower'], )
-        
-        ## Plot
-        plotECDFByValue(ax=ax, alpha=0.4, color='black', X=X, S=S, normalized=normalized, reverse=False, **kwargs)
-        ax.legend()
+            ax.fill_between(geom_means, np.maximum(-np.cumsum(yerr[1][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), 0), # btm section
+                            np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color='grey')
 
+        ## Plot
+        plotECDFByValue(ax=ax, alpha=0.4, color='black', X=X, S=S, normalized=normalized, reverse=reverse, **kwargs)
+
+        ax.legend()
+        ax.set_ylim(0, ax.get_ylim()[1])
         return ax
 
 class BinnedLSD():
@@ -754,10 +758,8 @@ def runTests():
 
     ## Plot
     lsd_hl.extrapLSD.plot()
-    # ax = lsd_hl.plot_lsd(reverse=False, normalized=False)
-    # lsd_hl.plot_extrap_lsd(ax=ax, normalized=False)
-    ax = lsd_hl.plot_lsd(reverse=True, normalized=False)
-    lsd_hl.plot_extrap_lsd(ax=ax, normalized=False, error_bars=True, reverse=True)
+    ax = lsd_hl.plot_lsd(reverse=False, normalized=False)
+    lsd_hl.plot_extrap_lsd(ax=ax, normalized=False, error_bars=True, reverse=False)
     pass
 
 ## Testing mode or no.
