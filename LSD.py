@@ -832,7 +832,7 @@ if __name__=='__main__':
 
     ## Combine WBD with HR dataset for plotting comparison
     setattr(lsd, 'name', 'HR datasets')
-    lsd['Region'] = 'NaN' # Hot fix to tell it not to plot a curve for each region
+    lsd['Region'] = 'NaN' # Hot fix to tell it not to plot a curve for each region # ***This is the buggy line!!!! Uncomment to get good curves, but no error bars.
     lsd_compare = LSD.concat((lsd.truncate(0.001, 50), lsd_wbd.truncate(0.001, 50)), broadcast_name=True, ignore_index=True)
     lsd_compare.plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=True)
 
@@ -857,8 +857,8 @@ if __name__=='__main__':
     lsd_hl.extrapolate(binned_ref, tmin)
 
     ## Plot to verify HL extrapolation
-    ax = lsd_hl.plot_lsd(all=False, reverse=False, normalized=False)
-    lsd_hl.plot_extrap_lsd(ax=ax, label='HL-extrapolated')
+    # ax = lsd_hl.plot_lsd(all=False, reverse=False, normalized=False)
+    ax = lsd_hl.plot_extrap_lsd(label='HL-extrapolated', error_bars=True)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
 
     ## print number of ref lakes:
@@ -869,8 +869,10 @@ if __name__=='__main__':
     ## Compare HL extrapolation to WBD:
     # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
     ax = lsd_wbd.truncate(0.001, 10000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
-    lsd_hl.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax)
+    lsd_hl.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax, error_bars=True)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
+
+    ## Report vals
     wbd_sum = lsd_wbd.truncate(0.001, 10000).Area_km2.sum()
     hl_extrap_sum = lsd_hl.truncate(0, 10000).sumAreas()
     print(f'{wbd_sum:,.0f} vs {hl_extrap_sum:,.0f} km2 ({((hl_extrap_sum - wbd_sum) / hl_extrap_sum):.1%}) difference')
@@ -895,7 +897,7 @@ if __name__=='__main__':
     lsd_wbd_trunc = lsd_wbd.truncate(emax, np.inf)
     lsd_wbd_trunc.extrapolate(binned_ref, tmin)
     ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
-    lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax)
+    lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax, error_bars=True)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
     pass
 ################
