@@ -29,34 +29,9 @@ import pyogrio
 import powerlaw
 from tqdm import tqdm
 
-## Plotting style
-# plt.style.use('/mnt/c/Users/ekyzivat/Dropbox/Python/Matplotlib-rcParams/presentation.mplstyle')
-# %matplotlib inline
-
 ## Plotting params
 sns.set_theme('notebook', font='Ariel')
 sns.set_style('ticks')
-
-## I/O
-
-## BAWLD domain
-dataset = 'HL'
-roi_region = 'BAWLD'
-gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
-version=3
-
-## BAWLD-NAHL domain
-# dataset = 'HL'
-# roi_region = 'WBD_BAWLD'
-# gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-# gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
-# version=1
-
-## dynamic vars
-analysis_dir = os.path.join('/mnt/g/Ch4/Area_extrapolations','v'+str(version))
-area_extrap_pth = os.path.join(analysis_dir, dataset+'_sub'+roi_region+'_extrap.csv')
-os.makedirs(analysis_dir, exist_ok=True)
 
 # ## Functions and classes
 # ### Plotting functions
@@ -779,8 +754,10 @@ def runTests():
 
     ## Plot
     lsd_hl.extrapLSD.plot()
-    ax = lsd_hl.plot_lsd(reverse=False, normalized=False)
-    lsd_hl.plot_extrap_lsd(ax=ax, normalized=False)
+    # ax = lsd_hl.plot_lsd(reverse=False, normalized=False)
+    # lsd_hl.plot_extrap_lsd(ax=ax, normalized=False)
+    ax = lsd_hl.plot_lsd(reverse=True, normalized=False)
+    lsd_hl.plot_extrap_lsd(ax=ax, normalized=False, error_bars=True, reverse=True)
     pass
 
 ## Testing mode or no.
@@ -796,6 +773,24 @@ if __name__=='__test__':
     runTests()
     
 if __name__=='__main__':
+    ## I/O
+
+    ## BAWLD domain
+    # # dataset = 'HL'
+    # roi_region = 'BAWLD'
+    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
+
+    ## BAWLD-NAHL domain
+    # dataset = 'HL'
+    roi_region = 'WBD_BAWLD'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+
+    ## dynamic vars
+    # analysis_dir = os.path.join('/mnt/g/Ch4/Area_extrapolations','v'+str(version))
+    # area_extrap_pth = os.path.join(analysis_dir, dataset+'_sub'+roi_region+'_extrap.csv')
+    # os.makedirs(analysis_dir, exist_ok=True)
 
     ## Loading from CIR gdf 
     print('Load HR...')
@@ -834,10 +829,10 @@ if __name__=='__main__':
     # lsd_wbd.plot_lsd(reverse=False, all=False)
 
     ## Combine WBD with HR dataset for plotting comparison
-    # setattr(lsd, 'name', 'HR datasets')
-    # lsd['Region'] = 'NaN' # Hot fix to tell it not to plot a curve for each region
-    # lsd_compare = LSD.concat((lsd.truncate(0.001, 50), lsd_wbd.truncate(0.001, 50)), broadcast_name=True, ignore_index=True)
-    # lsd_compare.plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=True)
+    setattr(lsd, 'name', 'HR datasets')
+    lsd['Region'] = 'NaN' # Hot fix to tell it not to plot a curve for each region
+    lsd_compare = LSD.concat((lsd.truncate(0.001, 50), lsd_wbd.truncate(0.001, 50)), broadcast_name=True, ignore_index=True)
+    lsd_compare.plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=True)
 
     ## Estimate area fraction
     # lsd_wbd.area_fraction(0.1)
@@ -850,11 +845,11 @@ if __name__=='__main__':
 
     ## Load hydrolakes
     print('Load HL...')
-    lsd_hl = LSD.from_shapefile('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp', area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None)
+    lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None)
 
     ## Extrapolate
-    tmin, tmax = (0.001,30)
-    emin, emax = (tmin, 0.5)
+    tmin, tmax = (0.001,30) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
+    emin, emax = (tmin, 0.5) # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
     binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), emin, emax) # reference distrib (try 5, 0.5 as second args)
     lsd_hl.truncate(emax, np.inf, inplace=True) # Beware chaining unless I return a new variable. # Try 0.1
     lsd_hl.extrapolate(binned_ref, tmin)
@@ -862,19 +857,44 @@ if __name__=='__main__':
     ## Plot to verify HL extrapolation
     ax = lsd_hl.plot_lsd(all=False, reverse=False, normalized=False)
     lsd_hl.plot_extrap_lsd(ax=ax, label='HL-extrapolated')
-    ax.set_title(f'truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
+    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
 
     ## print number of ref lakes:
     len(lsd_hl)
     lsd_hl.refBinnedLSD.binnedCounts.sum()
     lsd_hl.extrapLSD.sumAreas()
 
-    ## Compare extrapolation to WBD:
+    ## Compare HL extrapolation to WBD:
     # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
-    ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=True, color='r')
-    lsd_hl.truncate(0.001, 1000).plot_extrap_lsd(label='HL-extrapolated', normalized=True, ax=ax)
-    ax.set_title(f'truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
+    ax = lsd_wbd.truncate(0.001, 10000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
+    lsd_hl.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax)
+    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
+    wbd_sum = lsd_wbd.truncate(0.001, 10000).Area_km2.sum()
+    hl_extrap_sum = lsd_hl.truncate(0, 10000).sumAreas()
+    print(f'{wbd_sum:,.0f} vs {hl_extrap_sum:,.0f} km2 ({((hl_extrap_sum - wbd_sum) / hl_extrap_sum):.1%}) difference')
+    print(f'Area fraction < 0.01 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.01):,.2%}')
+    print(f'Area fraction < 0.1 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.1):,.2%}')
 
+    ## Compare HL to WBD measured lakes in same domain:
+    # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
+    lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None) # don't truncate this time
+    ax = lsd_wbd.truncate(0.1, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
+    lsd_hl.truncate(0.1, 1000).plot_lsd(normalized=False, reverse=False, ax=ax, all=False)
+    ax.set_title(f'[{roi_region}]')
+
+    ## Compare WBD [self-]extrapolation to WBD (control tests):
+    # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
+    tmin, tmax = (0.001, 30) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
+    emin, emax = (tmin, 0.5) # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
+    # binned_ref = BinnedLSD(lsd_wbd.truncate(tmin, tmax), emin, emax) # uncomment to use self-extrap
+    # txt='self-'
+    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), emin, emax)
+    txt=''
+    lsd_wbd_trunc = lsd_wbd.truncate(emax, np.inf)
+    lsd_wbd_trunc.extrapolate(binned_ref, tmin)
+    ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
+    lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax)
+    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
     pass
 ################
 
