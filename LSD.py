@@ -531,7 +531,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         ## Add error bars
         if error_bars == True and self.extrapLSD.hasCI:
-
+            
+            assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
             ## as error bars (miniscule)
             yerr = binnedVals2Error(self.extrapLSD.binnedValues, self.extrapLSD.nbins)
             # yerr = np.concatenate((np.cumsum(yerr[0][-1::-1])[-1::-1][np.newaxis, :], np.cumsum(yerr[1][-1::-1])[-1::-1][np.newaxis, :])) # don't need to cumsum errors?
@@ -593,27 +594,31 @@ class BinnedLSD():
 
             ## Bin
             if compute_ci:
-                ## First, group by region and area bin and take sum and counts of each bin
-                group_sums = lsd.groupby(['Region', 'labels']).Area_km2.sum(numeric_only=True)
-                group_counts = lsd.groupby(['Region', 'labels']).Area_km2.count()
+                #######
+                ## First, group by area bin and take sum and counts of each bin
+                group_sums = lsd.groupby(['labels']).Area_km2.sum(numeric_only=True)
+                group_counts = lsd.groupby(['labels']).Area_km2.count()
+                group_sem = lsd.groupby(['labels']).Area_km2.sem()
+                group_sem *= 0.1 # Quick fix to see if I should use T-distrib confidence interval instead...
 
                 ## Normalize before binning
-                # self.normalize()
-                divisor = group_sums.loc[:, group_sums.index.get_level_values(1)[-1]] # sum of lake areas in largest bin for each region (Careful: can't be == 0 !!)
+                divisor = group_sums.loc[group_sums.index[-1]] # sum of lake areas in largest bin (Careful: can't be == 0 !!)
                 group_sums /= divisor
-
-                ## Remove any regions with w/o lakes in the index size bin that cause dividing by zero
-                group_sums = group_sums.loc[(divisor.loc[divisor!=0]).index] # or could simply drop all infs, since every bin in a region will be inf if one bin is
-                group_counts = group_counts.loc[(divisor.loc[divisor!=0]).index]
-                
                 self.isNormalized = True
-                self.binnedValuesNotNormalized = None
-
-                # Compute the mean and confidence interval for each group along the second index
-                self.binnedValues = group_sums.groupby(level=1).apply(confidence_interval)
-                self.binnedCounts = group_counts.groupby(level=1).sum()
+                self.binnedValuesNotNormalized = lsd.groupby('labels').Area_km2.sum(numeric_only=True) # gives o.g. group_sums, e.g. Not normalized
+                
+                ## Create a series to emulate the structure I used to use to store region confidence intervals
+                lower = group_sums - group_counts * group_sem
+                upper = group_sums + group_counts * group_sem
+                idx = pd.MultiIndex.from_tuples([(label, stat) for label in group_sums.index for stat in ['mean', 'lower', 'upper']])
+                ds = pd.Series(index=idx, name='Area_km2')
+                ds.loc[ds.index.get_level_values(1) == 'lower'] = lower.values
+                ds.loc[ds.index.get_level_values(1) == 'upper'] = upper.values
+                ds.loc[ds.index.get_level_values(1) == 'mean'] = group_sums.values
+                self.binnedValues = ds
+                self.binnedCounts = group_counts
                 self.hasCI = True
-
+                
             else: # Don't compute CI. Use to avoid throwing out data from regions w/o lakes in the index size bin
                 ## First, group by area bin and take sum and counts of each bin
                 group_sums = lsd.groupby(['labels']).Area_km2.sum(numeric_only=True)
@@ -770,7 +775,7 @@ def runTests():
     lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
     ## Test binnedLSD
-    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.1, compute_ci=False) # compute_ci=False will disable plotting CI.
+    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.1, compute_ci=True) # compute_ci=False will disable plotting CI.
     binned.plot()
 
     ## Test extrapolate on small data
@@ -877,7 +882,7 @@ if __name__=='__main__':
     ## Extrapolate
     tmin, tmax = (0.0001,30) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
     emin, emax = (tmin, 0.5) # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), emin, emax, compute_ci=False) # reference distrib (try 5, 0.5 as second args)
+    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), emin, emax, compute_ci=True) # reference distrib (try 5, 0.5 as second args)
     lsd_hl_trunc = lsd_hl.truncate(emax, np.inf) # Beware chaining unless I return a new variable. # Try 0.1
     lsd_hl_trunc.extrapolate(binned_ref, tmin)
     meas=lsd_hl.sumAreas(includeExtrap=False)
@@ -892,30 +897,29 @@ if __name__=='__main__':
 
     ## Plot to verify HL extrapolation
     # ax = lsd_hl.plot_lsd(all=False, reverse=False, normalized=False)
-    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=True)
+    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=False)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
 
     ## print number of ref lakes:
-    len(lsd_hl)
-    lsd_hl.refBinnedLSD.binnedCounts.sum()
-    lsd_hl.extrapLSD.sumAreas()
+    # len(lsd_hl_trunc)
+    # lsd_hl_trunc.refBinnedLSD.binnedCounts.sum()
+    # lsd_hl_trunc.extrapLSD.sumAreas()
 
     ## Compare HL extrapolation to WBD:
-    # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
+    # lsd_hl_trunc.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
     ax = lsd_wbd.truncate(0.001, 10000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
-    lsd_hl.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax, error_bars=True)
+    lsd_hl_trunc.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax, error_bars=True)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
 
     ## Report vals
     wbd_sum = lsd_wbd.truncate(0.001, 10000).Area_km2.sum()
-    hl_extrap_sum = lsd_hl.truncate(0, 10000).sumAreas()
+    hl_extrap_sum = lsd_hl_trunc.truncate(0, 10000).sumAreas()
     print(f'{wbd_sum:,.0f} vs {hl_extrap_sum:,.0f} km2 ({((hl_extrap_sum - wbd_sum) / hl_extrap_sum):.1%}) difference')
     print(f'Area fraction < 0.01 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.01):,.2%}')
     print(f'Area fraction < 0.1 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.1):,.2%}')
 
     ## Compare HL to WBD measured lakes in same domain:
     # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
-    lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None) # don't truncate this time
     ax = lsd_wbd.truncate(0.1, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
     lsd_hl.truncate(0.1, 1000).plot_lsd(normalized=False, reverse=False, ax=ax, all=False)
     ax.set_title(f'[{roi_region}]')
@@ -926,7 +930,7 @@ if __name__=='__main__':
     emin, emax = (tmin, 0.5) # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
     # binned_ref = BinnedLSD(lsd_wbd.truncate(tmin, tmax), emin, emax) # uncomment to use self-extrap
     # txt='self-'
-    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), emin, emax, compute_ci=False)
+    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), emin, emax, compute_ci=True)
     txt=''
     lsd_wbd_trunc = lsd_wbd.truncate(emax, np.inf)
     lsd_wbd_trunc.extrapolate(binned_ref, tmin)
