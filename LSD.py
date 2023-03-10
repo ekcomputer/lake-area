@@ -145,6 +145,22 @@ def confidence_interval(x):
     ## Set greater than 0
     return np.maximum(out, 0)
 
+def confidence_interval_from_sem(group_sums, group_counts, group_sem):
+    '''Confidence interval from std error of mean. Different format function than confidence_interval'''
+    idx = pd.MultiIndex.from_tuples([(label, stat) for label in group_sums.index for stat in ['mean', 'lower', 'upper']])
+    n = group_counts.sum()
+    h = group_counts * group_sem * stats.t.ppf((1 + 0.95) / 2, n - 1)
+    lower = np.maximum(group_sums - h, 0)
+    upper = group_sums + h
+    ds = pd.Series(index=idx, name='Area_km2', dtype=float)
+    ds.loc[ds.index.get_level_values(1) == 'lower'] = lower.values
+    ds.loc[ds.index.get_level_values(1) == 'upper'] = upper.values
+    ds.loc[ds.index.get_level_values(1) == 'mean'] = group_sums.values
+    # ds = pd.Series({'mean': group_sums, 'lower': np.maximum(group_sums - h, 0), 'upper': group_sums + h})
+
+    ## Set greater than 0
+    return ds  
+
 def binnedVals2Error(binned_values, n):
     '''Convert BinnedLSD.binnedValues to error bars for plotting. May need to subtract 1 from n.'''
     ci = binned_values.loc[:, ['lower', 'upper']].to_numpy().reshape((n,2)).T
@@ -607,14 +623,8 @@ class BinnedLSD():
                 self.isNormalized = True
                 self.binnedValuesNotNormalized = lsd.groupby('labels').Area_km2.sum(numeric_only=True) # gives o.g. group_sums, e.g. Not normalized
                 
-                ## Create a series to emulate the structure I used to use to store region confidence intervals
-                lower = group_sums - group_counts * group_sem
-                upper = group_sums + group_counts * group_sem
-                idx = pd.MultiIndex.from_tuples([(label, stat) for label in group_sums.index for stat in ['mean', 'lower', 'upper']])
-                ds = pd.Series(index=idx, name='Area_km2')
-                ds.loc[ds.index.get_level_values(1) == 'lower'] = lower.values
-                ds.loc[ds.index.get_level_values(1) == 'upper'] = upper.values
-                ds.loc[ds.index.get_level_values(1) == 'mean'] = group_sums.values
+                ## Create a series to emulate the structure I used to use to store region confidence intervals                  
+                ds = confidence_interval_from_sem(group_sums, group_counts, group_sem)
                 self.binnedValues = ds
                 self.binnedCounts = group_counts
                 self.hasCI = True
@@ -703,6 +713,11 @@ class BinnedLSD():
         ## Remove last bin, if desired
         if self.isExtrapolated==False:
             if show_rightmost == False: # if I need to cut off rightmost bin
+                # if self.hasCI: # sloppy fix
+                #     binned_values = pd.Series({'mean': binned_values.values[0].iloc[:-1],
+                #                                 'lower': binned_values.values[1].iloc[:-1],
+                #                                 'upper': binned_values.values[2].iloc[:-1]})
+                # else:
                 binned_values.drop(index=binned_values.index.get_level_values(0)[-1], inplace=True)
             else:
                 diff+=1 # subtract from number of bin edges to get plot x axis
@@ -808,16 +823,16 @@ if __name__=='__main__':
     ## I/O
 
     ## BAWLD domain
-    # dataset = 'HL'
-    roi_region = 'BAWLD'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
+    # # dataset = 'HL'
+    # roi_region = 'BAWLD'
+    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
 
     ## BAWLD-NAHL domain
-    # # dataset = 'HL'
-    # roi_region = 'WBD_BAWLD'
-    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+    # dataset = 'HL'
+    roi_region = 'WBD_BAWLD'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
 
     ## dynamic vars
     # analysis_dir = os.path.join('/mnt/g/Ch4/Area_extrapolations','v'+str(version))
@@ -897,7 +912,7 @@ if __name__=='__main__':
 
     ## Plot to verify HL extrapolation
     # ax = lsd_hl.plot_lsd(all=False, reverse=False, normalized=False)
-    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=False)
+    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=False, normalized=False)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
 
     ## print number of ref lakes:
@@ -908,7 +923,7 @@ if __name__=='__main__':
     ## Compare HL extrapolation to WBD:
     # lsd_hl_trunc.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
     ax = lsd_wbd.truncate(0.001, 10000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
-    lsd_hl_trunc.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax, error_bars=True)
+    lsd_hl_trunc.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax, error_bars=False)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
 
     ## Report vals
@@ -920,6 +935,7 @@ if __name__=='__main__':
 
     ## Compare HL to WBD measured lakes in same domain:
     # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
+    lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None) # don't truncate this time
     ax = lsd_wbd.truncate(0.1, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
     lsd_hl.truncate(0.1, 1000).plot_lsd(normalized=False, reverse=False, ax=ax, all=False)
     ax.set_title(f'[{roi_region}]')
@@ -935,7 +951,7 @@ if __name__=='__main__':
     lsd_wbd_trunc = lsd_wbd.truncate(emax, np.inf)
     lsd_wbd_trunc.extrapolate(binned_ref, tmin)
     ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
-    lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax, error_bars=True)
+    lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax, error_bars=False)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
     pass
 ################
