@@ -393,6 +393,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         TODO: add option to include extrapolation in estimate.
         '''
+        if self.truncationLimits[1]  is not np.inf:
+            warn("Careful, you are computing an area fraction based on a top-truncated LSD, so the fraction may be too high.")
         attr = f'_A_{limit}' # dynamically-named attribute (_ prefix means it won't get copied over after a truncation or concat)
         if attr in self.get_public_attrs():
             return getattr(self, attr)
@@ -401,7 +403,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             setattr(self, attr, area_fraction)
             return area_fraction
     
-    def extrapolated_area_fraction(self, ref_LSD, bottomLim, limit):
+    def extrapolated_area_fraction(self, ref_LSD, bottomLim, limit, emax=0.5, tmax=5):
         """
         Computes area fraction from lakes < limit in area, for limit < minimum observed lake area.
 
@@ -411,14 +413,17 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
     
         Parameters
         ----------
-        self : LSD
+        self : LSD (truncated)
         limit  : float
             threshold. Will be used for extrapolation (for numerator).
-        ref_LSD : LSD
+        ref_LSD : LSD (not truncated)
             Reference LSD to bin and then use for extrapolation.
         bottomLim : float
             Bottom size limit to which to extrapolate (for denominator).    
-        
+        emax : float, default 0.5
+            Extrapolation limit max. emax defines the right bound of the extrapolation region (and the left bound of the index region). Should be set a little higher than the resolution of the dataset to be extrapolated to account for biases near its detection limit.
+        tmax : float, default 5
+            tmax defines the right bound of the index region (so it truncates the ref LSD). don't set it too high, which introduces variability between datasets in the index region fractional areas.
         Returns
         -------
         area_fraction (float): sum all areas < limit and divide
@@ -432,21 +437,32 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         assert self.isTruncated, "To be explicit, truncate self, which indicates which region to extrapolate to."
         assert limit < self.truncationLimits[0], f"Limit ({limit}) is >= the lower truncation limit of LSD ({self.truncationLimits[0]}), so use area_fraction() method instead." # auto run area_fraction
         assert limit > bottomLim, f"'limit' ({limit}) must be > bottomLim ({bottomLim})."
+        assert emax >= self.truncationLimits[0], f"emax ({emax}) should be >= the top truncation limit of self ({self.truncationLimits[1]})"
+        if self.truncationLimits[1]  is not np.inf:
+            warn("Careful, you are computing an extrapolated area fraction based on a top-truncated LSD, so the fraction may be too high.")
         
         ## Make copy for modification via extrapolate function
         attrs = self.get_public_attrs()
         lsd = LSD(self, **attrs)
 
         ## Computation
-        binned_ref = BinnedLSD(ref_LSD.truncate(limit, np.inf), limit, lsd.truncationLimits[0], compute_ci=False)
+        binned_ref = BinnedLSD(ref_LSD.truncate(0, tmax), btm=limit, top=emax, compute_ci=False)
+        lsd.truncate(emax, np.inf, inplace=True)
         lsd.extrapolate(binned_ref)
         num = lsd.sumAreas(includeExtrap=True)
 
-        # lsd = LSD(self, **attrs) # re-init
-        binned_ref = BinnedLSD(ref_LSD.truncate(bottomLim, np.inf), bottomLim, lsd.truncationLimits[0], compute_ci=False)
+        lsd = LSD(self, **attrs) # re-init
+        binned_ref = BinnedLSD(ref_LSD.truncate(0, tmax), bottomLim, emax, compute_ci=False)
+        lsd.truncate(emax, np.inf, inplace=True)
         lsd.extrapolate(binned_ref)
         denom = lsd.sumAreas(includeExtrap=True)
         area_fraction = 1 - num/denom
+
+
+        # tmin, tmax = (0.0001,30) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
+        # emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
+        # binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci=True) # reference distrib (try 5, 0.5 as second args)
+
 
         ## update area fract on original lsd and return
         attr = f'_A_{limit}'
@@ -457,7 +473,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         '''
         Extrapolate by filling empty bins below the dataset's resolution.
 
-        Note: The limits of the extrapolation are defined by the btmEdge/topEdge of ref_BinnedLSD. The top limit of rererence distribution is defined by the top truncation of the reference binnedLSD. Function checks to make sure it is truncated <= 1 km2.
+        Note: The limits of the extrapolation are defined by the btmEdge/topEdge of ref_BinnedLSD. The top limit of rererence distribution is defined by the top truncation of the reference binnedLSD. Function checks to make sure it is truncated <= 5 km2.
         
         Parameters
         ----------
@@ -475,10 +491,10 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         # assert self.isTruncated # can correct for this
         assert ref_BinnedLSD.isTruncated, "Reference binnedLSD must be top truncated or its bin estimates will be highly variable."
         assert self.isTruncated, "LSD should be bottom-truncated when used for extrapolation to be explicit."
-        assert self.truncationLimits[0] == ref_BinnedLSD.topEdge, f"Mismatch between LSD bottom truncation limit ({self.truncationLimits[0]} and ref binned LSD top edge ({ref_BinnedLSD.topEdge}))"
+        assert self.truncationLimits[0] == ref_BinnedLSD.topEdge, f"Mismatch between LSD bottom truncation limit ({self.truncationLimits[0]}) and ref binned LSD top edge ({ref_BinnedLSD.topEdge})"
         assert ref_BinnedLSD.isNormalized
-        if ref_BinnedLSD.truncationLimits[1] > 1:
-            warn("Reference binned LSD should be top truncated to ~1 km2.")
+        if ref_BinnedLSD.truncationLimits[1] > 5:
+            warn("Reference binned LSD should be top truncated to <= ~ 5 km2 to avoid too large of an index region (highly variable and HR lsd might be biased low in a large index region).")
         
         ## Perform the extrapolation (bin self by its bottom truncation limit to the indexTopLim, and simply multiply it by the normalized refBinnedLSD to do the extrapolation)!
         index_region_sum = self.truncate(ref_BinnedLSD.topEdge, ref_BinnedLSD.truncationLimits[1]).Area_km2.sum() # Sum all area in LSD in the index region, defined by the topEdge and top-truncation limit of the ref LSD.
@@ -860,8 +876,8 @@ def runTests():
 
     ## Plot
     lsd_hl_trunc.extrapLSD.plot()
-    ax = lsd_hl_trunc.plot_lsd(reverse=False, normalized=False)
-    lsd_hl_trunc.plot_extrap_lsd(ax=ax, normalized=False, error_bars=True, reverse=False)
+    ax = lsd_hl_trunc.plot_lsd(reverse=False, normalized=True)
+    lsd_hl_trunc.plot_extrap_lsd(ax=ax, normalized=True, error_bars=False, reverse=False)
     pass
 
 ## Testing mode or no.
@@ -880,16 +896,16 @@ if __name__=='__main__':
     ## I/O
 
     ## BAWLD domain
-    # # dataset = 'HL'
-    # roi_region = 'BAWLD'
-    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
+    # dataset = 'HL'
+    roi_region = 'BAWLD'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
 
     ## BAWLD-NAHL domain
-    # dataset = 'HL'
-    roi_region = 'WBD_BAWLD'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+    # # dataset = 'HL'
+    # roi_region = 'WBD_BAWLD'
+    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
 
     ## dynamic vars
     # analysis_dir = os.path.join('/mnt/g/Ch4/Area_extrapolations','v'+str(version))
@@ -959,9 +975,15 @@ if __name__=='__main__':
     lsd_hl_trunc.extrapolate(binned_ref)
     meas=lsd_hl.sumAreas(includeExtrap=False)
     extrap=lsd_hl_trunc.sumAreas()
+
+    limit=0.01
+    frac = lsd_hl_trunc.extrapolated_area_fraction(lsd, 0.0001, limit)
     print(f'Total measured lake area in {roi_region} domain: {meas:,.0f} km2')
     print(f'Total extrapolated lake area in {roi_region} domain: {extrap:,.0f} km2')
-    print(f'{1-(meas / extrap):.1%} % of lake area is < 0.1 km2.')
+    print(f'{1-(meas / extrap):.1%} of lake area is < 0.1 km2.')
+    print(f'{frac:.1%} of lake area is < {limit} km2.')
+    print(f'{lsd_hl_trunc.extrapolated_area_fraction(lsd, 0.0001, 0.001):.1%} of lake area is < 0.001 km2.')
+
 
     ## Report extrapolated area fractions (need method for area fractions on extrapolatedLSD)
     # print(f'Area fraction < 0.01 km2: {lsd.area_fraction(0.01):,.2%}')
@@ -969,8 +991,8 @@ if __name__=='__main__':
 
     ## Plot to verify HL extrapolation
     # ax = lsd_hl.plot_lsd(all=False, reverse=False, normalized=False)
-    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=False, normalized=False)
-    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
+    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=False, normalized=True)
+    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
 
     ## print number of ref lakes:
     # len(lsd_hl_trunc)
@@ -981,7 +1003,7 @@ if __name__=='__main__':
     # lsd_hl_trunc.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
     ax = lsd_wbd.truncate(0.001, 10000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
     lsd_hl_trunc.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax, error_bars=False)
-    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
+    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})')
 
     ## Report vals
     wbd_sum = lsd_wbd.truncate(0.001, 10000).Area_km2.sum()
@@ -1001,7 +1023,7 @@ if __name__=='__main__':
     # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
     tmin, tmax = (0.001, 30) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
     emax = 0.5 # Extrapolation limit emax defines the left bound of the index region (and right bound of the extrapolation region).
-    # binned_ref = BinnedLSD(lsd_wbd.truncate(tmin, tmax), emin, emax) # uncomment to use self-extrap
+    # binned_ref = BinnedLSD(lsd_wbd.truncate(tmin, tmax), tmin, emax) # uncomment to use self-extrap
     # txt='self-'
     binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci=True)
     txt=''
@@ -1009,7 +1031,7 @@ if __name__=='__main__':
     lsd_wbd_trunc.extrapolate(binned_ref)
     ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
     lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax, error_bars=False)
-    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: ({emin}, {emax})')
+    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
     pass
 ################
 
