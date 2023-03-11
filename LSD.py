@@ -389,16 +389,69 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         Compute the fraction of areas from lakes < area given by lim, only if not computed already.
         Creates attribute A_[n]_ where n=0.001, 0.01, etc.
         No need to call A_0.001_ directly, because it may not exist.
+        Will not include extrapolated areas in estimate, because bin edges may not align. Use extrapolated_area_fraction() instead.
 
         TODO: add option to include extrapolation in estimate.
         '''
         attr = f'_A_{limit}' # dynamically-named attribute (_ prefix means it won't get copied over after a truncation or concat)
         if attr in self.get_public_attrs():
             return getattr(self, attr)
-        else:
+        else: # do computation
             area_fraction = self.truncate(0, limit).Area_km2.sum()/self.Area_km2.sum()
             setattr(self, attr, area_fraction)
             return area_fraction
+    
+    def extrapolated_area_fraction(self, ref_LSD, bottomLim, limit):
+        """
+        Computes area fraction from lakes < limit in area, for limit < minimum observed lake area.
+
+        Does this by calling extrapolate() twice, using different bottomLims to ensure the area thresholds in question exactly match the desired limit. Creates attribute A_[n]_ where n=0.001, 0.01, etc. Self should be truncated, ref_LSD shouldn't.
+
+        TODO: add confidence interval
+    
+        Parameters
+        ----------
+        self : LSD
+        limit  : float
+            threshold. Will be used for extrapolation (for numerator).
+        ref_LSD : LSD
+            Reference LSD to bin and then use for extrapolation.
+        bottomLim : float
+            Bottom size limit to which to extrapolate (for denominator).    
+        
+        Returns
+        -------
+        area_fraction (float): sum all areas < limit and divide
+
+        """
+        ## Checks
+        if self is None:
+            raise ValueError("self cannot be None")
+        assert isinstance(ref_LSD, LSD), "ref_LSD must be type LSD"
+        assert not ref_LSD.isTruncated, "ref_LSD shouldn't already be truncated, because it needs to happen inside this function."
+        assert self.isTruncated, "To be explicit, truncate self, which indicates which region to extrapolate to."
+        assert limit < self.truncationLimits[0], f"Limit ({limit}) is >= the lower truncation limit of LSD ({self.truncationLimits[0]}), so use area_fraction() method instead." # auto run area_fraction
+        assert limit > bottomLim, f"'limit' ({limit}) must be > bottomLim ({bottomLim})."
+        
+        ## Make copy for modification via extrapolate function
+        attrs = self.get_public_attrs()
+        lsd = LSD(self, **attrs)
+
+        ## Computation
+        binned_ref = BinnedLSD(ref_LSD.truncate(limit, np.inf), limit, lsd.truncationLimits[0], compute_ci=False)
+        lsd.extrapolate(binned_ref)
+        num = lsd.sumAreas(includeExtrap=True)
+
+        # lsd = LSD(self, **attrs) # re-init
+        binned_ref = BinnedLSD(ref_LSD.truncate(bottomLim, np.inf), bottomLim, lsd.truncationLimits[0], compute_ci=False)
+        lsd.extrapolate(binned_ref)
+        denom = lsd.sumAreas(includeExtrap=True)
+        area_fraction = 1 - num/denom
+
+        ## update area fract on original lsd and return
+        attr = f'_A_{limit}'
+        setattr(self, attr, area_fraction) # Save value within LSD structure
+        return area_fraction
     
     def extrapolate(self, ref_BinnedLSD):
         '''
@@ -799,8 +852,11 @@ def runTests():
     lsd_hl_trunc.extrapLSD.sumAreas()
     lsd_hl_trunc.sumAreas()
 
-    lsd_hl.extrapLSD.sumAreas()
-    lsd_hl.sumAreas()
+    ## Compare extrapolated area fractions
+    frac = lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.0001, 0.01)
+    print(frac)
+    # lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.00001, 0.01) # test for bin warning
+    # lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.0001, 1)# Test for limit error
 
     ## Plot
     lsd_hl_trunc.extrapLSD.plot()
