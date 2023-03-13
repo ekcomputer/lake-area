@@ -13,6 +13,7 @@ import os
 import math
 import numpy as np
 from scipy import stats
+from statsmodels.formula.api import ols
 from glob import glob
 from matplotlib import pyplot as plt
 from matplotlib.colors import Colormap
@@ -178,7 +179,31 @@ def public_attrs(self):
 def interval_geometric_mean(interval):
     '''calculate the geometric mean of an interval'''
     return math.sqrt(interval.left * interval.right)
-   
+
+def loadBAWLD_CH4():
+    ## Load
+    df = pd.read_csv('/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/archive/BAWLD_CH4_Aquatic.csv', 
+        encoding = "ISO-8859-1", dtype={'CH4.E.FLUX ':'float'}, na_values='-')
+    len0 = len(df)
+
+    ## Filter and pre-process
+    df.query("SEASON == 'Icefree' ", inplace=True) # and `D.METHOD` == 'CH'
+    df.dropna(subset=['SA', 'CH4.D.FLUX', 'TEMP'], inplace=True)
+
+    ## if I want transformed y as its own var
+    df['CH4.D.FLUX.LOG'] = np.log10(df['CH4.D.FLUX']+1) 
+
+    ## print filtering
+    len1 = len(df)
+    print(f'Filtered out {len0-len1} values ({len1} remaining).')
+    print(f'Variables: {df.columns}')
+
+    ## Linear models (regression)
+    formula = "np.log10(Q('CH4.D.FLUX')) ~ np.log10(SA) + TEMP" # 'Seasonal.Diff.Flux' 'CH4.D.FLUX'
+    model = ols(formula=formula, data=df).fit()
+
+    return model
+
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
     '''Lake size distribution'''
@@ -535,11 +560,42 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
                 return tuple((np.array(self.extrapLSD.sumAreas(ci=ci)) + measured_sum)) # convert to tuple, as is common for python fxns to return
         else:
             return measured_sum
-    def predictFlux(self, temp):
+        # self._totalArea = measured_sum # TODO: add _totalArea attr
+
+    def predictFlux(self, model, includeExtrap=True):
         '''
-        Predict methane flux based on area bins and temperature
+        Predict methane flux based on area bins and temperature.
+        
+        TODO: 
+            * Use temp as a df variable, not common attribute
+            * Lazy algorithm- only compute if self._Total_flux_Tg_yr not present
+        Parameters
+        ----------
+        model : statsmodels
+        coeff : array-like
+            list of model coefficients
+        returns: ax
         '''
-        pass
+        assert hasattr(self, 'temp'), "LSD needs a temp attribute in order to predict flux."
+        if includeExtrap==True:
+            assert hasattr(self, 'extrapLSD'), "includeExtrap was set to true, but no self.extrapLSD found."
+            self.extrapLSD.temp = self.temp # copy over temperature variable, regardless of whether it exists.
+            self.extrapLSD.predictFlux(model)
+            binned_total_flux_Tg_yr = self.extrapLSD._total_flux_Tg_yr
+        else:
+            binned_total_flux_Tg_yr = 0
+        
+        ## Flux (areal, mgCH4/m2/day)
+        self['est_mg_m2_day'] = 10**(model.params.Intercept +
+        model.params['np.log10(SA)'] * np.log10(self.Area_km2) 
+        + model.params['TEMP'] * self.temp) # jja, ann, son, mam
+
+        ## Flux (flux rate, gCH4/day)
+        self['est_g_day'] = self.est_mg_m2_day * self.Area_km2 * 1e3 # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
+
+        self._total_flux_Tg_yr = self['est_g_day'].sum() * 365.25 / 1e12 + binned_total_flux_Tg_yr# see Tg /yr
+        # return self._Total_flux_Tg_yr
+        return
 
     ## Plotting
     def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, **kwargs):
@@ -808,11 +864,46 @@ class BinnedLSD():
             ax.set_ylabel('km2')
         return
 
-    def predictFlux(self, temp):
+    def predictFlux(self, model):
         '''
-        Predict methane flux based on area bins and temperature
+        Predict methane flux based on area bins and temperature. Assumes temp is constant for all bins.
+        
+        TODO: 
+            * Use temp as a df variable, not common attribute
+            * Lazy algorithm- only compute if self._Total_flux_Tg_yr not present
+        Parameters
+        ----------
+        model : statsmodels
+        coeff : array-like
+            list of model coefficients
+        returns: ax
         '''
-        pass
+        assert hasattr(self, 'temp'), "Binned LSD needs a temp attribute in order to predict flux."
+        assert self.isNormalized == False, "Binned LSD is normalized so values will be unitless for area."
+        if self.hasCI: # Need to extract means in a different way if there is no CI
+            means = self.binnedValues.loc[:, 'mean']
+            geom_mean_areas = np.array(list(map(interval_geometric_mean, means.index)))
+        else:
+            means = self.binnedValues
+            raise ValueError('Havent written this branch yet.')
+        
+        ## Flux (areal, mgCH4/m2/day)
+        est_mg_m2_day = 10**(model.params.Intercept +
+        model.params['np.log10(SA)'] * np.log10(geom_mean_areas) 
+        + model.params['TEMP'] * self.temp) # jja, ann, son, mam
+
+        ## Flux (flux rate, gCH4/day)
+        if self.hasCI:
+            est_g_day = est_mg_m2_day * self.binnedValues.loc[:,'mean'] * 1e3 # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
+
+        self._total_flux_Tg_yr = est_g_day.sum() * 365.25 / 1e12 # see Tg /yr
+
+        ## Add attrs
+        self._binnedMg_m2_day = est_mg_m2_day # in analogy with binnedValues and binnedCounts
+        self._binnedG_day = est_g_day # in analogy with binnedValues and binnedCounts
+
+        # return self._Total_flux_Tg_yr
+        return
     
 
 def runTests():
@@ -869,15 +960,28 @@ def runTests():
     lsd_hl_trunc.sumAreas()
 
     ## Compare extrapolated area fractions
-    frac = lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.0001, 0.01)
-    print(frac)
-    # lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.00001, 0.01) # test for bin warning
-    # lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.0001, 1)# Test for limit error
+    # frac = lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.0001, 0.01)
+    # print(frac)
+    # # lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.00001, 0.01) # test for bin warning
+    # # lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.0001, 1)# Test for limit error
 
     ## Plot
-    lsd_hl_trunc.extrapLSD.plot()
-    ax = lsd_hl_trunc.plot_lsd(reverse=False, normalized=True)
-    lsd_hl_trunc.plot_extrap_lsd(ax=ax, normalized=True, error_bars=False, reverse=False)
+    # lsd_hl_trunc.extrapLSD.plot()
+    # ax = lsd_hl_trunc.plot_lsd(reverse=False, normalized=True)
+    # lsd_hl_trunc.plot_extrap_lsd(ax=ax, normalized=True, error_bars=False, reverse=False)
+
+    ## Test flux prediction from observed lakes
+    model = loadBAWLD_CH4()
+    lsd_hl_trunc.temp = 10 # placeholder, required for prediction 
+    lsd_hl_trunc.predictFlux(model, includeExtrap=False)
+
+    ## Test flux prediction from extrapolated lakes
+    lsd_hl_trunc.extrapLSD.temp = lsd_hl_trunc.temp # placeholder, required for prediction 
+    lsd_hl_trunc.extrapLSD.predictFlux(model)
+
+    ## Test combined prediction
+    lsd_hl_trunc.predictFlux(model, includeExtrap=True)
+
     pass
 
 ## Testing mode or no.
