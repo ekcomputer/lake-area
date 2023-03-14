@@ -566,16 +566,22 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         includeExtrap : Boolean
             Whether to include any extrapolated areas, if present
         '''
-        measured_sum = self.Area_km2.sum()
+        self._observed_area = self.Area_km2.sum()
+        self._extrap_area = None # init
+        self._total_area = None
         if includeExtrap:
             assert hasattr(self, 'extrapLSD'), "LSD doesn't include an extrapLSD attribute."
             if ci==False:
-                return self.extrapLSD.sumAreas(ci=ci) + measured_sum
+                self._extrap_area = self.extrapLSD.sumAreas(ci=ci)
+                out =  self._extrap_area + self._observed_area
             else:
-                return tuple((np.array(self.extrapLSD.sumAreas(ci=ci)) + measured_sum)) # convert to tuple, as is common for python fxns to return
+                self._extrap_area = np.array(self.extrapLSD.sumAreas(ci=ci))
+                out =  tuple(self._extrap_area + self._observed_area) # convert to tuple, as is common for python fxns to return
+            self._total_area = self._observed_area + self._extrap_area
         else:
-            return measured_sum
-        # self._totalArea = measured_sum # TODO: add _totalArea attr
+            out =  self._observed_area
+        
+        return out
 
     def predictFlux(self, model, includeExtrap=True):
         '''
