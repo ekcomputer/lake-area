@@ -46,7 +46,7 @@ def findNearest(arr, val):
     index = difference_array.argmin()
     return index
 
-def ECDFByValue(values, reverse=True):
+def ECDFByValue(values, values_for_sum=None, reverse=True):
     """
     Returns sorted values and their cumsum.
     Called by plotECDFByValue.
@@ -58,14 +58,23 @@ def ECDFByValue(values, reverse=True):
     Returns
     -------
     X : sorted array
-    X : cumsum of sorted array
+    S : cumsum of sorted array
+    values_for_sum : (optional) an associated value to use for summing, for case of summing fluxes by area.
 
     """
+    X = np.sort(values)
     if reverse:
-        X = np.sort(values)[-1::-1] # highest comes first bc I reversed order
+        X = X[-1::-1] # highest comes first bc I reversed order
+    
+    if values_for_sum is None:
+        S = np.cumsum(X) # cumulative sum, starting with highest [lowest, if reverse=False] values
     else:
-        X = np.sort(values)
-    S = np.cumsum(X) # cumulative sum, starting with highest [lowest, if reverse=False] values
+        if isinstance(values_for_sum, pd.Series): # convert to pandas, since X is now pandas DF
+            values_for_sum = values_for_sum.values
+        sorted_indices = np.argsort(values)
+        if reverse:
+            values = values[-1::-1]
+        S = np.cumsum(values_for_sum[sorted_indices])
     return X, S
 
 def plotECDFByValue(values=None, reverse=True, ax=None, normalized=True, X=None, S=None, **kwargs):
@@ -245,12 +254,18 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             area_var = 'Area_km2'
         if 'Region' in df.columns:
             region_var = 'Region'
-        if 'geometry' in df.columns: # if I am computing geometry
+        if 'geometry' in df.columns: # if I am computing geometry, etc.
             geometry_var = 'geometry'
         else: geometry_var = None
+        if 'est_mg_m2_day' in df.columns: 
+            mg_var = 'est_mg_m2_day'
+        else: mg_var = None
+        if 'est_g_day' in df.columns:
+            g_var = 'est_g_day'
+        else: g_var = None
 
         ## Choose which columns to keep (based on function arguments, or existing vars with default names that have become arguments)
-        columns = [col for col in [idx_var, area_var, region_var, name_var, geometry_var] if col is not None] # allows 'region_var' to be None
+        columns = [col for col in [idx_var, area_var, region_var, name_var, geometry_var, mg_var, g_var] if col is not None] # allows 'region_var' to be None
         super().__init__(df[columns]) # This inititates the class as a DataFrame and sets self to be the output. By importing a slice, we avoid mutating the original var for 'df'. Problem here is that subsequent functions might not recognize the class as an LSD. CAn I re-write without using super()?
 
         ## Compute areas if they don't exist
@@ -601,6 +616,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
     def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, **kwargs):
         '''
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
+
+        Accepts kwargs to plotECDFByValue.
         
         Parameters
         ----------
@@ -640,7 +657,61 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             ax.legend(loc= 'center left', bbox_to_anchor=(1.04, 0.5)) # legend on right (see https://stackoverflow.com/a/43439132/7690975)
 
         return ax
-    
+
+    def plot_flux(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, normalized=True, reverse=True):
+        '''
+        Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
+        
+        Parameters
+        ----------
+        groupby_name : boolean
+            Group plots by dataset name, given by variable 'Name'
+        returns: ax
+        '''
+        ## Cumulative histogram by value (lake area), not count
+        
+        ## colors
+        # rainbow_cycler = cycler
+        sns.set_palette("colorblind", len(self.regions())) # colors from https://stackoverflow.com/a/46152327/7690975 Other option is: `from cycler import cycler; `# ax.set_prop_cycle(rainbow_cycler), plt(... prop_cycle=rainbow_cycler, )
+
+        ## plot
+        if ax==None:
+            _, ax = plt.subplots() # figsize=(5,3)
+
+        if groupby_name==False: # wish there was a way to do this without both plots in the if/then statement
+            for region in self.regions():
+                lsd_by_region = self.query(f'Region == "{region}"')
+                X, S = ECDFByValue(lsd_by_region.Area_km2, values_for_sum=lsd_by_region.est_g_day * 365.25 / 1e12, reverse=reverse) # convert from g/day to Tg/yr
+                plotECDFByValue(X=X, S=S, ax=ax, alpha=0.4, label=region, normalized=normalized, reverse=False) # if reverse, set this in ECDFByValue on previous line
+
+        else:
+            assert 'Name' in self.columns, "LSD is missing 'Name' column."
+            # cmap = colors.Colormap('Pastel1')
+            names = np.unique(self['Name'])
+            cmap = plt.cm.get_cmap('Paired', len(names))
+            for j, name in enumerate(names):
+                for i, region in enumerate(np.unique(pd.DataFrame.query(self, f'Name == "{name}"').Region)): # OLD: can't use .regions() after using DataFrame.query because it returns a DataFrame
+                    lsd_by_region_name = self.query(f'Region == "{region}"')
+                    X, S = ECDFByValue(lsd_by_region_name.Area_km2, values_for_sum=lsd_by_region_name.est_g_day * 365.25 / 1e12, reverse=reverse)
+                    plotECDFByValue(X=X, S=S, ax=ax, alpha=0.6, label=name, color=cmap(j), normalized=normalized, reverse=False)
+        ## repeat for all
+        if all:
+            X, S = ECDFByValue(self.Area_km2, values_for_sum=self.est_g_day * 365.25 / 1e12, reverse=reverse)
+            plotECDFByValue(X=X, S=S, ax=ax, alpha=0.6, color='black', label='All', normalized=normalized, reverse=False)
+
+        ## Legend
+        if plotLegend:
+            ax.legend(loc= 'center left', bbox_to_anchor=(1.04, 0.5)) # legend on right (see https://stackoverflow.com/a/43439132/7690975)
+
+        ## Override default axes
+        if normalized:
+            ylabel = 'Cumulative fraction of total flux'
+        else:
+            ylabel = 'Total flux (Tg/yr)'
+        ax.set_ylabel(ylabel)
+
+        return ax
+
     def plot_extrap_lsd(self, plotLegend=True, ax=None, normalized=False, reverse=False, error_bars=False, **kwargs):
         '''
         Plots LSD using both measured and extrapolated values. 
@@ -899,8 +970,8 @@ class BinnedLSD():
         self._total_flux_Tg_yr = est_g_day.sum() * 365.25 / 1e12 # see Tg /yr
 
         ## Add attrs
-        self._binnedMg_m2_day = est_mg_m2_day # in analogy with binnedValues and binnedCounts
-        self._binnedG_day = est_g_day # in analogy with binnedValues and binnedCounts
+        self.binnedMg_m2_day = est_mg_m2_day # in analogy with binnedValues and binnedCounts
+        self.binnedG_day = est_g_day # in analogy with binnedValues and binnedCounts
 
         # return self._Total_flux_Tg_yr
         return
@@ -981,6 +1052,10 @@ def runTests():
 
     ## Test combined prediction
     lsd_hl_trunc.predictFlux(model, includeExtrap=True)
+
+    ## Test plot fluxes
+    lsd_hl_trunc.plot_flux(reverse=False, normalized=True, all=False)
+    lsd_hl_trunc.plot_flux(reverse=False, normalized=False, all=False)
 
     pass
 
