@@ -208,8 +208,8 @@ def loadBAWLD_CH4():
 
     ## print filtering
     len1 = len(df)
-    print(f'Filtered out {len0-len1} values ({len1} remaining).')
-    print(f'Variables: {df.columns}')
+    print(f'Filtered out {len0-len1} BAWLD-CH4 values ({len1} remaining).')
+    # print(f'Variables: {df.columns}')
 
     ## Linear models (regression)
     formula = "np.log10(Q('CH4.D.FLUX')) ~ np.log10(SA) + TEMP" # 'Seasonal.Diff.Flux' 'CH4.D.FLUX'
@@ -1162,25 +1162,32 @@ if __name__=='__main__':
     ## I/O
 
     ## Global domain
-    # # dataset = 'HL'
+    # dataset = 'HL'
     # roi_region = 'Global'
     # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
     # gdf_HL_jn_pth = '/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10.shp' # HL clipped to BAWLD
     # hl_area_var='Lake_area'
 
     ## BAWLD domain
-    # # dataset = 'HL'
-    # roi_region = 'BAWLD'
-    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
-    # hl_area_var='Shp_Area'
+    dataset = 'HL'
+    roi_region = 'BAWLD'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
+    hl_area_var='Shp_Area'
 
     ## BAWLD-NAHL domain
     # dataset = 'HL'
-    roi_region = 'WBD_BAWLD'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
-    hl_area_var='Shp_Area'
+    # roi_region = 'WBD_BAWLD'
+    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+    # hl_area_var='Shp_Area'
+
+    ## BAWLD domain (Sheng lakes)
+    dataset = 'Sheng'
+    roi_region = 'BAWLD'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    gdf_Sheng_pth = '/mnt/g/Other/Sheng-Arctic-lakes/edk_out/clips/UCLA_ArcticLakes15_BAWLD.shp' # HL clipped to BAWLD
+    sheng_area_var='area'
 
     ## dynamic vars
     # analysis_dir = os.path.join('/mnt/g/Ch4/Area_extrapolations','v'+str(version))
@@ -1242,8 +1249,12 @@ if __name__=='__main__':
     print('Load HL...')
     lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None)
 
+    ## Load sheng
+    # print('Load Sheng...')
+    # lsd_hl = LSD.from_shapefile(gdf_Sheng_pth, area_var=sheng_area_var, idx_var=None, name='Sheng', region_var=None)
+
     ## Extrapolate
-    tmin, tmax = (0.0001,30) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
+    tmin, tmax = (0.0001,5) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
     emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
     binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci=True) # reference distrib (try 5, 0.5 as second args)
     lsd_hl_trunc = lsd_hl.truncate(emax, np.inf) # Beware chaining unless I return a new variable. # Try 0.1
@@ -1266,16 +1277,25 @@ if __name__=='__main__':
 
     ## Plot to verify HL extrapolation
     # ax = lsd_hl.plot_lsd(all=False, reverse=False, normalized=False)
-    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=False, normalized=True)
+    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=False, normalized=False)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
 
     ## print number of ref lakes:
     # len(lsd_hl_trunc)
     # lsd_hl_trunc.refBinnedLSD.binnedCounts.sum()
     # lsd_hl_trunc.extrapLSD.sumAreas()
+    
+    ## Test flux prediction from observed lakes
+    model = loadBAWLD_CH4()
+    lsd_hl_trunc.temp = 10 # placeholder, required for prediction 
+    lsd_hl_trunc.predictFlux(model, includeExtrap=True)
+
+    ## Plot extrapolated fluxes
+    lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False, error_bars=False)
 
     ## Compare HL extrapolation to WBD:
     # lsd_hl_trunc.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
+    assert roi_region == 'WBD_BAWLD', f"Carefull, you are comparing to WBD, but roi_region is {roi_region}."
     ax = lsd_wbd.truncate(0.001, 10000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
     lsd_hl_trunc.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax, error_bars=False)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})')
@@ -1307,6 +1327,9 @@ if __name__=='__main__':
     ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
     lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax, error_bars=False)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    
+    
+    
     pass
 ################
 
