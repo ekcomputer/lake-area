@@ -678,6 +678,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         
         ## colors
         # rainbow_cycler = cycler
+        assert 'est_g_day' in self.columns, "LSD doesn't have a flux estimate yet." 
         sns.set_palette("colorblind", len(self.regions())) # colors from https://stackoverflow.com/a/46152327/7690975 Other option is: `from cycler import cycler; `# ax.set_prop_cycle(rainbow_cycler), plt(... prop_cycle=rainbow_cycler, )
 
         ## plot
@@ -764,6 +765,61 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         plotECDFByValue(ax=ax, alpha=0.4, color='black', X=X, S=S, normalized=normalized, reverse=reverse, **kwargs)
 
         ax.legend()
+        ax.set_ylim(0, ax.get_ylim()[1])
+        return ax
+    
+    # def plot_flux(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, normalized=True, reverse=True):
+    def plot_extrap_flux(self, plotLegend=True, ax=None, normalized=False, reverse=False, error_bars=False, **kwargs):
+        '''
+        Plots fluxes from LSD using both measured and extrapolated values. 
+        Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
+        
+        TODO: plot with CI
+        Parameters
+        ----------
+        groupby_name : boolean
+            Group plots by dataset name, given by variable 'Name'
+        error_bars : boolean
+            Whether to include error bars (not recommended, since this plots a CDF)
+        returns: ax
+        '''       
+        assert 'est_g_day' in self.columns, "LSD doesn't have a flux estimate yet." 
+        assert hasattr(self.extrapLSD, 'binnedG_day'), "binnedLSD doesn't have a flux estimate yet." 
+        assert reverse==False, "No branch yet written for flux plots in reverse."
+        ## Prepare values
+        if ax==None:
+            _, ax = plt.subplots() # figsize=(5,3)
+
+        means = self.extrapLSD.binnedG_day # used to be a branch for if self.extrapLSD.hasCI...
+        X, S = ECDFByValue(self.Area_km2, values_for_sum=self.est_g_day * 365.25 / 1e12, reverse=False) # scale to Tg / yr
+        geom_means = np.array(list(map(interval_geometric_mean, means.index))) # take geom mean of each interval
+        X = np.concatenate((geom_means, X))
+        S += self.extrapLSD.sumFluxes() # add to original cumsum
+        S = np.concatenate((np.cumsum(means)* 365.25 / 1e12, S)) # pre-pend the binned vals
+
+        ## Add error bars
+        if error_bars == True and self.extrapLSD.hasCI:
+            raise ValueError('No branch yet written for flux plots with error bars.')
+            assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
+            ## as error bars (miniscule)
+            yerr = binnedVals2Error(self.extrapLSD.binnedValues, self.extrapLSD.nbins)
+            # yerr = np.concatenate((np.cumsum(yerr[0][-1::-1])[-1::-1][np.newaxis, :], np.cumsum(yerr[1][-1::-1])[-1::-1][np.newaxis, :])) # don't need to cumsum errors?
+            
+            ## As errorbar (replaced by area plot)
+            # ax.errorbar(geom_means, np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), xerr=None, yerr=yerr, fmt='none', )
+            
+            ## as area plot
+            ax.fill_between(geom_means, np.maximum(-np.cumsum(yerr[1][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), 0), # btm section
+                            np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color='grey')
+
+        ## Plot
+        plotECDFByValue(ax=ax, alpha=0.4, color='black', X=X, S=S, normalized=normalized, reverse=reverse, **kwargs)
+        if normalized:
+            ylabel = 'Cumulative fraction of total flux'
+        else:
+            ylabel = 'Total flux (Tg/yr)'
+        ax.set_ylabel(ylabel)
+        # ax.legend()
         ax.set_ylim(0, ax.get_ylim()[1])
         return ax
 
@@ -982,6 +1038,9 @@ class BinnedLSD():
         # return self._Total_flux_Tg_yr
         return
     
+    def sumFluxes(self):
+        '''Convenience function for symmetry with sumAreas. Returns total value in Tg/yr.'''
+        return self._total_flux_Tg_yr
 
 def runTests():
     '''Practicing loading and functions/methods with/without various arguments.
@@ -1062,6 +1121,9 @@ def runTests():
     ## Test plot fluxes
     lsd_hl_trunc.plot_flux(reverse=False, normalized=True, all=False)
     lsd_hl_trunc.plot_flux(reverse=False, normalized=False, all=False)
+
+    ## Test plot extrap fluxes
+    lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False)
 
     pass
 
