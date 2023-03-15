@@ -746,6 +746,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             means = self.extrapLSD.binnedValues
         X, S = ECDFByValue(self.Area_km2, reverse=False)
         geom_means = np.array(list(map(interval_geometric_mean, means.index))) # take geom mean of each interval
+        means=means.values # convert to numpy
         # X = np.concatenate((geom_means, X))
         S += self.extrapLSD.sumAreas() # add to original cumsum
         # S = np.concatenate((np.cumsum(means), S)) # pre-pend the binned vals
@@ -767,10 +768,16 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
                             np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color='grey')
 
         ## Plot
-        plotECDFByValue(ax=ax, alpha=1, color='black', X=X, S=S, normalized=normalized, reverse=reverse, **kwargs)
-        plotECDFByValue(ax=ax, alpha=1, color='black', X=geom_means, S=S0, normalized=normalized, reverse=reverse, linestyle='dashed', **kwargs) # second plot in dashed for extrapolated
-
-        ax.legend()
+        if normalized: # need to normalize outside of plotECDFByValue function
+            denom = self.sumAreas()
+        else:
+            denom = 1
+        plotECDFByValue(ax=ax, alpha=1, color='black', X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs)
+        plotECDFByValue(ax=ax, alpha=1, color='black', X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot in dashed for extrapolated
+        if normalized: # need to change label outside of plotECDFByValue function
+            ax.set_ylabel('Cumulative fraction of total area')
+        if plotLegend:
+            ax.legend()
         ax.set_ylim(0, ax.get_ylim()[1])
         return ax
     
@@ -820,12 +827,14 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
                             np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color='grey')
 
         ## Plot
-        plotECDFByValue(ax=ax, alpha=1, color='black', X=X, S=S, normalized=normalized, reverse=reverse, **kwargs)
-        plotECDFByValue(ax=ax, alpha=1, color='black', X=geom_means, S=S0, normalized=normalized, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
         if normalized:
             ylabel = 'Cumulative fraction of total flux'
+            denom = self._total_flux_Tg_yr # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
         else:
             ylabel = 'Total flux (Tg/yr)'
+            denom = 1
+        plotECDFByValue(ax=ax, alpha=1, color='black', X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs)
+        plotECDFByValue(ax=ax, alpha=1, color='black', X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
         ax.set_ylabel(ylabel)
         # ax.legend()
         ax.set_ylim(0, ax.get_ylim()[1])
@@ -950,7 +959,7 @@ class BinnedLSD():
             Whether to output the lower and upper confidence intervals.
         '''
         if self.isNormalized:
-            warn('Careful: you may be summing the top bin that gives the index region.')
+            warn('Careful: binnedLSD is normalized, and you may be summing the top bin that gives the index region.')
 
         if self.hasCI:
             if ci:
@@ -1112,7 +1121,7 @@ def runTests():
     ## Plot
     # lsd_hl_trunc.extrapLSD.plot()
     # ax = lsd_hl_trunc.plot_lsd(reverse=False, normalized=True)
-    # lsd_hl_trunc.plot_extrap_lsd(normalized=True, error_bars=False, reverse=False) # ax=ax, 
+    lsd_hl_trunc.plot_extrap_lsd(normalized=True, error_bars=False, reverse=False) # ax=ax, 
     lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=False, reverse=False) # ax=ax, 
 
     ## Test flux prediction from observed lakes
@@ -1133,6 +1142,7 @@ def runTests():
 
     ## Test plot extrap fluxes
     lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False)
+    lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=True)
 
     pass
 
