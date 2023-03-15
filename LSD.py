@@ -100,9 +100,13 @@ def plotECDFByValue(values=None, reverse=True, ax=None, normalized=True, X=None,
         raise ValueError("Must provide either 'values' or 'X' and 'S'.")
     if X is not None and values is not None:
         raise ValueError("Both 'values' and 'X' were provided.")
-    if X is None and S is None:
-        X, S = ECDFByValue(values, reverse=reverse) # compute
-
+    if X is None and S is None: # values is given
+        X, S = ECDFByValue(values, reverse=reverse) # compute, returns np arrays
+    else:    # X and S given
+        if isinstance(S, pd.Series): # convert to pandas, since X is now pandas DF 
+            S = S.values
+        if isinstance(X, pd.Series): # sloppy repeat
+            X = X.values
     if normalized:
         S = S/S[-1] # S/np.sum(X) has unintended result when using for extrapolated, when S is not entirely derived from X
         ylabel = 'Cumulative fraction of total area'
@@ -742,9 +746,10 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             means = self.extrapLSD.binnedValues
         X, S = ECDFByValue(self.Area_km2, reverse=False)
         geom_means = np.array(list(map(interval_geometric_mean, means.index))) # take geom mean of each interval
-        X = np.concatenate((geom_means, X))
+        # X = np.concatenate((geom_means, X))
         S += self.extrapLSD.sumAreas() # add to original cumsum
-        S = np.concatenate((np.cumsum(means), S)) # pre-pend the binned vals
+        # S = np.concatenate((np.cumsum(means), S)) # pre-pend the binned vals
+        S0 = np.cumsum(means) # pre-pend the binned vals
 
         ## Add error bars
         if error_bars == True and self.extrapLSD.hasCI:
@@ -762,7 +767,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
                             np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color='grey')
 
         ## Plot
-        plotECDFByValue(ax=ax, alpha=0.4, color='black', X=X, S=S, normalized=normalized, reverse=reverse, **kwargs)
+        plotECDFByValue(ax=ax, alpha=1, color='black', X=X, S=S, normalized=normalized, reverse=reverse, **kwargs)
+        plotECDFByValue(ax=ax, alpha=1, color='black', X=geom_means, S=S0, normalized=normalized, reverse=reverse, linestyle='dashed', **kwargs) # second plot in dashed for extrapolated
 
         ax.legend()
         ax.set_ylim(0, ax.get_ylim()[1])
@@ -793,9 +799,10 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         means = self.extrapLSD.binnedG_day # used to be a branch for if self.extrapLSD.hasCI...
         X, S = ECDFByValue(self.Area_km2, values_for_sum=self.est_g_day * 365.25 / 1e12, reverse=False) # scale to Tg / yr
         geom_means = np.array(list(map(interval_geometric_mean, means.index))) # take geom mean of each interval
-        X = np.concatenate((geom_means, X))
+        # X = np.concatenate((geom_means, X))
         S += self.extrapLSD.sumFluxes() # add to original cumsum
-        S = np.concatenate((np.cumsum(means)* 365.25 / 1e12, S)) # pre-pend the binned vals
+        # S = np.concatenate((np.cumsum(means)* 365.25 / 1e12, S)) # pre-pend the binned vals
+        S0 = np.cumsum(means)* 365.25 / 1e12 # pre-pend the binned vals
 
         ## Add error bars
         if error_bars == True and self.extrapLSD.hasCI:
@@ -813,7 +820,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
                             np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color='grey')
 
         ## Plot
-        plotECDFByValue(ax=ax, alpha=0.4, color='black', X=X, S=S, normalized=normalized, reverse=reverse, **kwargs)
+        plotECDFByValue(ax=ax, alpha=1, color='black', X=X, S=S, normalized=normalized, reverse=reverse, **kwargs)
+        plotECDFByValue(ax=ax, alpha=1, color='black', X=geom_means, S=S0, normalized=normalized, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
         if normalized:
             ylabel = 'Cumulative fraction of total flux'
         else:
@@ -1104,7 +1112,8 @@ def runTests():
     ## Plot
     # lsd_hl_trunc.extrapLSD.plot()
     # ax = lsd_hl_trunc.plot_lsd(reverse=False, normalized=True)
-    # lsd_hl_trunc.plot_extrap_lsd(ax=ax, normalized=True, error_bars=False, reverse=False)
+    # lsd_hl_trunc.plot_extrap_lsd(normalized=True, error_bars=False, reverse=False) # ax=ax, 
+    lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=False, reverse=False) # ax=ax, 
 
     ## Test flux prediction from observed lakes
     model = loadBAWLD_CH4()
@@ -1119,8 +1128,8 @@ def runTests():
     lsd_hl_trunc.predictFlux(model, includeExtrap=True)
 
     ## Test plot fluxes
-    lsd_hl_trunc.plot_flux(reverse=False, normalized=True, all=False)
-    lsd_hl_trunc.plot_flux(reverse=False, normalized=False, all=False)
+    # lsd_hl_trunc.plot_flux(reverse=False, normalized=True, all=False)
+    # lsd_hl_trunc.plot_flux(reverse=False, normalized=False, all=False)
 
     ## Test plot extrap fluxes
     lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False)
