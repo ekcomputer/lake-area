@@ -1163,31 +1163,24 @@ if __name__=='__main__':
 
     ## Global domain
     # dataset = 'HL'
-    # roi_region = 'Global'
+    # roi_region = 'BAWLD'
     # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    # gdf_HL_jn_pth = '/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10.shp' # HL clipped to BAWLD
-    # hl_area_var='Lake_area'
-
-    ## BAWLD domain
-    dataset = 'HL'
-    roi_region = 'BAWLD'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
-    hl_area_var='Shp_Area'
-
-    ## BAWLD-NAHL domain
-    # dataset = 'HL'
-    # roi_region = 'WBD_BAWLD'
-    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
     # hl_area_var='Shp_Area'
 
+    ## BAWLD-NAHL domain
+    dataset = 'HL'
+    roi_region = 'WBD_BAWLD'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+    hl_area_var='Shp_Area'
+
     ## BAWLD domain (Sheng lakes)
-    dataset = 'Sheng'
-    roi_region = 'BAWLD'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    gdf_Sheng_pth = '/mnt/g/Other/Sheng-Arctic-lakes/edk_out/clips/UCLA_ArcticLakes15_BAWLD.shp' # HL clipped to BAWLD
-    sheng_area_var='area'
+    # dataset = 'Sheng'
+    # roi_region = 'BAWLD'
+    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    # gdf_Sheng_pth = '/mnt/g/Other/Sheng-Arctic-lakes/edk_out/clips/UCLA_ArcticLakes15_BAWLD.shp' # HL clipped to BAWLD
+    # sheng_area_var='area'
 
     ## dynamic vars
     # analysis_dir = os.path.join('/mnt/g/Ch4/Area_extrapolations','v'+str(version))
