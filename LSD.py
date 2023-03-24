@@ -119,7 +119,7 @@ def plotECDFByValue(values=None, reverse=True, ax=None, normalized=True, X=None,
     ## Viz params
     ax.set_xscale('log')
     ax.set_ylabel(ylabel)
-    ax.set_xlabel('Lake area')
+    ax.set_xlabel('Lake area (km2)')
     return
 
 def plotEPDFByValue(values, ax=None, **kwargs):
@@ -217,6 +217,73 @@ def loadBAWLD_CH4():
 
     return model
 
+def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list) -> True:
+    """
+    Uses Bayes' law and reference Lake Emergent Vegetation (LEV) distribution to estimate the LEV in a given df, based on water Occurrence.
+
+    Parameters
+    ----------
+    df (pd.DataFrame) : A dataframe with 101 water occurrence (Pekel 2016) classes ranging from 0-100%, named as 'Class_0',... 'Class_100'.
+    
+    ref_dfs (list) : where each item is a dataframe with format: Index: (LEV, dry land, invalid, water, SUM), Columns: ('HISTO_0', ... 'HISTO_100')
+    
+    names (list) : list of strings with dataset/region names in same order as ref_dfs
+    Returns
+    -------
+    lev : pd.DataFrame with same index as df and a column for each reference LEV distribution with name from names
+
+    """
+    ## Rename columns in ref_df to match df
+    func = lambda x: x.replace('HISTO_', 'Class_')
+    ref_dfs = [ref_df.rename(columns=func) for ref_df in ref_dfs]
+
+    # Multiply the dataframes element-wise based on common columns
+    cols = ['LEV_' + name for name in names]
+    df_lev = pd.DataFrame(columns = cols)
+    for i, ref_df in enumerate(ref_dfs):
+        ''' df is in units of km2, ref_df is in units of px'''
+        common_cols = df.columns.intersection(ref_df.columns.drop('Class_sum'))
+        assert len(common_cols) == 101, f"{len(common_cols)} common columns found bw datasets. 101 desired."
+        df_tmp = df[common_cols].reindex(columns=common_cols) # change order
+        ref_df = ref_df[common_cols].reindex(columns=common_cols) # change order permanently
+        result = df_tmp /  df.Class_sum.values[:, None] * ref_df.loc['LEV', :] / ref_df.loc['CLASS_sum', :] # Mult Oc fraction of each oc bin by LEV fraction of each Oc bin.Broadcast ref_df over number of lakes
+        df_lev['LEV_' + names[i]] = np.nansum(result, axis=1)
+
+    ## Summary stats
+    df_lev['LEV_MEAN'] = df_lev[cols].mean(axis=1)
+    df_lev['LEV_MIN'] = df_lev[cols].min(axis=1)
+    df_lev['LEV_MAX'] = df_lev[cols].max(axis=1)
+
+    ## Join and return
+    df_lev = pd.concat((df.drop(columns=np.concatenate((common_cols.values, ['Class_sum']))), df_lev), axis=1)
+
+    return df_lev
+
+def produceRefDs(ref_df_pth: str) -> True:
+    """
+    Pre-process raw dataframe in prep for computeLEV function.
+
+    Parameters
+    ----------
+    ref_df (str) : Path to a csv file where each name is a region name and the values are dataframes with format: Index: (LEV, dry land, invalid, water, SUM), Columns: ('HISTO_0', ... 'HISTO_100')
+
+    Returns: 
+    -------
+    df_out (pd.DataFrame): df with re-normalized and re-named columns
+
+    """
+    df = pd.read_csv(ref_df_pth, index_col='Broad_class').drop(index=['invalid', 'SUM'])
+
+    ## Add missing HISTO_100 column if needed
+    for i in range(101):
+        if not f'HISTO_{i}' in df.columns:
+            df[f'HISTO_{i}'] = 0
+
+    df['HISTO_sum'] = df.sum(axis=1)
+    df.loc['CLASS_sum', :] = df.sum(axis=0)
+
+    return df
+
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
     '''Lake size distribution'''
@@ -270,6 +337,9 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         ## Choose which columns to keep (based on function arguments, or existing vars with default names that have become arguments)
         columns = [col for col in [idx_var, area_var, region_var, name_var, geometry_var, mg_var, g_var] if col is not None] # allows 'region_var' to be None
+
+        ## Retain LEV variables if they exist
+        columns += [col for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX'] if col in df.columns] # 'LEV_CSB', 'LEV_CSD', 'LEV_PAD', 'LEV_YF',       'LEV_MEAN', 'LEV_MIN', 'LEV_MAX'
         super().__init__(df[columns]) # This inititates the class as a DataFrame and sets self to be the output. By importing a slice, we avoid mutating the original var for 'df'. Problem here is that subsequent functions might not recognize the class as an LSD. CAn I re-write without using super()?
 
         ## Compute areas if they don't exist
@@ -586,7 +656,14 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             out =  self._observed_area
         
         return out
-
+    
+    def meanLev(self, include_ci=False):
+        ''' Weighted mean of LEV by area'''
+        if include_ci:
+            return [np.average(self[param], self.Area_km2) for param in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']]
+        else:
+            return np.average(self.LEV_MEAN, weights=self.Area_km2)
+    
     def predictFlux(self, model, includeExtrap=True):
         '''
         Predict methane flux based on area bins and temperature.
@@ -839,6 +916,79 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         # ax.legend()
         ax.set_ylim(0, ax.get_ylim()[1])
         return ax
+
+    def plot_lev_cdf(self, plotLegend=True, ax=None, normalized=False, reverse=False, error_bars=False, **kwargs):
+        '''
+        Plots CDF by LEV value 
+   
+        Parameters
+        ----------
+        groupby_name : boolean
+            Group plots by dataset name, given by variable 'Name'
+        error_bars : boolean
+            Whether to include error bars (not recommended, since this plots a CDF)
+        returns: ax
+
+        '''           
+        ## colors
+        sns.set_palette("colorblind", len(self.regions()))
+
+        ## plot
+        if ax==None:
+            _, ax = plt.subplots() # figsize=(5,3)
+
+        for var in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
+            assert var in self.columns, f"LSD is missing {var} column, which is required to plot lev cdf."
+
+        if normalized:
+            plotECDFByValue(self.LEV_MEAN, ax=ax, alpha=0.4, color='black', label='All', reverse=reverse, normalized=normalized, **kwargs)
+            ax.set_ylabel('Cumulative fraction of LEV')
+        else:
+            plotECDFByValue(self.LEV_MEAN * self.Area_km2, ax=ax, alpha=0.4, color='black', label='All', reverse=reverse, normalized=normalized, **kwargs)
+            ax.set_ylabel('Cumulative LEV (km2)')
+        ax.set_xlabel('LEV fraction')
+
+        ## Legend
+        if plotLegend:
+            ax.legend(loc= 'center left', bbox_to_anchor=(1.04, 0.5)) # legend on right (see https://stackoverflow.com/a/43439132/7690975)
+
+        return ax
+
+    def plot_lev_cdf_by_lake_area(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, normalized=True, reverse=False):
+        '''
+        For LEV: Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
+        
+        Parameters
+        ----------
+        groupby_name : boolean
+            Group plots by dataset name, given by variable 'Name'
+        returns: ax
+        '''
+
+        for var in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
+            assert var in self.columns, f"LSD is missing {var} column, which is required to plot lev cdf."
+        sns.set_palette("colorblind", len(self.regions()))
+
+        ## plot
+        if ax==None:
+            _, ax = plt.subplots() # figsize=(5,3)
+
+        ## Override default axes
+        if normalized:
+            X, S = ECDFByValue(self.Area_km2, values_for_sum=self.LEV_MEAN, reverse=reverse)
+            ylabel = 'Cumulative fraction of total LEV'
+        else:
+            X, S = ECDFByValue(self.Area_km2, values_for_sum=self.LEV_MEAN * self.Area_km2, reverse=reverse)
+            ylabel = 'Cumulative LEV (km2)'
+        plotECDFByValue(X=X, S=S, ax=ax, alpha=0.6, color='black', label='All', normalized=normalized, reverse=reverse)
+        ax.set_ylabel(ylabel)
+        ax.set_title(f'{self.name}: {self.meanLev():.2%} LEV')
+
+        ## Legend
+        if plotLegend:
+            ax.legend(loc= 'center left', bbox_to_anchor=(1.04, 0.5)) # legend on right (see https://stackoverflow.com/a/43439132/7690975)
+
+        return ax    
 
 class BinnedLSD():
     '''This class represents lakes as area bins with summed areas.'''
@@ -1096,9 +1246,29 @@ def runTests():
     # print('\tPassed area_fraction.')
 
     ## Load with proper parameters
-    lsd_hl = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
-    regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+    # lsd_hl = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
+    # regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
+    # lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+
+    ## Test LEV estimate
+    lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
+    ref_names = ['CSB', 'CSD', 'PAD', 'YF']
+    pths = [
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_zHist_Oc_LEV_s.csv'
+        ]
+    ref_dfs = list(map(produceRefDs, pths)) # load ref dfs 
+    lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names)
+    lsd_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id')
+
+    ## Test plot LEV  CDF
+    lsd_lev.plot_lev_cdf()
+
+    ## Test plot LEV CDF by lake area
+    lsd_lev.plot_lev_cdf_by_lake_area()
+    print(f'Mean LEV: {lsd_lev.meanLev():0.2%}')
 
     ## Test binnedLSD
     binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.1, compute_ci=True) # compute_ci=False will disable plotting CI.
