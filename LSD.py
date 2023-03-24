@@ -954,9 +954,9 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         return ax
 
-    def plot_lev_cdf_by_lake_area(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, normalized=True, reverse=False):
+    def plot_lev_cdf_by_lake_area(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, normalized=True, reverse=False, error_bars=True):
         '''
-        For LEV: Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
+        For LEV: Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False). Errors bars plots high and low estimates too.
         
         Parameters
         ----------
@@ -974,16 +974,24 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             _, ax = plt.subplots() # figsize=(5,3)
 
         ## Override default axes
-        if normalized:
-            X, S = ECDFByValue(self.Area_km2, values_for_sum=self.LEV_MEAN, reverse=reverse)
-            ylabel = 'Cumulative fraction of total LEV'
-        else:
-            X, S = ECDFByValue(self.Area_km2, values_for_sum=self.LEV_MEAN * self.Area_km2, reverse=reverse)
-            ylabel = 'Cumulative LEV (km2)'
-        plotECDFByValue(X=X, S=S, ax=ax, alpha=0.6, color='black', label='All', normalized=normalized, reverse=reverse)
-        ax.set_ylabel(ylabel)
-        ax.set_title(f'{self.name}: {self.meanLev():.2%} LEV')
+        def makePlots(var, color='black'):
+            '''Quick helper function to avoid re-typing code'''
+            if normalized:
+                values_for_sum = self[var]
+                ylabel = 'Cumulative fraction of total LEV'
+            else:
+                values_for_sum = self[var] * self.Area_km2
+                ylabel = 'Cumulative LEV (km2)'
+            X, S = ECDFByValue(self.Area_km2, values_for_sum=values_for_sum, reverse=reverse)
+            plotECDFByValue(X=X, S=S, ax=ax, alpha=0.6, color=color, label='All', normalized=normalized, reverse=reverse)
+            ax.set_ylabel(ylabel)
+            ax.set_title(f'{self.name}: {self.meanLev():.2%} LEV')
 
+        ## Run plots
+        makePlots('LEV_MEAN')
+        if error_bars:
+            makePlots('LEV_MIN', 'grey')
+            makePlots('LEV_MAX', 'grey')
         ## Legend
         if plotLegend:
             ax.legend(loc= 'center left', bbox_to_anchor=(1.04, 0.5)) # legend on right (see https://stackoverflow.com/a/43439132/7690975)
