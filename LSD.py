@@ -272,7 +272,7 @@ def produceRefDs(ref_df_pth: str) -> True:
     df_out (pd.DataFrame): df with re-normalized and re-named columns
 
     """
-    df = pd.read_csv(ref_df_pth, index_col='Broad_class').drop(index=['invalid', 'SUM'])
+    df = pd.read_csv(ref_df_pth, index_col='Broad_class').drop(index=['invalid', 'dry land', 'SUM'])
 
     ## Add missing HISTO_100 column if needed
     for i in range(101):
@@ -660,7 +660,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
     def meanLev(self, include_ci=False):
         ''' Weighted mean of LEV by area'''
         if include_ci:
-            return [np.average(self[param], self.Area_km2) for param in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']]
+            return [np.average(self[param], weights=self.Area_km2) for param in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']]
         else:
             return np.average(self.LEV_MEAN, weights=self.Area_km2)
     
@@ -1259,7 +1259,9 @@ def runTests():
     # lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
     ## Test LEV estimate
-    lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
+    print('Load HL with joined occurrence...')
+    # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
+    lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', nrows=1000) # read smaller csv gzip version of data.
     ref_names = ['CSB', 'CSD', 'PAD', 'YF']
     pths = [
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
@@ -1339,19 +1341,19 @@ if __name__=='__test__':
 if __name__=='__main__':
     ## I/O
 
-    ## Global domain
-    # dataset = 'HL'
-    # roi_region = 'BAWLD'
-    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
-    # hl_area_var='Shp_Area'
+    ## BAWLD domain
+    dataset = 'HL'
+    roi_region = 'BAWLD'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
+    hl_area_var='Shp_Area'
 
     ## BAWLD-NAHL domain
-    dataset = 'HL'
-    roi_region = 'WBD_BAWLD'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
-    hl_area_var='Shp_Area'
+    # dataset = 'HL'
+    # roi_region = 'WBD_BAWLD'
+    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+    # hl_area_var='Shp_Area'
 
     ## BAWLD domain (Sheng lakes)
     # dataset = 'Sheng'
@@ -1392,6 +1394,28 @@ if __name__=='__main__':
 
     # ## YF compare
     # LSD(lsd.query("Region=='YF_3Y_lakes-and-ponds' or Region=='Yukon Flats Basin'"), name='compare').plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=False)
+
+    ## LEV estimate
+    print('Load HL with joined occurrence...')
+    # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values
+    lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip') # read smaller csv gzip version of data.
+    ref_names = ['CSB', 'CSD', 'PAD', 'YF']
+    pths = [
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_zHist_Oc_LEV_s.csv'
+        ]
+    ref_dfs = list(map(produceRefDs, pths)) # load ref dfs 
+    lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names)
+    lsd_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL')
+
+    ## Plot LEV  CDF
+    lsd_lev.plot_lev_cdf()
+
+    ## Plot LEV CDF by lake area
+    lsd_lev.plot_lev_cdf_by_lake_area()
+    print(f'Mean LEV: {lsd_lev.meanLev():0.2%}')
 
     ## Load WBD
     print('Load WBD...')
@@ -1440,7 +1464,6 @@ if __name__=='__main__':
     print(f'{1-(meas / extrap):.1%} of lake area is < 0.1 km2.')
     print(f'{frac:.1%} of lake area is < {limit} km2.')
     print(f'{lsd_hl_trunc.extrapolated_area_fraction(lsd, 0.0001, 0.001):.1%} of lake area is < 0.001 km2.')
-
 
     ## Report extrapolated area fractions (need method for area fractions on extrapolatedLSD)
     # print(f'Area fraction < 0.01 km2: {lsd.area_fraction(0.01):,.2%}')
@@ -1498,8 +1521,6 @@ if __name__=='__main__':
     ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
     lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax, error_bars=False)
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
-    
-    
     
     pass
 ################
