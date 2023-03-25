@@ -284,6 +284,13 @@ def produceRefDs(ref_df_pth: str) -> True:
 
     return df
 
+def loadUAVSAR(pth, name):
+    lev = gpd.read_file(pth, engine='pyogrio')
+    lev.query('edge==0 and cir_observ==1', inplace=True)
+    lev.rename(columns={'em_fractio': 'LEV_MEAN'}, inplace=True)
+    lsd_lev = LSD(lev, area_var='area_px_m2', _areaConversionFactor=1e6, name=name)
+    return lsd_lev
+
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
     '''Lake size distribution'''
@@ -964,13 +971,16 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             Group plots by dataset name, given by variable 'Name'
         returns: ax
         '''
-
-        for var in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
+        if error_bars:
+            assert_vars = ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']
+        else:
+            assert_vars = ['LEV_MEAN']
+        for var in assert_vars:
             assert var in self.columns, f"LSD is missing {var} column, which is required to plot lev cdf."
         sns.set_palette("colorblind", len(self.regions()))
 
         ## plot
-        if ax==None:
+        if ax is None:
             _, ax = plt.subplots() # figsize=(5,3)
 
         ## Override default axes
@@ -1258,11 +1268,25 @@ def runTests():
     # regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
     # lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
+    ## For LEV
+    ref_names = ['CSB', 'CSD', 'PAD', 'YF']
+
+    ## Test LEV ACDF on UAVSAR data
+    pths = ['/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
+        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
+        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
+        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp']
+
+    print('Loading UAVSAR...')
+    lsd_levs = list(map(loadUAVSAR, pths[-1::-1], ref_names[-1::-1]))
+    fig, axes = plt.subplots(2,2, sharex=True, sharey=True)
+    for i, ax in enumerate(axes.flatten()):
+        lsd_levs[i].plot_lev_cdf_by_lake_area(error_bars=False, ax=ax, plotLegend=False)
+
     ## Test LEV estimate
     print('Load HL with joined occurrence...')
     # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
     lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', nrows=1000) # read smaller csv gzip version of data.
-    ref_names = ['CSB', 'CSD', 'PAD', 'YF']
     pths = [
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
@@ -1415,7 +1439,8 @@ if __name__=='__main__':
 
     ## Plot LEV CDF by lake area
     lsd_lev.plot_lev_cdf_by_lake_area()
-    print(f'Mean LEV: {lsd_lev.meanLev():0.2%}')
+    m = lsd_lev.meanLev(include_ci=True)
+    print(f'Mean LEV: {m[0]:0.2%} ({m[1]:0.2%}, {m[2]:0.2%})')
 
     ## Load WBD
     print('Load WBD...')
