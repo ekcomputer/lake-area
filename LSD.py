@@ -1425,10 +1425,10 @@ if __name__=='__main__':
     lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip') # read smaller csv gzip version of data.
     ref_names = ['CSB', 'CSD', 'PAD', 'YF']
     pths = [
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_zHist_Oc_LEV_s.csv'
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_train_zHist_Oc_LEV_s.csv' # Note YF is split into train/holdout XX vs XX %
         ]
     ref_dfs = list(map(produceRefDs, pths)) # load ref dfs 
     lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names)
@@ -1439,8 +1439,24 @@ if __name__=='__main__':
 
     ## Plot LEV CDF by lake area
     lsd_lev.plot_lev_cdf_by_lake_area()
+    lsd_lev.plot_lev_cdf_by_lake_area(normalized=False)
     m = lsd_lev.meanLev(include_ci=True)
     print(f'Mean LEV: {m[0]:0.2%} ({m[1]:0.2%}, {m[2]:0.2%})')
+
+    ## Load measured holdout dataset
+    a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
+    a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
+    print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
+
+    ## Compare to holdout dataset
+    val_lakes_idx = [368946, 365442, 362977,362911,362697,362623,362193,361869,359283] # by Hylak_ID
+    lev_holdout = lsd_lev[np.isin(lsd_lev.idx_HL, val_lakes_idx)]
+    a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
+    print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
+    print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
+    plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
+    plt.xlabel('Predicted LEV (%)')
+    plt.ylabel('Measured LEV (%)')
 
     ## Load WBD
     print('Load WBD...')
