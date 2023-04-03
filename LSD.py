@@ -1083,7 +1083,8 @@ class BinnedLSD():
             self.isNormalized = False # init
 
             ## # Boolean to determine branch for LEV
-            hasLEV = np.all([attr in lsd.columns for attr in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']])
+            hasLEV = 'LEV_MEAN' in lsd.columns
+            hasLEV_CI = np.all([attr in lsd.columns for attr in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']])
             if not hasLEV:
                 self.binnedLEV = None
 
@@ -1110,14 +1111,16 @@ class BinnedLSD():
                 self.hasCI = True
 
                 ## bin LEV
-                if hasLEV:
+                if hasLEV_CI:
                     group_means_lev = lsd.groupby(['labels']).LEV_MEAN.mean(numeric_only=True)
                     group_means_lev_low = lsd.groupby(['labels']).LEV_MIN.mean(numeric_only=True)
                     group_means_lev_high = lsd.groupby(['labels']).LEV_MAX.mean(numeric_only=True)
                     ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high)
                     self.binnedLEV = ds_lev
                     pass
-                
+                if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
+                    self.binnedLEV = lsd.groupby(['labels']).LEV_MEAN.mean(numeric_only=True) 
+
             else: # Don't compute CI. Previously used to avoid throwing out data from regions w/o lakes in the index size bin
                 ## First, group by area bin and take sum and counts of each bin
                 group_sums = lsd.groupby(['labels']).Area_km2.sum(numeric_only=True)
@@ -1368,6 +1371,11 @@ def runTests():
     ## Test binned LEV LSD
     binned = BinnedLSD(lsd_lev.truncate(0.5,1), 0.5, 1000, compute_ci=True) # compute_ci=False will disable plotting CI.
 
+    ## Bin the reference UAVSAR LEV LSDs
+    lsd_lev_binneds = []
+    for i, lsd_lev in enumerate(lsd_levs):
+        lsd_lev_binneds.append(BinnedLSD(lsd_lev, 0.000125, 0.5))
+    
     ## Test extrap binned LEV
 
 
