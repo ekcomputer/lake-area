@@ -301,12 +301,12 @@ def produceRefDs(ref_df_pth: str) -> True:
 
     return df
 
-def loadUAVSAR(pth, name): # This can be replaced with LSD(lev_var=em_fractio)
-    lev = gpd.read_file(pth, engine='pyogrio')
-    lev.query('edge==0 and cir_observ==1', inplace=True)
-    lev.rename(columns={'em_fractio': 'LEV_MEAN'}, inplace=True)
-    lsd_lev = LSD(lev, area_var='area_px_m2', _areaConversionFactor=1e6, name=name)
-    return lsd_lev
+# def loadUAVSAR(pth, name): # This can be replaced with LSD(lev_var=em_fractio)
+#     lev = gpd.read_file(pth, engine='pyogrio')
+#     lev.query('edge==0 and cir_observ==1', inplace=True)
+#     lev.rename(columns={'em_fractio': 'LEV_MEAN'}, inplace=True)
+#     lsd_lev = LSD(lev, area_var='area_px_m2', _areaConversionFactor=1e6, name=name)
+#     return lsd_lev
 
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
@@ -388,9 +388,9 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         ## rename vars
         if region_var is not None:
-            self.rename(columns={idx_var:'idx_'+name, area_var:'Area_km2', region_var:'Region'}, inplace=True)
+            self.rename(columns={idx_var:'idx_'+name, area_var:'Area_km2', lev_var:'LEV_MEAN', region_var:'Region'}, inplace=True)
         else:
-            self.rename(columns={idx_var:'idx_'+name, area_var:'Area_km2'}, inplace=True)
+            self.rename(columns={idx_var:'idx_'+name, area_var:'Area_km2', lev_var:'LEV_MEAN'}, inplace=True)
 
         ## Assert
         assert np.all(self.Area_km2 > 0), "Not all lakes have area > 0."
@@ -1333,7 +1333,13 @@ def runTests():
         '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp']
 
     print('Loading UAVSAR...')
-    lsd_levs = list(map(loadUAVSAR, pths[-1::-1], ref_names[-1::-1]))
+    lsd_levs = []
+    for i, pth in enumerate(pths):
+        lsd_lev_tmp = LSD.from_shapefile(pth, name=ref_names[i], area_var='area_px_m2', lev_var='em_fractio', idx_var='label', _areaConversionFactor=1e6, other_vars = ['edge', 'cir_observ'])
+        lsd_lev_tmp.query('edge==0 and cir_observ==1', inplace=True)
+        lsd_levs.append(lsd_lev_tmp)
+
+    # lsd_levs = list(map(loadUAVSAR, pths[-1::-1], ref_names[-1::-1]))
     fig, axes = plt.subplots(2,2, sharex=True, sharey=True)
     for i, ax in enumerate(axes.flatten()):
         lsd_levs[i].plot_lev_cdf_by_lake_area(error_bars=False, ax=ax, plotLegend=False)
@@ -1361,17 +1367,6 @@ def runTests():
 
     ## Test binned LEV LSD
     binned = BinnedLSD(lsd_lev.truncate(0.5,1), 0.5, 1000, compute_ci=True) # compute_ci=False will disable plotting CI.
-
-    ## Load LEV data for extrap
-    pths = ['/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp',
-            '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
-            '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
-            '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp']   
-    extrap_ref_ds = []
-    for i, pth in enumerate(pths):
-        lsd_lev_tmp = LSD.from_shapefile(pth, name='uavsar', area_var='area_px_m2', lev_var='em_fractio', idx_var='label', _areaConversionFactor=1e6, other_vars = ['edge', 'cir_observ'])
-        lsd_lev_tmp.query('edge==0 and cir_observ==1', inplace=True)
-        extrap_ref_ds.append(lsd_lev_tmp)
 
     ## Test extrap binned LEV
 
