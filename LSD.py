@@ -160,7 +160,11 @@ def confidence_interval(x):
     return np.maximum(out, 0)
 
 def confidence_interval_from_sem(group_sums, group_counts, group_sem):
-    '''Confidence interval from std error of mean. Different format function than confidence_interval'''
+    '''
+    Confidence interval from std error of mean. Different format function than confidence_interval
+    
+    Output format is a df with a multi-index (0: size  bins, 1: categorical of either 'mean', 'lower', or 'upper'). Confidence intervals are values of the interval bounds, not anomalies (as would be accepted by pyplot error_bars).
+    '''
     idx = pd.MultiIndex.from_tuples([(label, stat) for label in group_sums.index for stat in ['mean', 'lower', 'upper']])
     n = group_counts.sum()
     h = group_counts * group_sem * stats.t.ppf((1 + 0.95) / 2, n - 1)
@@ -174,6 +178,19 @@ def confidence_interval_from_sem(group_sums, group_counts, group_sem):
 
     ## Set greater than 0
     return ds  
+
+def confidence_interval_from_extreme_regions(group_means, group_low, group_high, name='LEV_frac'):
+    '''
+    Instead of using within-group stats like sem, define CI as means of extreme groups
+    
+    Output format is a df with a multi-index (0: size  bins, 1: categorical of either 'mean', 'lower', or 'upper'). Confidence intervals are values of the interval bounds, not anomalies (as would be accepted by pyplot error_bars).
+    '''
+    idx = pd.MultiIndex.from_tuples([(label, stat) for label in group_means.index for stat in ['mean', 'lower', 'upper']])
+    ds = pd.Series(index=idx, name=name, dtype=float)
+    ds.loc[ds.index.get_level_values(1) == 'lower'] = group_low.values
+    ds.loc[ds.index.get_level_values(1) == 'upper'] = group_high.values
+    ds.loc[ds.index.get_level_values(1) == 'mean'] = group_means.values
+    return ds
 
 def binnedVals2Error(binned_values, n):
     '''Convert BinnedLSD.binnedValues to error bars for plotting. May need to subtract 1 from n.'''
@@ -230,7 +247,7 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list) -> True:
     names (list) : list of strings with dataset/region names in same order as ref_dfs
     Returns
     -------
-    lev : pd.DataFrame with same index as df and a column for each reference LEV distribution with name from names
+    lev : pd.DataFrame with same index as df and a column for each reference LEV distribution with name from names. Units are unitless (fraction)
 
     """
     ## Rename columns in ref_df to match df
@@ -239,7 +256,7 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list) -> True:
 
     # Multiply the dataframes element-wise based on common columns
     cols = ['LEV_' + name for name in names]
-    df_lev = pd.DataFrame(columns = cols)
+    df_lev = pd.DataFrame(columns = cols) # will have same length as df, which can become a LSD
     for i, ref_df in enumerate(ref_dfs):
         ''' df is in units of km2, ref_df is in units of px'''
         common_cols = df.columns.intersection(ref_df.columns.drop('Class_sum'))
@@ -284,7 +301,7 @@ def produceRefDs(ref_df_pth: str) -> True:
 
     return df
 
-def loadUAVSAR(pth, name):
+def loadUAVSAR(pth, name): # This can be replaced with LSD(lev_var=em_fractio)
     lev = gpd.read_file(pth, engine='pyogrio')
     lev.query('edge==0 and cir_observ==1', inplace=True)
     lev.rename(columns={'em_fractio': 'LEV_MEAN'}, inplace=True)
@@ -294,7 +311,7 @@ def loadUAVSAR(pth, name):
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
     '''Lake size distribution'''
-    def __init__(self, df, name=None, area_var=None, region_var=None, idx_var=None, name_var=None, _areaConversionFactor=1, regions=None, computeArea=False, **kwargs):
+    def __init__(self, df, name=None, area_var=None, region_var=None, idx_var=None, name_var=None, lev_var=None, _areaConversionFactor=1, regions=None, computeArea=False, other_vars=None, **kwargs):
         '''
         Loads df or gdf and creates copy only with relevant var names.
         If called with additional arguments (e.g. attributes from LSD class that is having a pd operation applied to it), they will be added as attributes
@@ -313,12 +330,16 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             Index variable
         name_var: string, optional
             Name of variable that gives name of dataset (e.g. CIR or perl). Defaults to 'unamed'.
+        lev_var: string, optional
+            Name of var for LEV fraction, if loading from a dataset that has obsered LEV>
         areaConversionFactor : float, optional, defaults to 1.
             Denominator for unit conversion. 1 for km2, 1e6 for m2
         regions : list, optional
             If provided, will transform numeric regions to text
         computeArea : Boolean, default:False
             If provided, will compute Area from geometry. Doesn't need a crs, but needs user input for 'areaConversionFactor.'
+        other_vars : list, optional
+            If provided, LSD will retain these columns.
         ''' 
 
         ## Add default name
@@ -330,6 +351,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             idx_var = 'idx_'+name
         if 'Area_km2' in df.columns:
             area_var = 'Area_km2'
+        if 'em_fractio' in df.columns:
+            lev_var = 'em_fractio'
         if 'Region' in df.columns:
             region_var = 'Region'
         if 'geometry' in df.columns: # if I am computing geometry, etc.
@@ -343,10 +366,15 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         else: g_var = None
 
         ## Choose which columns to keep (based on function arguments, or existing vars with default names that have become arguments)
-        columns = [col for col in [idx_var, area_var, region_var, name_var, geometry_var, mg_var, g_var] if col is not None] # allows 'region_var' to be None
+        columns = [col for col in [idx_var, area_var, region_var, name_var, geometry_var, mg_var, g_var, lev_var] if col is not None] # allows 'region_var' to be None
 
         ## Retain LEV variables if they exist
         columns += [col for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX'] if col in df.columns] # 'LEV_CSB', 'LEV_CSD', 'LEV_PAD', 'LEV_YF',       'LEV_MEAN', 'LEV_MIN', 'LEV_MAX'
+        
+        ##  Retain other vars, if provided
+        if other_vars is not None:
+            columns += [col for col in other_vars]
+
         super().__init__(df[columns]) # This inititates the class as a DataFrame and sets self to be the output. By importing a slice, we avoid mutating the original var for 'df'. Problem here is that subsequent functions might not recognize the class as an LSD. CAn I re-write without using super()?
 
         ## Compute areas if they don't exist
@@ -402,12 +430,17 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         return public_attrs(self)
     
     @classmethod
-    def from_shapefile(cls, path, name=None, area_var=None, region_var=None, idx_var=None, **kwargs): #**kwargs): #name='unamed', area_var='Area', region_var='NaN', idx_var='OID_'): # **kwargs
+    def from_shapefile(cls, path, name=None, area_var=None, lev_var=None, region_var=None, idx_var=None, **kwargs): #**kwargs): #name='unamed', area_var='Area', region_var='NaN', idx_var='OID_'): # **kwargs
         ''' 
         Load from shapefile on disk.
         Accepts all arguments to LSD.
         '''
-        columns = [col for col in [idx_var, area_var, region_var] if col is not None] # allows 'region_var' to be None
+        columns = [col for col in [idx_var, area_var, lev_var, region_var] if col is not None] # allows 'region_var' to be None
+        
+        ##  Retain other vars, if provided
+        if 'other_vars' in kwargs:
+            columns += [col for col in kwargs['other_vars']]
+
         read_geometry = False
         if 'computeArea' in kwargs:
             if kwargs['computeArea']==True:
@@ -418,8 +451,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         return cls(df, name=name, area_var=area_var, region_var=region_var, idx_var=idx_var, **kwargs)
     
     @classmethod
-    def from_paths(cls, file_pattern, name='unamed', area_var=None, region_var=None, idx_var=None, exclude=None, **kwargs):
-        '''Load in serial with my custom class
+    def from_paths(cls, file_pattern, name='unamed', area_var=None, lev_var=None, region_var=None, idx_var=None, exclude=None, **kwargs):
+        '''Load in serial with my custom class, based on a glob file pattern
          (can be parallelized with multiprocessing Pool.map). Help from ChatGPT
 
          Exclude: array_like
@@ -435,7 +468,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         # loop through the shapefiles and load each one using Geopandas
         for shpfile in shapefiles:
-            lsd = cls.from_shapefile(shpfile, area_var=area_var, region_var=region_var, idx_var=idx_var, **kwargs)
+            lsd = cls.from_shapefile(shpfile, area_var=area_var, lev_var=lev_var, region_var=region_var, idx_var=idx_var, **kwargs)
             dfs.append(lsd)
         
         # merge all the loaded shapefiles into a single GeoDataFrame
@@ -1049,6 +1082,11 @@ class BinnedLSD():
             lsd['labels'] = pd.cut(lsd.Area_km2, self.area_bins, right=False)
             self.isNormalized = False # init
 
+            ## # Boolean to determine branch for LEV
+            hasLEV = np.all([attr in lsd.columns for attr in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']])
+            if not hasLEV:
+                self.binnedLEV = None
+
             ## Bin
             if compute_ci:
                 #######
@@ -1060,6 +1098,7 @@ class BinnedLSD():
 
                 ## Normalize before binning
                 divisor = group_sums.loc[group_sums.index[-1]] # sum of lake areas in largest bin (Careful: can't be == 0 !!)
+                if divisor == 0: warn("Careful, normalizing by zero.")
                 group_sums /= divisor
                 self.isNormalized = True
                 self.binnedValuesNotNormalized = lsd.groupby('labels').Area_km2.sum(numeric_only=True) # gives o.g. group_sums, e.g. Not normalized
@@ -1069,8 +1108,17 @@ class BinnedLSD():
                 self.binnedValues = ds
                 self.binnedCounts = group_counts
                 self.hasCI = True
+
+                ## bin LEV
+                if hasLEV:
+                    group_means_lev = lsd.groupby(['labels']).LEV_MEAN.mean(numeric_only=True)
+                    group_means_lev_low = lsd.groupby(['labels']).LEV_MIN.mean(numeric_only=True)
+                    group_means_lev_high = lsd.groupby(['labels']).LEV_MAX.mean(numeric_only=True)
+                    ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high)
+                    self.binnedLEV = ds_lev
+                    pass
                 
-            else: # Don't compute CI. Use to avoid throwing out data from regions w/o lakes in the index size bin
+            else: # Don't compute CI. Previously used to avoid throwing out data from regions w/o lakes in the index size bin
                 ## First, group by area bin and take sum and counts of each bin
                 group_sums = lsd.groupby(['labels']).Area_km2.sum(numeric_only=True)
                 group_counts = lsd.groupby(['labels']).Area_km2.count()
@@ -1083,6 +1131,9 @@ class BinnedLSD():
                 self.binnedValues = group_sums
                 self.binnedCounts = group_counts
                 self.hasCI = False
+
+                if hasLEV:
+                    self.binnedLEV = lsd.groupby(['labels']).LEV_MEAN.mean(numeric_only=True)            
             
             for attr in ['isTruncated', 'truncationLimits', 'name', 'labels']: # copy attribute from parent LSD (note 'labels' is added in earlier this method)
                 setattr(self, attr, getattr(lsd, attr))
@@ -1182,6 +1233,10 @@ class BinnedLSD():
             ax.set_ylabel('km2')
         return
 
+    def plotLEV():
+        '''Placeholder'''
+        pass
+
     def predictFlux(self, model):
         '''
         Predict methane flux based on area bins and temperature. Assumes temp is constant for all bins.
@@ -1265,8 +1320,8 @@ def runTests():
 
     ## Load with proper parameters
     # lsd_hl = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
-    # regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    # lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+    regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
+    lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
     ## For LEV
     ref_names = ['CSB', 'CSD', 'PAD', 'YF']
@@ -1286,7 +1341,7 @@ def runTests():
     ## Test LEV estimate
     print('Load HL with joined occurrence...')
     # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
-    lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', nrows=1000) # read smaller csv gzip version of data.
+    lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', nrows=10000) # read smaller csv gzip version of data.
     pths = [
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
@@ -1303,6 +1358,23 @@ def runTests():
     ## Test plot LEV CDF by lake area
     lsd_lev.plot_lev_cdf_by_lake_area()
     print(f'Mean LEV: {lsd_lev.meanLev():0.2%}')
+
+    ## Test binned LEV LSD
+    binned = BinnedLSD(lsd_lev.truncate(0.5,1), 0.5, 1000, compute_ci=True) # compute_ci=False will disable plotting CI.
+
+    ## Load LEV data for extrap
+    pths = ['/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp',
+            '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
+            '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
+            '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp']   
+    extrap_ref_ds = []
+    for i, pth in enumerate(pths):
+        lsd_lev_tmp = LSD.from_shapefile(pth, name='uavsar', area_var='area_px_m2', lev_var='em_fractio', idx_var='label', _areaConversionFactor=1e6, other_vars = ['edge', 'cir_observ'])
+        lsd_lev_tmp.query('edge==0 and cir_observ==1', inplace=True)
+        extrap_ref_ds.append(lsd_lev_tmp)
+
+    ## Test extrap binned LEV
+
 
     ## Test binnedLSD
     binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.1, compute_ci=True) # compute_ci=False will disable plotting CI.
