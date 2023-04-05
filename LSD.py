@@ -600,13 +600,13 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         lsd = LSD(self, **attrs)
 
         ## Computation
-        binned_ref = BinnedLSD(ref_LSD.truncate(0, tmax), btm=limit, top=emax, compute_ci=False)
+        binned_ref = BinnedLSD(ref_LSD.truncate(0, tmax), btm=limit, top=emax, compute_ci_lsd=False)
         lsd.truncate(emax, np.inf, inplace=True)
         lsd.extrapolate(binned_ref)
         num = lsd.sumAreas(includeExtrap=True)
 
         lsd = LSD(self, **attrs) # re-init
-        binned_ref = BinnedLSD(ref_LSD.truncate(0, tmax), bottomLim, emax, compute_ci=False)
+        binned_ref = BinnedLSD(ref_LSD.truncate(0, tmax), bottomLim, emax, compute_ci_lsd=False)
         lsd.truncate(emax, np.inf, inplace=True)
         lsd.extrapolate(binned_ref)
         denom = lsd.sumAreas(includeExtrap=True)
@@ -615,7 +615,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         # tmin, tmax = (0.0001,30) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
         # emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-        # binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci=True) # reference distrib (try 5, 0.5 as second args)
+        # binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True) # reference distrib (try 5, 0.5 as second args)
 
 
         ## update area fract on original lsd and return
@@ -623,7 +623,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         setattr(self, attr, area_fraction) # Save value within LSD structure
         return area_fraction
     
-    def extrapolate(self, ref_BinnedLSD):
+    def extrapolate(self, ref_BinnedLSD, ref_BinnedLEV=None):
         '''
         Extrapolate by filling empty bins below the dataset's resolution.
 
@@ -631,9 +631,10 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         
         Parameters
         ----------
-        refBinnedLSD : binnedLSD
+        ref_BinnedLSD : binnedLSD
             Reference binnedLSD used for extrapolation.
-
+        ref_BinnedLEV : binnedLSD that has LEV 
+            Reference binnedLSD used for LEV extrapolation.This binned LSD probably comes from different data, hence the additional argument.
 
         ''' 
         # returns a binnedLSD   
@@ -649,15 +650,21 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         assert ref_BinnedLSD.isNormalized
         if ref_BinnedLSD.truncationLimits[1] > 5:
             warn("Reference binned LSD should be top truncated to <= ~ 5 km2 to avoid too large of an index region (highly variable and HR lsd might be biased low in a large index region).")
-        
+        if ref_BinnedLEV is not None:
+            assert hasattr(ref_BinnedLEV, 'binnedLEV'), "If ref_BinnedLEV is provided, it must have a a binnedLEV attribute."
+            assert ref_BinnedLSD.nbins == ref_BinnedLEV.nbins, "nbins differs between ref_BinnedLSD and ref_BinnedLEV"
         ## Perform the extrapolation (bin self by its bottom truncation limit to the indexTopLim, and simply multiply it by the normalized refBinnedLSD to do the extrapolation)!
         index_region_sum = self.truncate(ref_BinnedLSD.topEdge, ref_BinnedLSD.truncationLimits[1]).Area_km2.sum() # Sum all area in LSD in the index region, defined by the topEdge and top-truncation limit of the ref LSD.
         last = ref_BinnedLSD.binnedValues.index.get_level_values(0).max() # last index with infinity to drop (use as mask)
         binned_values = ref_BinnedLSD.binnedValues.drop(index=last) * index_region_sum # remove the last entries, which are mean, lower, upper for the bin that goes to np.inf
         
         ## Return in place a new attribute called extrapLSD which is an instance of a binnedLSD
-        self.extrapLSD = BinnedLSD(btm=ref_BinnedLSD.btmEdge, top=ref_BinnedLSD.topEdge, nbins=ref_BinnedLSD.nbins, compute_ci=ref_BinnedLSD.hasCI, binned_values=binned_values)
+        self.extrapLSD = BinnedLSD(btm=ref_BinnedLSD.btmEdge, top=ref_BinnedLSD.topEdge, nbins=ref_BinnedLSD.nbins, compute_ci_lsd=ref_BinnedLSD.hasCI_lsd, binned_values=binned_values)
        
+        ## Add binnedLEV, if specified. Technically, not even extrapolating, just providing the reference distribution, but using same syntax as for LSD for compatibility.
+        if ref_BinnedLEV is not None:
+            self.extrapLSD.binnedLEV = ref_BinnedLEV.binnedLEV
+
         ## Update its attributes
         self.extrapLSD.indexTopLim = ref_BinnedLSD.truncationLimits[1] # since bottom of index region matches, ensure top does as well in definition.
         self.extrapLSD.isExtrapolated=True
@@ -857,7 +864,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         if ax==None:
             _, ax = plt.subplots() # figsize=(5,3)
         
-        if self.extrapLSD.hasCI: # Need to extract means in a different way if there is no CI
+        if self.extrapLSD.hasCI_lsd: # Need to extract means in a different way if there is no CI
             means = self.extrapLSD.binnedValues.loc[:, 'mean']
         else:
             means = self.extrapLSD.binnedValues
@@ -870,7 +877,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         S0 = np.cumsum(means) # pre-pend the binned vals
 
         ## Add error bars
-        if error_bars == True and self.extrapLSD.hasCI:
+        if error_bars == True and self.extrapLSD.hasCI_lsd:
             
             assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
             ## as error bars (miniscule)
@@ -920,7 +927,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         if ax==None:
             _, ax = plt.subplots() # figsize=(5,3)
 
-        means = self.extrapLSD.binnedG_day # used to be a branch for if self.extrapLSD.hasCI...
+        means = self.extrapLSD.binnedG_day # used to be a branch for if self.extrapLSD.hasCI_lsd...
         X, S = ECDFByValue(self.Area_km2, values_for_sum=self.est_g_day * 365.25 / 1e12, reverse=False) # scale to Tg / yr
         geom_means = np.array(list(map(interval_geometric_mean, means.index))) # take geom mean of each interval
         # X = np.concatenate((geom_means, X))
@@ -929,7 +936,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         S0 = np.cumsum(means)* 365.25 / 1e12 # pre-pend the binned vals
 
         ## Add error bars
-        if error_bars == True and self.extrapLSD.hasCI:
+        if error_bars == True and self.extrapLSD.hasCI_lsd:
             raise ValueError('No branch yet written for flux plots with error bars.')
             assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
             ## as error bars (miniscule)
@@ -1043,11 +1050,11 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
 class BinnedLSD():
     '''This class represents lakes as area bins with summed areas.'''
-    def __init__(self, lsd=None, btm=None, top=None, nbins=100, compute_ci=True, binned_values=None, extreme_regions=None):
+    def __init__(self, lsd=None, btm=None, top=None, nbins=100, compute_ci_lsd=False, compute_ci_lev=False, binned_values=None, extreme_regions_lsd=None, extreme_regions_lev=None):
         '''
         Bins will have left end closed and right end open.
         When creating this class to extrapolate a LSD, ensure that lsd is top-truncated to ~1km to reduce variability in bin sums. This chosen top limit will be used as the upper limit to the index region (used for normalization) and will be applied to the target LSD used for extrapolation.
-        When creating from an lsd, give lsd, btm, top [, nbins, compute_ci] arguments. When creating from existing binned values (e.g.) from extrapolation, give btm, top, nbins, compute_ci and binnedValues args.
+        When creating from an lsd, give lsd, btm, top [, nbins, compute_ci_lsd] arguments. When creating from existing binned values (e.g.) from extrapolation, give btm, top, nbins, compute_ci_lsd and binnedValues args.
         
         Parameters
         ----------
@@ -1059,13 +1066,16 @@ class BinnedLSD():
             Rightmost edge of top bin. Note: np.inf will be added to it to create one additional top bin for index region.
         nbins : int
             Number of bins to use for np.geomspace (not counting the top bin that goes to np.inf when 'lsd' arg is given).
-        compute_ci : Boolean
-            Compute confidence interval by breaking down by region.
+        compute_ci_lsd : Boolean
+            Compute confidence interval for lsd by breaking down by region. Function will always bin LSD (at least without CI)
+        compute_ci_lev : Boolean
+            Compute confidence interval for lev by breaking down by region. Function will always bin LEV (at least without CI)
         binnedValues : pandas.DataFrame
             Used for LSD.extrapolate(). Has structure similar to what is returned by self.binnedValues if called with lsd argument. Format: multi-index with two columns, first giving bins, and second giving normalized lake area sum statistic (mean, upper, lower).
-        extreme_regions : array-like
-            List of region names to use for min/max area/LEV
-
+        extreme_regions_lsd : array-like
+            List of region names to use for min/max area
+        extreme_regions_lev : array-like
+            List of region names to use for min/max LEV
         '''
         ## Common branch
         self.btmEdge = btm
@@ -1091,19 +1101,19 @@ class BinnedLSD():
                 self.binnedLEV = None
 
             ## Bin
-            if compute_ci:
-                assert extreme_regions is not None, "If compute_ci is True, extreme_regions must be provided"
-                assert np.all([region in lsd.Region.unique() for region in extreme_regions]), "One region name in extreme_regions is not present in lsd."
+            if compute_ci_lsd:
+                assert extreme_regions_lsd is not None, "If compute_ci_lsd is True, extreme_regions_lsd must be provided"
+                assert np.all([region in lsd.Region.unique() for region in extreme_regions_lsd]), "One region name in extreme_regions_lsd is not present in lsd."
                 ## First, group by area bin and take sum and counts of each bin
                 group_sums = lsd.groupby(['size_bin']).Area_km2.sum(numeric_only=True)
-                group_low_sums, group_high_sums = [lsd[lsd['Region']==region].groupby(['size_bin']).Area_km2.sum() for region in extreme_regions]
+                group_low_sums, group_high_sums = [lsd[lsd['Region']==region].groupby(['size_bin']).Area_km2.sum() for region in extreme_regions_lsd]
                 group_counts = lsd.groupby(['size_bin']).Area_km2.count()
 
                 ## Create a series to emulate the structure I used to use to store region confidence intervals                  
                 ds = confidence_interval_from_extreme_regions(group_sums, group_low_sums, group_high_sums, name='Area_km2')
                 self.binnedValues = ds
                 self.binnedCounts = group_counts
-                self.hasCI = True
+                self.hasCI_lsd = True
 
                 ## Normalize areas after binning
                 divisor = ds.loc[ds.index.get_level_values(0)[-1], :] # sum of lake areas in largest bin (Careful: can't be == 0 !!)
@@ -1111,18 +1121,6 @@ class BinnedLSD():
                 ds /= divisor
                 self.isNormalized = True
                 self.binnedValuesNotNormalized = lsd.groupby('size_bin').Area_km2.sum(numeric_only=True) # gives o.g. group_sums, e.g. Not normalized
-                
-                ## bin LEV
-                if hasLEV:
-                    group_means_lev = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
-                    # group_means_lev_low = lsd.groupby(['size_bin']).LEV_MIN.mean(numeric_only=True)
-                    # group_means_lev_high = lsd.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
-                    group_means_lev_low, group_means_lev_high = [lsd[lsd['Region']==region].groupby(['size_bin']).LEV_MEAN.sum() for region in extreme_regions]
-                    ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high, name='LEV_frac')
-                    self.binnedLEV = ds_lev
-                    pass
-                # if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
-                #     self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) 
 
             else: # Don't compute CI. Previously used to avoid throwing out data from regions w/o lakes in the index size bin
                 ## First, group by area bin and take sum and counts of each bin
@@ -1136,9 +1134,23 @@ class BinnedLSD():
                 self.binnedValuesNotNormalized = lsd.groupby('size_bin').Area_km2.sum(numeric_only=True) # gives o.g. group_sums, e.g. Not normalized
                 self.binnedValues = group_sums
                 self.binnedCounts = group_counts
-                self.hasCI = False
+                self.hasCI_lsd = False
 
-                if hasLEV:
+            ## bin LEV
+            if hasLEV:
+                if compute_ci_lev:
+                    assert extreme_regions_lev is not None, "If compute_ci_lsd is True, and LSD has LEV, extreme_regions_lev must be provided"
+                    assert np.all([region in lsd.Region.unique() for region in extreme_regions_lev]), "One region name in extreme_regions_lsd is not present in lsd."
+                    group_means_lev = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
+                    # group_means_lev_low = lsd.groupby(['size_bin']).LEV_MIN.mean(numeric_only=True)
+                    # group_means_lev_high = lsd.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
+                    group_means_lev_low, group_means_lev_high = [lsd[lsd['Region']==region].groupby(['size_bin']).LEV_MEAN.sum() for region in extreme_regions_lev]
+                    ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high, name='LEV_frac')
+                    self.binnedLEV = ds_lev
+                    pass
+                # if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
+                #     self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) 
+                else:
                     self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)            
             
             for attr in ['isTruncated', 'truncationLimits', 'name', 'size_bin']: # copy attribute from parent LSD (note 'size_bin' is added in earlier this method)
@@ -1149,11 +1161,11 @@ class BinnedLSD():
                 warn('The first bin has count zero. Did you set the lowest bin edge < the lower truncation limit of the dataset?')   
                     
         else: # used for extrapolation
-            assert btm is not None and top is not None and nbins is not None and compute_ci is not None, "If 'binned_values' argument is given, so must be 'btm', 'top', 'nbins', and 'compute_ci'."
+            assert btm is not None and top is not None and nbins is not None and compute_ci_lsd is not None, "If 'binned_values' argument is given, so must be 'btm', 'top', 'nbins', and 'compute_ci_lsd'."
             self.bin_edges = 'See self.refBinnedLSD'
             self.area_bins = 'See self.refBinnedLSD'
             self.isNormalized = False
-            self.hasCI = compute_ci # retain from arg
+            self.hasCI_lsd = compute_ci_lsd # retain from arg
             self.binnedValues = binned_values # retain from arg
             self.binnedCounts = 'See self.refBinnedLSD'
         
@@ -1186,12 +1198,12 @@ class BinnedLSD():
         if self.isNormalized:
             warn('Careful: binnedLSD is normalized, and you may be summing the top bin that gives the index region.')
 
-        if self.hasCI:
+        if self.hasCI_lsd:
             if ci:
                 return self.binnedValues.loc[:,'mean'].sum(), self.binnedValues.loc[:,'lower'].sum(), self.binnedValues.loc[:,'upper'].sum()
             else:
                 return self.binnedValues.loc[:,'mean'].sum()
-        else: # no .hasCI
+        else: # no .hasCI_lsd
             if ci:
                 raise ValueError('BinnedLSD doesnt have a confidence interval, so it cant be included in sum.')
             else:
@@ -1211,7 +1223,7 @@ class BinnedLSD():
         ## Remove last bin, if desired
         if self.isExtrapolated==False:
             if show_rightmost == False: # if I need to cut off rightmost bin
-                # if self.hasCI: # sloppy fix
+                # if self.hasCI_lsd: # sloppy fix
                 #     binned_values = pd.Series({'mean': binned_values.values[0].iloc[:-1],
                 #                                 'lower': binned_values.values[1].iloc[:-1],
                 #                                 'upper': binned_values.values[2].iloc[:-1]})
@@ -1224,7 +1236,7 @@ class BinnedLSD():
         fig, ax = plt.subplots()
         # plt.bar(self.bin_edges[:-1], binned_values)
 
-        if self.hasCI:
+        if self.hasCI_lsd:
             ## Convert confidence interval vals to anomalies
             yerr = binnedVals2Error(binned_values, self.nbins+diff)
             ax.bar(range(self.nbins), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
@@ -1259,7 +1271,7 @@ class BinnedLSD():
         '''
         assert hasattr(self, 'temp'), "Binned LSD needs a temp attribute in order to predict flux."
         assert self.isNormalized == False, "Binned LSD is normalized so values will be unitless for area."
-        if self.hasCI: # Need to extract means in a different way if there is no CI
+        if self.hasCI_lsd: # Need to extract means in a different way if there is no CI
             means = self.binnedValues.loc[:, 'mean']
             geom_mean_areas = np.array(list(map(interval_geometric_mean, means.index)))
         else:
@@ -1272,7 +1284,7 @@ class BinnedLSD():
         + model.params['TEMP'] * self.temp) # jja, ann, son, mam
 
         ## Flux (flux rate, gCH4/day)
-        if self.hasCI:
+        if self.hasCI_lsd:
             est_g_day = est_mg_m2_day * self.binnedValues.loc[:,'mean'] * 1e3 # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
 
         self._total_flux_Tg_yr = est_g_day.sum() * 365.25 / 1e12 # see Tg /yr
@@ -1372,7 +1384,7 @@ def runTests():
     print(f'Mean LEV: {lsd_lev.meanLev():0.2%}')
 
     ## Test binned LEV HL LSD (won't actually use this for analysis)
-    # binned = BinnedLSD(lsd_lev.truncate(0.5,1), 0.5, 1000, compute_ci=True) # compute_ci=False will disable plotting CI.
+    # binned = BinnedLSD(lsd_lev.truncate(0.5,1), 0.5, 1000, compute_ci_lsd=True) # compute_ci_lsd=False will disable plotting CI.
 
     ## Test 1: Bin the reference UAVSAR LEV LSDs
     # lsd_lev_binneds = []
@@ -1380,26 +1392,27 @@ def runTests():
     #     lsd_lev_binneds.append(BinnedLSD(lsd_lev, 0.000125, 0.5).binnedLEV)
     # pd.DataFrame(lsd_lev_binneds).T
 
-    ## Test 2: 
+    ## Test 2: Concat all ref LEV distributions and bin
     lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
     # def ci_from_named_regions(LSD, regions):
-    lsd_lev_cat_binned = BinnedLSD(lsd_lev_cat, 0.000125, 0.5, compute_ci=True, extreme_regions=['CSD', 'YF'])
-
-
-    ## Test extrap binned LEV
-
+    binned_lev = BinnedLSD(lsd_lev_cat, 0.000125, 0.5, compute_ci_lev=True, extreme_regions_lev=['CSD', 'YF'])
 
     ## Test binnedLSD
-    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.1, compute_ci=True) # compute_ci=False will disable plotting CI.
+    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.1, compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']) # compute_ci_lsd=False will disable plotting CI.
     binned.plot()
 
     ## Test extrapolate on small data
-    lsd_hl_trunc = lsd_hl.truncate(0.1, np.inf, inplace=False) # Beware chaining unless I return a new variable.
-    lsd_hl_trunc.extrapolate(binned)
-    
+    # lsd_hl_trunc = lsd_hl.truncate(0.1, np.inf, inplace=False) # Beware chaining unless I return a new variable.
+    # lsd_hl_trunc.extrapolate(binned, binned_lev)
+
+    ## Test extrapolate on small data with binned LEV
+    lsd_hl_trunc = lsd_lev.truncate(0.1, np.inf, inplace=False) # Beware chaining unless I return a new variable.
+    lsd_hl_trunc.extrapolate(binned, binned_lev)
+
     ## Compare extrapolated sums
     lsd_hl_trunc.extrapLSD.sumAreas()
     lsd_hl_trunc.sumAreas()
+
 
     ## Compare extrapolated area fractions
     # frac = lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.0001, 0.01)
@@ -1577,7 +1590,7 @@ if __name__=='__main__':
     ## Extrapolate
     tmin, tmax = (0.0001,5) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
     emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci=True) # reference distrib (try 5, 0.5 as second args)
+    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True) # reference distrib (try 5, 0.5 as second args)
     lsd_hl_trunc = lsd_hl.truncate(emax, np.inf) # Beware chaining unless I return a new variable. # Try 0.1
     lsd_hl_trunc.extrapolate(binned_ref)
     meas=lsd_hl.sumAreas(includeExtrap=False)
@@ -1640,7 +1653,7 @@ if __name__=='__main__':
     emax = 0.5 # Extrapolation limit emax defines the left bound of the index region (and right bound of the extrapolation region).
     # binned_ref = BinnedLSD(lsd_wbd.truncate(tmin, tmax), tmin, emax) # uncomment to use self-extrap
     # txt='self-'
-    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci=True)
+    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True)
     txt=''
     lsd_wbd_trunc = lsd_wbd.truncate(emax, np.inf)
     lsd_wbd_trunc.extrapolate(binned_ref)
