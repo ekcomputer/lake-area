@@ -165,7 +165,7 @@ def confidence_interval_from_sem(group_sums, group_counts, group_sem):
     
     Output format is a df with a multi-index (0: size  bins, 1: categorical of either 'mean', 'lower', or 'upper'). Confidence intervals are values of the interval bounds, not anomalies (as would be accepted by pyplot error_bars).
     '''
-    idx = pd.MultiIndex.from_tuples([(label, stat) for label in group_sums.index for stat in ['mean', 'lower', 'upper']])
+    idx = pd.MultiIndex.from_tuples([(label, stat) for label in group_sums.index for stat in ['mean', 'lower', 'upper']], names=['size_bin', 'stat'])
     n = group_counts.sum()
     h = group_counts * group_sem * stats.t.ppf((1 + 0.95) / 2, n - 1)
     lower = np.maximum(group_sums - h, 0)
@@ -185,7 +185,7 @@ def confidence_interval_from_extreme_regions(group_means, group_low, group_high,
     
     Output format is a df with a multi-index (0: size  bins, 1: categorical of either 'mean', 'lower', or 'upper'). Confidence intervals are values of the interval bounds, not anomalies (as would be accepted by pyplot error_bars).
     '''
-    idx = pd.MultiIndex.from_tuples([(label, stat) for label in group_means.index for stat in ['mean', 'lower', 'upper']])
+    idx = pd.MultiIndex.from_tuples([(label, stat) for label in group_means.index for stat in ['mean', 'lower', 'upper']], names=['size_bin', 'stat'])
     ds = pd.Series(index=idx, name=name, dtype=float)
     ds.loc[ds.index.get_level_values(1) == 'lower'] = group_low.values
     ds.loc[ds.index.get_level_values(1) == 'upper'] = group_high.values
@@ -1043,7 +1043,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
 class BinnedLSD():
     '''This class represents lakes as area bins with summed areas.'''
-    def __init__(self, lsd=None, btm=None, top=None, nbins=100, compute_ci=True, binned_values=None):
+    def __init__(self, lsd=None, btm=None, top=None, nbins=100, compute_ci=True, binned_values=None, extreme_regions=None):
         '''
         Bins will have left end closed and right end open.
         When creating this class to extrapolate a LSD, ensure that lsd is top-truncated to ~1km to reduce variability in bin sums. This chosen top limit will be used as the upper limit to the index region (used for normalization) and will be applied to the target LSD used for extrapolation.
@@ -1063,6 +1063,8 @@ class BinnedLSD():
             Compute confidence interval by breaking down by region.
         binnedValues : pandas.DataFrame
             Used for LSD.extrapolate(). Has structure similar to what is returned by self.binnedValues if called with lsd argument. Format: multi-index with two columns, first giving bins, and second giving normalized lake area sum statistic (mean, upper, lower).
+        extreme_regions : array-like
+            List of region names to use for min/max area/LEV
 
         '''
         ## Common branch
@@ -1079,66 +1081,67 @@ class BinnedLSD():
             lsd = LSD(lsd, **attrs) # create copy
             self.bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6)
             self.area_bins = pd.IntervalIndex.from_breaks(self.bin_edges, closed='left')
-            lsd['labels'] = pd.cut(lsd.Area_km2, self.area_bins, right=False)
+            lsd['size_bin'] = pd.cut(lsd.Area_km2, self.area_bins, right=False)
             self.isNormalized = False # init
 
             ## # Boolean to determine branch for LEV
             hasLEV = 'LEV_MEAN' in lsd.columns
-            hasLEV_CI = np.all([attr in lsd.columns for attr in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']])
+            # hasLEV_CI = np.all([attr in lsd.columns for attr in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']])
             if not hasLEV:
                 self.binnedLEV = None
 
             ## Bin
             if compute_ci:
-                #######
+                assert extreme_regions is not None, "If compute_ci is True, extreme_regions must be provided"
+                assert np.all([region in lsd.Region.unique() for region in extreme_regions]), "One region name in extreme_regions is not present in lsd."
                 ## First, group by area bin and take sum and counts of each bin
-                group_sums = lsd.groupby(['labels']).Area_km2.sum(numeric_only=True)
-                group_counts = lsd.groupby(['labels']).Area_km2.count()
-                group_sem = lsd.groupby(['labels']).Area_km2.sem()
-                group_sem *= 0.1 # Quick fix to see if I should use T-distrib confidence interval instead...
+                group_sums = lsd.groupby(['size_bin']).Area_km2.sum(numeric_only=True)
+                group_low_sums, group_high_sums = [lsd[lsd['Region']==region].groupby(['size_bin']).Area_km2.sum() for region in extreme_regions]
+                group_counts = lsd.groupby(['size_bin']).Area_km2.count()
 
-                ## Normalize before binning
-                divisor = group_sums.loc[group_sums.index[-1]] # sum of lake areas in largest bin (Careful: can't be == 0 !!)
-                if divisor == 0: warn("Careful, normalizing by zero.")
-                group_sums /= divisor
-                self.isNormalized = True
-                self.binnedValuesNotNormalized = lsd.groupby('labels').Area_km2.sum(numeric_only=True) # gives o.g. group_sums, e.g. Not normalized
-                
                 ## Create a series to emulate the structure I used to use to store region confidence intervals                  
-                ds = confidence_interval_from_sem(group_sums, group_counts, group_sem)
+                ds = confidence_interval_from_extreme_regions(group_sums, group_low_sums, group_high_sums, name='Area_km2')
                 self.binnedValues = ds
                 self.binnedCounts = group_counts
                 self.hasCI = True
 
+                ## Normalize areas after binning
+                divisor = ds.loc[ds.index.get_level_values(0)[-1], :] # sum of lake areas in largest bin (Careful: can't be == 0 !!)
+                if np.any(divisor == 0): warn("Careful, normalizing by zero.")
+                ds /= divisor
+                self.isNormalized = True
+                self.binnedValuesNotNormalized = lsd.groupby('size_bin').Area_km2.sum(numeric_only=True) # gives o.g. group_sums, e.g. Not normalized
+                
                 ## bin LEV
-                if hasLEV_CI:
-                    group_means_lev = lsd.groupby(['labels']).LEV_MEAN.mean(numeric_only=True)
-                    group_means_lev_low = lsd.groupby(['labels']).LEV_MIN.mean(numeric_only=True)
-                    group_means_lev_high = lsd.groupby(['labels']).LEV_MAX.mean(numeric_only=True)
-                    ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high)
+                if hasLEV:
+                    group_means_lev = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
+                    # group_means_lev_low = lsd.groupby(['size_bin']).LEV_MIN.mean(numeric_only=True)
+                    # group_means_lev_high = lsd.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
+                    group_means_lev_low, group_means_lev_high = [lsd[lsd['Region']==region].groupby(['size_bin']).LEV_MEAN.sum() for region in extreme_regions]
+                    ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high, name='LEV_frac')
                     self.binnedLEV = ds_lev
                     pass
-                if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
-                    self.binnedLEV = lsd.groupby(['labels']).LEV_MEAN.mean(numeric_only=True) 
+                # if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
+                #     self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) 
 
             else: # Don't compute CI. Previously used to avoid throwing out data from regions w/o lakes in the index size bin
                 ## First, group by area bin and take sum and counts of each bin
-                group_sums = lsd.groupby(['labels']).Area_km2.sum(numeric_only=True)
-                group_counts = lsd.groupby(['labels']).Area_km2.count()
+                group_sums = lsd.groupby(['size_bin']).Area_km2.sum(numeric_only=True)
+                group_counts = lsd.groupby(['size_bin']).Area_km2.count()
 
                 ## Normalize before binning
                 divisor = group_sums.loc[group_sums.index[-1]] # sum of lake areas in largest bin (Careful: can't be == 0 !!)
                 group_sums /= divisor
                 self.isNormalized = True
-                self.binnedValuesNotNormalized = lsd.groupby('labels').Area_km2.sum(numeric_only=True) # gives o.g. group_sums, e.g. Not normalized
+                self.binnedValuesNotNormalized = lsd.groupby('size_bin').Area_km2.sum(numeric_only=True) # gives o.g. group_sums, e.g. Not normalized
                 self.binnedValues = group_sums
                 self.binnedCounts = group_counts
                 self.hasCI = False
 
                 if hasLEV:
-                    self.binnedLEV = lsd.groupby(['labels']).LEV_MEAN.mean(numeric_only=True)            
+                    self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)            
             
-            for attr in ['isTruncated', 'truncationLimits', 'name', 'labels']: # copy attribute from parent LSD (note 'labels' is added in earlier this method)
+            for attr in ['isTruncated', 'truncationLimits', 'name', 'size_bin']: # copy attribute from parent LSD (note 'size_bin' is added in earlier this method)
                 setattr(self, attr, getattr(lsd, attr))
             
             ## Check
@@ -1369,18 +1372,19 @@ def runTests():
     print(f'Mean LEV: {lsd_lev.meanLev():0.2%}')
 
     ## Test binned LEV HL LSD (won't actually use this for analysis)
-    binned = BinnedLSD(lsd_lev.truncate(0.5,1), 0.5, 1000, compute_ci=True) # compute_ci=False will disable plotting CI.
+    # binned = BinnedLSD(lsd_lev.truncate(0.5,1), 0.5, 1000, compute_ci=True) # compute_ci=False will disable plotting CI.
 
     ## Test 1: Bin the reference UAVSAR LEV LSDs
-    lsd_lev_binneds = []
-    for i, lsd_lev in enumerate(lsd_levs):
-        lsd_lev_binneds.append(BinnedLSD(lsd_lev, 0.000125, 0.5).binnedLEV)
-    pd.DataFrame(lsd_lev_binneds).T
+    # lsd_lev_binneds = []
+    # for i, lsd_lev in enumerate(lsd_levs):
+    #     lsd_lev_binneds.append(BinnedLSD(lsd_lev, 0.000125, 0.5).binnedLEV)
+    # pd.DataFrame(lsd_lev_binneds).T
 
     ## Test 2: 
     lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
-    def ci_from_named_regions(LSD, regions):
-        
+    # def ci_from_named_regions(LSD, regions):
+    lsd_lev_cat_binned = BinnedLSD(lsd_lev_cat, 0.000125, 0.5, compute_ci=True, extreme_regions=['CSD', 'YF'])
+
 
     ## Test extrap binned LEV
 
