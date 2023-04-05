@@ -1368,14 +1368,20 @@ def runTests():
     lsd_lev.plot_lev_cdf_by_lake_area()
     print(f'Mean LEV: {lsd_lev.meanLev():0.2%}')
 
-    ## Test binned LEV LSD
+    ## Test binned LEV HL LSD (won't actually use this for analysis)
     binned = BinnedLSD(lsd_lev.truncate(0.5,1), 0.5, 1000, compute_ci=True) # compute_ci=False will disable plotting CI.
 
-    ## Bin the reference UAVSAR LEV LSDs
+    ## Test 1: Bin the reference UAVSAR LEV LSDs
     lsd_lev_binneds = []
     for i, lsd_lev in enumerate(lsd_levs):
-        lsd_lev_binneds.append(BinnedLSD(lsd_lev, 0.000125, 0.5))
-    
+        lsd_lev_binneds.append(BinnedLSD(lsd_lev, 0.000125, 0.5).binnedLEV)
+    pd.DataFrame(lsd_lev_binneds).T
+
+    ## Test 2: 
+    lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
+    def ci_from_named_regions(LSD, regions):
+        
+
     ## Test extrap binned LEV
 
 
