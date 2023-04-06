@@ -876,29 +876,23 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             means = self.extrapLSD.binnedValues.loc[:, 'mean']
         else:
             means = self.extrapLSD.binnedValues
-        X, S = ECDFByValue(self.Area_km2, reverse=False)
-        geom_means = np.array(list(map(interval_geometric_mean, means.index))) # take geom mean of each interval
+        X, S = ECDFByValue(self.Area_km2, reverse=False) # plot for observed part of distrib
+        geom_means = np.array(list(map(interval_geometric_mean, self.extrapLSD.binnedLEV.loc[:, 'mean'].index.get_level_values(0)))) # take geom mean of each interval
         means=means.values # convert to numpy
-        # X = np.concatenate((geom_means, X))
-        S += self.extrapLSD.sumAreas() # add to original cumsum
-        # S = np.concatenate((np.cumsum(means), S)) # pre-pend the binned vals
-        S0 = np.cumsum(means) # pre-pend the binned vals
+        S += self.extrapLSD.sumAreas() # add sum of extrap distrib to original cumsum
+        S0 = np.cumsum(means) # pre-pend the cumsum of extrap distrib binned vals
 
         ## Add error bars
-        if error_bars == True and self.extrapLSD.hasCI_lsd:
-            
+        if error_bars == True and self.extrapLSD.hasCI_lsd:      
             assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
-            ## as error bars (miniscule)
-            yerr = binnedVals2Error(self.extrapLSD.binnedValues, self.extrapLSD.nbins)
-            # yerr = np.concatenate((np.cumsum(yerr[0][-1::-1])[-1::-1][np.newaxis, :], np.cumsum(yerr[1][-1::-1])[-1::-1][np.newaxis, :])) # don't need to cumsum errors?
+            ## as area plot: extrap section
+            ax.fill_between(geom_means, np.cumsum(self.extrapLSD.binnedValues.loc[:, 'lower']), # extrap section
+                            np.cumsum(self.extrapLSD.binnedValues.loc[:, 'upper']), alpha=0.3, color='grey')
             
-            ## As errorbar (replaced by area plot)
-            # ax.errorbar(geom_means, np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), xerr=None, yerr=yerr, fmt='none', )
-            
-            ## as area plot
-            ax.fill_between(geom_means, np.maximum(-np.cumsum(yerr[1][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), 0), # btm section
-                            np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color='grey')
-
+            ## Observed section
+            yerr_top = self.extrapLSD.binnedValues.loc[:, 'mean'].sum() - self.extrapLSD.binnedValues.loc[:, 'lower'].sum()
+            yerr_btm = self.extrapLSD.binnedValues.loc[:, 'upper'].sum() - self.extrapLSD.binnedValues.loc[:, 'mean'].sum()
+            ax.fill_between(X, np.maximum(S-yerr_top, 0), S+yerr_btm, alpha=0.3, color='grey')            
         ## Plot
         if normalized: # need to normalize outside of plotECDFByValue function
             denom = self.sumAreas()
@@ -918,7 +912,6 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         Plots lev from LSD using both measured and extrapolated values. 
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
         
-        TODO: plot with CI
         Parameters
         ----------
         groupby_name : boolean
@@ -943,43 +936,41 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         if ax==None:
             _, ax = plt.subplots() # figsize=(5,3)
 
-        ## TODO: branch for ci or not
         try:
             geom_means = np.array(list(map(interval_geometric_mean, self.extrapLSD.binnedLEV.index))) # take geom mean of each interval
 
         except:
             geom_means = np.array(list(map(interval_geometric_mean, self.extrapLSD.binnedLEV.loc[:, 'mean'].index.get_level_values(0)))) # if ci values are present
-        means = self.extrapLSD.binnedLEV * self.extrapLSD.binnedValues # used to be a branch for if self.extrapLSD.hasCI_lsd...
+        means = self.extrapLSD.binnedLEV * self.extrapLSD.binnedValues.loc[:, 'mean'] # used to be a branch for if self.extrapLSD.hasCI_lsd...
 
-        X, S = ECDFByValue(self.Area_km2, values_for_sum=self.LEV_MEAN*self.Area_km2, reverse=False) # scale to Tg / yr
-        # X = np.concatenate((geom_means, X))
-        binned_lev_sum = (self.extrapLSD.binnedLEV * self.extrapLSD.binnedValues).loc[:, 'mean'].sum() # TODO: need branch for if no 'mean' col for all occurrences, or ensure it always will have one # HERE 4/5/2023
-        S += binned_lev_sum # self.extrapLSD.sumLEV() # add to original cumsum
-        # S = np.concatenate((np.cumsum(means), S)) # pre-pend the binned vals
-        S0 = np.cumsum(means.loc[:, 'mean']) # pre-pend the binned vals
+        X, S = ECDFByValue(self.Area_km2, values_for_sum=self.LEV_MEAN*self.Area_km2, reverse=False) # convert from frac to km2
+        binned_lev_km2 = (self.extrapLSD.binnedLEV * self.extrapLSD.binnedValues.loc[:, 'mean']) # TODO: need branch for if no 'mean' col for all occurrences, or ensure it always will have one # HERE 4/5/2023
+        S += binned_lev_km2.loc[:, 'mean'].sum() # self.extrapLSD.sumLEV() # add sum of extrap distrib to original cumsum
+        S0 = np.cumsum(means.loc[:, 'mean']) # pre-pend the cumsum of extrap distrib binned vals
 
         ## Add error bars
         if error_bars == True:
             assert self.extrapLSD.hasCI_lev, "error_bars is set, but extrapolated lev has no CI (self.extrapLSD.hasCI_lev is False)"
-            ## as error bars (miniscule)
-            yerr = binnedVals2Error(self.extrapLSD.binnedValues, self.extrapLSD.nbins)
-            # yerr = np.concatenate((np.cumsum(yerr[0][-1::-1])[-1::-1][np.newaxis, :], np.cumsum(yerr[1][-1::-1])[-1::-1][np.newaxis, :])) # don't need to cumsum errors?
             
-            ## As errorbar (replaced by area plot)
-            # ax.errorbar(geom_means, np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), xerr=None, yerr=yerr, fmt='none', )
+            ## as area plot: extrapolated LEV
+            ax.fill_between(geom_means, np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'lower']*self.extrapLSD.binnedValues.loc[:, 'mean']), # btm section
+                            np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'upper']*self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color='grey')
             
-            ## as area plot
-            ax.fill_between(geom_means, np.maximum(-np.cumsum(yerr[1][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), 0), # btm section
-                            np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color='grey')
+            ## as area plot: estimated LEV from obs
+            X_low, S_low = ECDFByValue(self.Area_km2, self.LEV_MIN*self.Area_km2, reverse=False)
+            S_low += binned_lev_km2.loc[:, 'lower'].sum()
+            _, S_up = ECDFByValue(self.Area_km2, self.LEV_MAX*self.Area_km2, reverse=False)
+            S_up += binned_lev_km2.loc[:, 'upper'].sum()
+            ax.fill_between(X_low, S_low, S_up, alpha=0.3, color='grey') # TODO: remove overlap line
 
         ## Plot
         if normalized:
             ylabel = 'Cumulative fraction of total LEV'
-            denom = binned_lev_sum # self.sumLEV() # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
+            denom = binned_lev_km2.loc[:, 'mean'].sum() # self.sumLEV() # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
         else:
-            ylabel = 'Total LEV (km2)'
+            ylabel = 'Cumulative LEV (km2)'
             denom = 1
-        plotECDFByValue(ax=ax, alpha=1, color='black', X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs)
+        plotECDFByValue(ax=ax, alpha=1, color='black', X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs) # obs values
         plotECDFByValue(ax=ax, alpha=1, color='black', X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
         ax.set_ylabel(ylabel)
         # ax.legend()
@@ -1234,7 +1225,7 @@ class BinnedLSD():
                     group_means_lev = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
                     # group_means_lev_low = lsd.groupby(['size_bin']).LEV_MIN.mean(numeric_only=True)
                     # group_means_lev_high = lsd.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
-                    group_means_lev_low, group_means_lev_high = [lsd[lsd['Region']==region].groupby(['size_bin']).LEV_MEAN.sum() for region in extreme_regions_lev]
+                    group_means_lev_low, group_means_lev_high = [lsd[lsd['Region']==region].groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) for region in extreme_regions_lev]
                     ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high, name='LEV_frac')
                     self.binnedLEV = ds_lev
                     self.hasCI_lev = True
@@ -1527,12 +1518,12 @@ def runTests():
     lsd_hl_trunc.sumAreas()
 
     ## Test plot extrap LEV
-    ax = lsd_hl_trunc.plot_extrap_lev()
+    ax = lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=True)
     ax2=ax.twinx()
-    lsd_hl_trunc.plot_extrap_lsd(ax=ax2, normalized=False)
-    ymin, ymax = ax2.get_ylim()
-    ax.set_ylim([ymin, ymax])
-
+    lsd_hl_trunc.plot_extrap_lev(ax=ax2, error_bars=True)
+    ymin, ymax = ax.get_ylim()
+    ax2.set_ylim([ymin, ymax])
+    plt.tight_layout()
 
     ## Compare extrapolated area fractions
     # frac = lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.0001, 0.01)
@@ -1544,7 +1535,7 @@ def runTests():
     # lsd_hl_trunc.extrapLSD.plot()
     # ax = lsd_hl_trunc.plot_lsd(reverse=False, normalized=True)
     lsd_hl_trunc.plot_extrap_lsd(normalized=True, error_bars=False, reverse=False) # ax=ax, 
-    lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=False, reverse=False) # ax=ax, 
+    lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=True, reverse=False) # ax=ax, 
 
     ## Test flux prediction from observed lakes
     model = loadBAWLD_CH4()
@@ -1795,6 +1786,7 @@ if __name__=='__main__':
 * Re-define LSD so if called with no args but proper column names it returns a LSD correctly.
 * Use fid_as_index argument when loading with pyarrow
 * Preserve og index when concatenating so I can look up lakes from raw file (combine with above re: fid)
+* Branches for if there is no CI/error bars in binned distrib. Make sure there is still a second index called 'stat' with constant val 'mean'
 
 NOTES:
 * Every time a create an LSD() object in a function from an existing LSD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
