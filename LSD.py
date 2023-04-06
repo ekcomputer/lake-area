@@ -670,14 +670,17 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             last_lev = ref_BinnedLEV.binnedValues.index.get_level_values(0).max()
             self.extrapLSD.binnedLEV = ref_BinnedLEV.binnedLEV.drop(index=last_lev) # will this work if no LEV_MIN/MAX?
 
-        ## Update its attributes
+        ## Manually update its attributes
         self.extrapLSD.indexTopLim = ref_BinnedLSD.truncationLimits[1] # since bottom of index region matches, ensure top does as well in definition.
         self.extrapLSD.isExtrapolated=True
         self.extrapLSD.isNormalized = False # units of km2, not fractions
         self.extrapLSD.bottomLim = ref_BinnedLSD.btmEdge
         self.extrapLSD.topLim = ref_BinnedLSD.topEdge
-
-        ## Save reference binned LSD
+        self.extrapLSD.hasCI_lsd = ref_BinnedLSD.hasCI_lsd
+        self.extrapLSD.hasCI_lev = ref_BinnedLEV.hasCI_lev
+        self.extrapLSD.extreme_regions_lsd = ref_BinnedLSD.extreme_regions_lsd
+        self.extrapLSD.extreme_regions_lev = ref_BinnedLEV.extreme_regions_lev
+        ## Save reference binned LSD (which has any remaining attrs)
         self.refBinnedLSD = ref_BinnedLSD
         return
     
@@ -910,7 +913,6 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ax.set_ylim(0, ax.get_ylim()[1])
         return ax
     
-    # def plot_flux(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, normalized=True, reverse=True):
     def plot_extrap_lev(self, plotLegend=True, ax=None, normalized=False, reverse=False, error_bars=False, **kwargs):
         '''
         Plots lev from LSD using both measured and extrapolated values. 
@@ -923,6 +925,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             Group plots by dataset name, given by variable 'Name'
         error_bars : boolean
             Whether to include error bars (not recommended, since this plots a CDF)
+        **kwargs : get passed to plt.plot via plotECDFByValue
+
         returns: ax
         '''       
         assert 'LEV_MEAN' in self.columns, "LSD doesn't have a LEV estimate yet." 
@@ -955,9 +959,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         S0 = np.cumsum(means.loc[:, 'mean']) # pre-pend the binned vals
 
         ## Add error bars
-        if error_bars == True and self.extrapLSD.hasCI_lsd:
-            raise ValueError('No branch yet written for flux plots with error bars.')
-            assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
+        if error_bars == True:
+            assert self.extrapLSD.hasCI_lev, "error_bars is set, but extrapolated lev has no CI (self.extrapLSD.hasCI_lev is False)"
             ## as error bars (miniscule)
             yerr = binnedVals2Error(self.extrapLSD.binnedValues, self.extrapLSD.nbins)
             # yerr = np.concatenate((np.cumsum(yerr[0][-1::-1])[-1::-1][np.newaxis, :], np.cumsum(yerr[1][-1::-1])[-1::-1][np.newaxis, :])) # don't need to cumsum errors?
@@ -995,6 +998,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             Group plots by dataset name, given by variable 'Name'
         error_bars : boolean
             Whether to include error bars (not recommended, since this plots a CDF)
+        **kwargs : get passed to plt.plot via plotECDFByValue
+
         returns: ax
         '''       
         assert 'est_g_day' in self.columns, "LSD doesn't have a flux estimate yet." 
@@ -1051,6 +1056,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             Group plots by dataset name, given by variable 'Name'
         error_bars : boolean
             Whether to include error bars (not recommended, since this plots a CDF)
+        **kwargs : get passed to plt.plot via plotECDFByValue
+
         returns: ax
 
         '''           
@@ -1078,7 +1085,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         return ax
 
-    def plot_lev_cdf_by_lake_area(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, normalized=True, reverse=False, error_bars=True):
+    def plot_lev_cdf_by_lake_area(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, normalized=True, reverse=False, error_bars=True, **kwargs):
         '''
         For LEV: Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False). Errors bars plots high and low estimates too.
         
@@ -1086,6 +1093,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ----------
         groupby_name : boolean
             Group plots by dataset name, given by variable 'Name'
+        **kwargs : get passed to plt.plot via plotECDFByValue
+
         returns: ax
         '''
         if error_bars:
@@ -1110,7 +1119,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
                 values_for_sum = self[var] * self.Area_km2
                 ylabel = 'Cumulative LEV (km2)'
             X, S = ECDFByValue(self.Area_km2, values_for_sum=values_for_sum, reverse=reverse)
-            plotECDFByValue(X=X, S=S, ax=ax, alpha=0.6, color=color, label='All', normalized=normalized, reverse=reverse)
+            plotECDFByValue(X=X, S=S, ax=ax, alpha=0.6, color=color, label='All', normalized=normalized, reverse=reverse, **kwargs)
             ax.set_ylabel(ylabel)
             ax.set_title(f'{self.name}: {self.meanLev():.2%} LEV')
 
@@ -1159,6 +1168,8 @@ class BinnedLSD():
         self.topEdge = top
         self.nbins = nbins
         self.isExtrapolated = False
+        self.extreme_regions_lsd = None # init
+        self.extreme_regions_lev = None # init
 
         if lsd is not None: # sets binnedLSD from existing LSD
             assert btm is not None and top is not None, "if 'lsd' argument is given, so must be 'btm' and 'top'"
@@ -1170,6 +1181,7 @@ class BinnedLSD():
             self.area_bins = pd.IntervalIndex.from_breaks(self.bin_edges, closed='left')
             lsd['size_bin'] = pd.cut(lsd.Area_km2, self.area_bins, right=False)
             self.isNormalized = False # init
+            self.hasCI_lev = False # init
 
             ## # Boolean to determine branch for LEV
             hasLEV = 'LEV_MEAN' in lsd.columns
@@ -1191,6 +1203,7 @@ class BinnedLSD():
                 self.binnedValues = ds
                 self.binnedCounts = group_counts
                 self.hasCI_lsd = True
+                self.extreme_regions_lsd = extreme_regions_lsd
 
                 ## Normalize areas after binning
                 divisor = ds.loc[ds.index.get_level_values(0)[-1], :] # sum of lake areas in largest bin (Careful: can't be == 0 !!)
@@ -1224,6 +1237,8 @@ class BinnedLSD():
                     group_means_lev_low, group_means_lev_high = [lsd[lsd['Region']==region].groupby(['size_bin']).LEV_MEAN.sum() for region in extreme_regions_lev]
                     ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high, name='LEV_frac')
                     self.binnedLEV = ds_lev
+                    self.hasCI_lev = True
+                    self.extreme_regions_lev = extreme_regions_lev
                     pass
                 # if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
                 #     self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) 
@@ -1243,6 +1258,7 @@ class BinnedLSD():
             self.area_bins = 'See self.refBinnedLSD'
             self.isNormalized = False
             self.hasCI_lsd = compute_ci_lsd # retain from arg
+            self.hasCI_lev = compute_ci_lev # retain
             self.binnedValues = binned_values # retain from arg
             self.binnedCounts = 'See self.refBinnedLSD'
         
