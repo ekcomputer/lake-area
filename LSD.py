@@ -677,9 +677,11 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         self.extrapLSD.bottomLim = ref_BinnedLSD.btmEdge
         self.extrapLSD.topLim = ref_BinnedLSD.topEdge
         self.extrapLSD.hasCI_lsd = ref_BinnedLSD.hasCI_lsd
-        self.extrapLSD.hasCI_lev = ref_BinnedLEV.hasCI_lev
+        if hasattr(ref_BinnedLEV, 'hasCI_lev'):
+            self.extrapLSD.hasCI_lev = ref_BinnedLEV.hasCI_lev
         self.extrapLSD.extreme_regions_lsd = ref_BinnedLSD.extreme_regions_lsd
-        self.extrapLSD.extreme_regions_lev = ref_BinnedLEV.extreme_regions_lev
+        if hasattr(ref_BinnedLEV, 'extreme_regions_lev'):
+            self.extrapLSD.extreme_regions_lev = ref_BinnedLEV.extreme_regions_lev
         ## Save reference binned LSD (which has any remaining attrs)
         self.refBinnedLSD = ref_BinnedLSD
         return
@@ -877,7 +879,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         else:
             means = self.extrapLSD.binnedValues
         X, S = ECDFByValue(self.Area_km2, reverse=False) # plot for observed part of distrib
-        geom_means = np.array(list(map(interval_geometric_mean, self.extrapLSD.binnedLEV.loc[:, 'mean'].index.get_level_values(0)))) # take geom mean of each interval
+        geom_means = np.array(list(map(interval_geometric_mean, self.extrapLSD.binnedValues.loc[:, 'mean'].index.get_level_values(0)))) # take geom mean of each interval
         means=means.values # convert to numpy
         S += self.extrapLSD.sumAreas() # add sum of extrap distrib to original cumsum
         S0 = np.cumsum(means) # pre-pend the cumsum of extrap distrib binned vals
@@ -1008,7 +1010,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         means = self.extrapLSD.binnedG_day # used to be a branch for if self.extrapLSD.hasCI_lsd...
         X, S = ECDFByValue(self.Area_km2, values_for_sum=self.est_g_day * 365.25 / 1e12, reverse=False) # scale to Tg / yr
-        geom_means = np.array(list(map(interval_geometric_mean, means.index))) # take geom mean of each interval
+        geom_means = np.array(list(map(interval_geometric_mean, means.index))) # take geom mean of each interval Try self.extrapLSD.binnedValues.loc[:, 'mean'].index.get_level_values(0)
         # X = np.concatenate((geom_means, X))
         S += self.extrapLSD.sumFluxes() # add to original cumsum
         # S = np.concatenate((np.cumsum(means)* 365.25 / 1e12, S)) # pre-pend the binned vals
@@ -1448,6 +1450,10 @@ def runTests():
     # lsd_from_gdf.area_fraction(1)
     # print('\tPassed area_fraction.')
 
+    ####################################
+    ## LEV Tests
+    ####################################
+
     ## Load with proper parameters
     # lsd_hl = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
     regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
@@ -1509,6 +1515,10 @@ def runTests():
     # def ci_from_named_regions(LSD, regions):
     binned_lev = BinnedLSD(lsd_lev_cat, 0.0001, 0.5, compute_ci_lev=True, extreme_regions_lev=['CSD', 'YF']) # 0.000125 is native
 
+    ####################################
+    ## LSD/bin/extrap Tests
+    ####################################
+
     ## Test binnedLSD
     binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']) # compute_ci_lsd=False will disable plotting CI.
     binned.plot()
@@ -1544,6 +1554,10 @@ def runTests():
     # ax = lsd_hl_trunc.plot_lsd(reverse=False, normalized=True)
     lsd_hl_trunc.plot_extrap_lsd(normalized=True, error_bars=False, reverse=False) # ax=ax, 
     lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=True, reverse=False) # ax=ax, 
+
+    ####################################
+    ## Flux Tests
+    ####################################
 
     ## Test flux prediction from observed lakes
     model = loadBAWLD_CH4()
@@ -1660,7 +1674,7 @@ if __name__=='__main__':
     m = lsd_lev.meanLev(include_ci=True)
     print(f'Mean LEV: {m[0]:0.2%} ({m[1]:0.2%}, {m[2]:0.2%})')
 
-    ## Load measured holdout dataset
+    ## Load measured holdout LEV dataset
     a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
     a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
     print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
@@ -1709,7 +1723,7 @@ if __name__=='__main__':
     ## Extrapolate
     tmin, tmax = (0.0001,5) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
     emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True) # reference distrib (try 5, 0.5 as second args)
+    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']) # reference distrib (try 5, 0.5 as second args)
     lsd_hl_trunc = lsd_hl.truncate(emax, np.inf) # Beware chaining unless I return a new variable. # Try 0.1
     lsd_hl_trunc.extrapolate(binned_ref)
     meas=lsd_hl.sumAreas(includeExtrap=False)
@@ -1760,8 +1774,8 @@ if __name__=='__main__':
     print(f'Area fraction < 0.1 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.1):,.2%}')
 
     ## Compare HL to WBD measured lakes in same domain:
-    # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
-    lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None) # don't truncate this time
+    # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False) 
+    # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None) # reload, if needed # don't truncate this time
     ax = lsd_wbd.truncate(0.1, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
     lsd_hl.truncate(0.1, 1000).plot_lsd(normalized=False, reverse=False, ax=ax, all=False)
     ax.set_title(f'[{roi_region}]')
@@ -1772,7 +1786,7 @@ if __name__=='__main__':
     emax = 0.5 # Extrapolation limit emax defines the left bound of the index region (and right bound of the extrapolation region).
     # binned_ref = BinnedLSD(lsd_wbd.truncate(tmin, tmax), tmin, emax) # uncomment to use self-extrap
     # txt='self-'
-    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True)
+    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta'])
     txt=''
     lsd_wbd_trunc = lsd_wbd.truncate(emax, np.inf)
     lsd_wbd_trunc.extrapolate(binned_ref)
