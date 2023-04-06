@@ -881,25 +881,29 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         means=means.values # convert to numpy
         S += self.extrapLSD.sumAreas() # add sum of extrap distrib to original cumsum
         S0 = np.cumsum(means) # pre-pend the cumsum of extrap distrib binned vals
-
+        if not 'color' in kwargs:
+            kwargs['color']='black'
+            
         ## Add error bars
         if error_bars == True and self.extrapLSD.hasCI_lsd:      
             assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
             ## as area plot: extrap section
             ax.fill_between(geom_means, np.cumsum(self.extrapLSD.binnedValues.loc[:, 'lower']), # extrap section
-                            np.cumsum(self.extrapLSD.binnedValues.loc[:, 'upper']), alpha=0.3, color='grey')
+                            np.cumsum(self.extrapLSD.binnedValues.loc[:, 'upper']), alpha=0.3, color=kwargs['color'])
             
             ## Observed section
             yerr_top = self.extrapLSD.binnedValues.loc[:, 'mean'].sum() - self.extrapLSD.binnedValues.loc[:, 'lower'].sum()
             yerr_btm = self.extrapLSD.binnedValues.loc[:, 'upper'].sum() - self.extrapLSD.binnedValues.loc[:, 'mean'].sum()
-            ax.fill_between(X, np.maximum(S-yerr_top, 0), S+yerr_btm, alpha=0.3, color='grey')            
+            ax.fill_between(X, np.maximum(S-yerr_top, 0), S+yerr_btm, alpha=0.3, color=kwargs['color'])            
         ## Plot
         if normalized: # need to normalize outside of plotECDFByValue function
             denom = self.sumAreas()
         else:
             denom = 1
-        plotECDFByValue(ax=ax, alpha=1, color='black', X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs)
-        plotECDFByValue(ax=ax, alpha=1, color='black', X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot in dashed for extrapolated
+        
+        ## Plot main curves 
+        plotECDFByValue(ax=ax, alpha=1, X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs)
+        plotECDFByValue(ax=ax, alpha=1, X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot in dashed for extrapolated
         if normalized: # need to change label outside of plotECDFByValue function
             ax.set_ylabel('Cumulative fraction of total area')
         if plotLegend:
@@ -947,6 +951,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         binned_lev_km2 = (self.extrapLSD.binnedLEV * self.extrapLSD.binnedValues.loc[:, 'mean']) # TODO: need branch for if no 'mean' col for all occurrences, or ensure it always will have one # HERE 4/5/2023
         S += binned_lev_km2.loc[:, 'mean'].sum() # self.extrapLSD.sumLEV() # add sum of extrap distrib to original cumsum
         S0 = np.cumsum(means.loc[:, 'mean']) # pre-pend the cumsum of extrap distrib binned vals
+        if not 'color' in kwargs:
+            kwargs['color']='green'
 
         ## Add error bars
         if error_bars == True:
@@ -954,24 +960,24 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             
             ## as area plot: extrapolated LEV
             ax.fill_between(geom_means, np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'lower']*self.extrapLSD.binnedValues.loc[:, 'mean']), # btm section
-                            np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'upper']*self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color='grey')
+                            np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'upper']*self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color=kwargs['color'])
             
             ## as area plot: estimated LEV from obs
             X_low, S_low = ECDFByValue(self.Area_km2, self.LEV_MIN*self.Area_km2, reverse=False)
             S_low += binned_lev_km2.loc[:, 'lower'].sum()
             _, S_up = ECDFByValue(self.Area_km2, self.LEV_MAX*self.Area_km2, reverse=False)
             S_up += binned_lev_km2.loc[:, 'upper'].sum()
-            ax.fill_between(X_low, S_low, S_up, alpha=0.3, color='grey') # TODO: remove overlap line
+            ax.fill_between(X_low, S_low, S_up, alpha=0.3, color=kwargs['color']) # TODO: remove overlap line
 
-        ## Plot
+        ## Plot main curves 
         if normalized:
             ylabel = 'Cumulative fraction of total LEV'
             denom = binned_lev_km2.loc[:, 'mean'].sum() # self.sumLEV() # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
         else:
             ylabel = 'Cumulative LEV (km2)'
             denom = 1
-        plotECDFByValue(ax=ax, alpha=1, color='black', X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs) # obs values
-        plotECDFByValue(ax=ax, alpha=1, color='black', X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
+        plotECDFByValue(ax=ax, alpha=1, X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs) # obs values
+        plotECDFByValue(ax=ax, alpha=1, X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
         ax.set_ylabel(ylabel)
         # ax.legend()
         ax.set_ylim(0, ax.get_ylim()[1])
@@ -1007,6 +1013,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         S += self.extrapLSD.sumFluxes() # add to original cumsum
         # S = np.concatenate((np.cumsum(means)* 365.25 / 1e12, S)) # pre-pend the binned vals
         S0 = np.cumsum(means)* 365.25 / 1e12 # pre-pend the binned vals
+        if not 'color' in kwargs:
+            kwargs['color']='red'
 
         ## Add error bars
         if error_bars == True and self.extrapLSD.hasCI_lsd:
@@ -1021,17 +1029,17 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             
             ## as area plot
             ax.fill_between(geom_means, np.maximum(-np.cumsum(yerr[1][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), 0), # btm section
-                            np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color='grey')
+                            np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color=kwargs['color'])
 
-        ## Plot
+        ## Plot main curves
         if normalized:
             ylabel = 'Cumulative fraction of total flux'
             denom = self._total_flux_Tg_yr # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
         else:
             ylabel = 'Total flux (Tg/yr)'
             denom = 1
-        plotECDFByValue(ax=ax, alpha=1, color='black', X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs)
-        plotECDFByValue(ax=ax, alpha=1, color='black', X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
+        plotECDFByValue(ax=ax, alpha=1, X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs)
+        plotECDFByValue(ax=ax, alpha=1, X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
         ax.set_ylabel(ylabel)
         # ax.legend()
         ax.set_ylim(0, ax.get_ylim()[1])
@@ -1518,9 +1526,9 @@ def runTests():
     lsd_hl_trunc.sumAreas()
 
     ## Test plot extrap LEV
-    ax = lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=True)
+    ax = lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=True, color='blue')
     ax2=ax.twinx()
-    lsd_hl_trunc.plot_extrap_lev(ax=ax2, error_bars=True)
+    lsd_hl_trunc.plot_extrap_lev(ax=ax2, error_bars=True, color='green')
     ymin, ymax = ax.get_ylim()
     ax2.set_ylim([ymin, ymax])
     plt.tight_layout()
