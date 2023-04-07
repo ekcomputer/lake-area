@@ -929,7 +929,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         returns: ax
         '''       
         assert 'LEV_MEAN' in self.columns, "LSD doesn't have a LEV estimate yet." 
-        assert hasattr(self.extrapLSD, 'binnedLEV'), "binnedLSD doesn't have a flux estimate yet." 
+        assert hasattr(self.extrapLSD, 'binnedLEV'), "binnedLSD doesn't have an extrap lev estimate yet." 
         assert reverse==False, "No branch yet written for flux plots in reverse."
         if error_bars:
             assert_vars = ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']
@@ -1450,19 +1450,20 @@ def runTests():
     # lsd_from_gdf.area_fraction(1)
     # print('\tPassed area_fraction.')
 
-    ####################################
-    ## LEV Tests
-    ####################################
-
     ## Load with proper parameters
     # lsd_hl = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
     regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
     lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
+    ####################################
+    ## LEV Tests
+    ####################################
+
     ## For LEV
     ref_names = ['CSB', 'CSD', 'PAD', 'YF']
 
     ## Test LEV ACDF on UAVSAR data
+    ## Load LEV/LSD from UAVSAR
     pths = ['/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
         '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
         '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
@@ -1480,16 +1481,17 @@ def runTests():
     for i, ax in enumerate(axes.flatten()):
         lsd_levs[i].plot_lev_cdf_by_lake_area(error_bars=False, ax=ax, plotLegend=False)
 
-    ## Test LEV estimate
+    ## Test LEV estimate: Load UAVSAR/GSW overlay stats
     print('Load HL with joined occurrence...')
     # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
     lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', nrows=10000) # read smaller csv gzip version of data.
-    pths = [
+    pths = [ # CSV
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_zHist_Oc_LEV_s.csv'
         ]
+    print('Loading UAVSAR/Pekel overlay and computing LEV...')
     ref_dfs = list(map(produceRefDs, pths)) # load ref dfs 
     lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names)
     lsd_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id')
@@ -1650,49 +1652,73 @@ if __name__=='__main__':
     # ## YF compare
     # LSD(lsd.query("Region=='YF_3Y_lakes-and-ponds' or Region=='Yukon Flats Basin'"), name='compare').plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=False)
 
-    ## LEV estimate
+    ####################################
+    ## LEV Analysis
+    ####################################
+
+    ## For LEV
+    ref_names = ['CSB', 
+                'CSD', 
+                #  'PAD', 
+                'YF']
+
+    ## Test LEV ACDF on UAVSAR data
+    ## Load LEV/LSD from UAVSAR
+    pths = ['/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
+        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
+        # '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
+        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp']
+
+    print('Loading UAVSAR...')
+    lsd_levs = []
+    for i, pth in enumerate(pths):
+        lsd_lev_tmp = LSD.from_shapefile(pth, name=ref_names[i], area_var='area_px_m2', lev_var='em_fractio', idx_var='label', _areaConversionFactor=1e6, other_vars = ['edge', 'cir_observ'])
+        lsd_lev_tmp.query('edge==0 and cir_observ==1', inplace=True)
+        lsd_levs.append(lsd_lev_tmp)
+
+    ## Create binned ref LEV distribution from UAVSAR
+    lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
+    binned_lev = BinnedLSD(lsd_lev_cat, 0.0001, 0.5, compute_ci_lev=True, extreme_regions_lev=['CSD', 'YF']) # 0.000125 is native
+
+    ## LEV estimate: Load UAVSAR/GSW overlay stats
+
     print('Load HL with joined occurrence...')
     # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values
     lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip') # read smaller csv gzip version of data.
-    ref_names = ['CSB', 'CSD', 'PAD', 'YF']
-    pths = [
+    pths = [ # CSV
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        # '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_train_zHist_Oc_LEV_s.csv' # Note YF is split into train/holdout XX vs XX %
         ]
+    print('Loading UAVSAR/Pekel overlay and computing LEV...')
     ref_dfs = list(map(produceRefDs, pths)) # load ref dfs 
     lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names)
-    lsd_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL')
+    lsd_hl_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL')
 
-    ## Plot LEV  CDF
-    lsd_lev.plot_lev_cdf()
-
-    ## Plot LEV CDF by lake area
-    lsd_lev.plot_lev_cdf_by_lake_area()
-    lsd_lev.plot_lev_cdf_by_lake_area(normalized=False)
-    m = lsd_lev.meanLev(include_ci=True)
-    print(f'Mean LEV: {m[0]:0.2%} ({m[1]:0.2%}, {m[2]:0.2%})')
+    ## Plot LEV CDF by lake area (no extrap) and report mean LEV fraction
+    lsd_hl_lev.plot_lev_cdf_by_lake_area()
+    lsd_hl_lev.plot_lev_cdf_by_lake_area(normalized=False)
 
     ## Load measured holdout LEV dataset
-    a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
-    a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
-    print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
+    # a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
+    # a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
+    # print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
 
     ## Compare to holdout dataset
-    val_lakes_idx = [368946, 365442, 362977,362911,362697,362623,362193,361869,359283] # by Hylak_ID
-    lev_holdout = lsd_lev[np.isin(lsd_lev.idx_HL, val_lakes_idx)]
-    a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
-    print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
-    print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
-    plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
-    plt.xlabel('Predicted LEV (%)')
-    plt.ylabel('Measured LEV (%)')
+    # val_lakes_idx = [368946, 365442, 362977,362911,362697,362623,362193,361869,359283] # by Hylak_ID
+    # lev_holdout = lsd_lev[np.isin(lsd_lev.idx_HL, val_lakes_idx)]
+    # a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
+    # print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
+    # print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
+    # plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
+    # plt.xlabel('Predicted LEV (%)')
+    # plt.ylabel('Measured LEV (%)')
 
     ## Load WBD
-    print('Load WBD...')
-    lsd_wbd = LSD.from_shapefile('/mnt/g/Other/Feng-High-res-inland-surface-water-tundra-boreal-NA/edk_out/fixed_geoms/WBD.shp', area_var='Area', name='WBD', idx_var='OBJECTID')
-    lsd_wbd.truncate(0.001, inplace=True)
+    # print('Load WBD...')
+    # lsd_wbd = LSD.from_shapefile('/mnt/g/Other/Feng-High-res-inland-surface-water-tundra-boreal-NA/edk_out/fixed_geoms/WBD.shp', area_var='Area', name='WBD', idx_var='OBJECTID')
+    # lsd_wbd.truncate(0.001, inplace=True)
 
     ## Plot WBD
     # lsd_wbd.plot_lsd(reverse=False, all=False)
@@ -1712,9 +1738,9 @@ if __name__=='__main__':
     # lsd.area_fraction(0.01)
     # lsd.area_fraction(0.001)  
 
-    ## Load hydrolakes
-    print('Load HL...')
-    lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None)
+    ## Load hydrolakes. if not using lsd_hl_lev
+    # print('Load HL...')
+    # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None)
 
     ## Load sheng
     # print('Load Sheng...')
@@ -1724,9 +1750,9 @@ if __name__=='__main__':
     tmin, tmax = (0.0001,5) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
     emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
     binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']) # reference distrib (try 5, 0.5 as second args)
-    lsd_hl_trunc = lsd_hl.truncate(emax, np.inf) # Beware chaining unless I return a new variable. # Try 0.1
-    lsd_hl_trunc.extrapolate(binned_ref)
-    meas=lsd_hl.sumAreas(includeExtrap=False)
+    lsd_hl_trunc = lsd_hl_lev.truncate(emax, np.inf) # Beware chaining unless I return a new variable. # Try 0.1
+    lsd_hl_trunc.extrapolate(binned_ref, binned_lev)
+    meas=lsd_hl_lev.sumAreas(includeExtrap=False)
     extrap=lsd_hl_trunc.sumAreas()
 
     limit=0.01
@@ -1741,10 +1767,33 @@ if __name__=='__main__':
     # print(f'Area fraction < 0.01 km2: {lsd.area_fraction(0.01):,.2%}')
     # print(f'Area fraction < 0.1 km2: {lsd.area_fraction(0.1):,.2%}')
 
-    ## Plot to verify HL extrapolation
-    # ax = lsd_hl.plot_lsd(all=False, reverse=False, normalized=False)
-    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=False, normalized=False)
+    # ## Plot HL extrapolation
+    # # ax = lsd_hl.plot_lsd(all=False, reverse=False, normalized=False)
+    # ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=False, normalized=False)
+    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    
+    ## Plot combined extrap LSD/LEV
+    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    ax2=ax.twinx()
+    lsd_hl_trunc.plot_extrap_lev(ax=ax2, error_bars=True, color='green')
+    ymin, ymax = ax.get_ylim()
+    ax2.set_ylim([ymin, ymax])
+    plt.tight_layout()
+
+    ## Plot just lev, normalized
+    ax = lsd_hl_trunc.plot_extrap_lev(error_bars=True, normalized=True, color='green')
+    lsd_hl_trunc.plot_extrap_lev(error_bars=False, normalized=True, color='green')
+
+    ## LEV fraction stats, without and with extrap
+    m = lsd_hl_lev.meanLev(include_ci=True)
+    print(f'Mean LEV: {m[0]:0.2%} ({m[1]:0.2%}, {m[2]:0.2%})')
+    m_extrap = (lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean']).groupby('stat').sum() / lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean'].sum() # estimated plus extrapolated 
+    # np.average(lsd_hl_trunc.extrapLSD.binnedLEV.unstack(), weights=lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean'], axis=0)
+    print(f'Mean extrap LEV: {m_extrap[1]:0.2%} ({m_extrap[0]:0.2%}, {m_extrap[2]:0.2%})') # Note order is diff from output of meanLev()
+    m_comb = ((lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean']).groupby('stat').sum() + \
+        (lsd_hl_trunc.LEV_MEAN * lsd_hl_trunc.Area_km2).sum()) / lsd_hl_trunc.sumAreas(includeExtrap=True)
+    print(f'Mean LEV (est and extrap): {m_comb[1]:0.2%} ({m_comb[0]:0.2%}, {m_comb[2]:0.2%})')
 
     ## print number of ref lakes:
     # len(lsd_hl_trunc)
