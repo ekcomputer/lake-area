@@ -742,7 +742,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             self.extrapLSD.predictFlux(model)
             binned_total_flux_Tg_yr = self.extrapLSD._total_flux_Tg_yr
         else:
-            binned_total_flux_Tg_yr = 0
+            binned_total_flux_Tg_yr = 0 # Not NaN, because needs to be added
         
         ## Flux (areal, mgCH4/m2/day)
         self['est_mg_m2_day'] = 10**(model.params.Intercept +
@@ -1209,7 +1209,8 @@ class BinnedLSD():
             if not hasLEV:
                 self.binnedLEV = None
             if not hasFlux:
-                self.binnedFlux = None
+                self.binnedG_day = None
+                self.binnedMg_m2_day = None
             ## Bin
             if compute_ci_lsd:
                 assert extreme_regions_lsd is not None, "If compute_ci_lsd is True, extreme_regions_lsd must be provided"
@@ -1289,7 +1290,8 @@ class BinnedLSD():
                 # if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
                 #     self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) 
                 else:
-                    self.binnedFlux = lsd.groupby(['size_bin']).est_g_day.sum(numeric_only=True)            
+                    self.binnedG_day = lsd.groupby(['size_bin']).est_g_day.sum(numeric_only=True)       
+                    self.binnedMg_m2_day = lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True)        
                         
             for attr in ['isTruncated', 'truncationLimits', 'name', 'size_bin']: # copy attribute from parent LSD (note 'size_bin' is added in earlier this method)
                 setattr(self, attr, getattr(lsd, attr))
@@ -1652,6 +1654,7 @@ if __name__=='__test__':
     
 if __name__=='__main__':
     ## I/O
+    tb_dir = '/mnt/g/Ch4/area_tables'
 
     ## BAWLD domain
     dataset = 'HL'
@@ -1883,9 +1886,13 @@ if __name__=='__main__':
     lsd_hl_trunc_log10bins = lsd_hl_lev.truncate(emax, np.inf) # Beware chaining unless I return a new variable. # Try 0.1
     lsd_hl_trunc_log10bins.extrapolate(binned_ref_log10bins, binned_lev_log10bins)  
 
-    ## Predict flux
+    ## Predict flux on extrapolated part
     lsd_hl_trunc_log10bins.temp = 10 # placeholder, required for prediction 
     lsd_hl_trunc_log10bins.predictFlux(model, includeExtrap=True)
+
+    ## Predict flux on upper part
+    lsd_hl_lev.temp = 10 # placeholder, required for prediction 
+    lsd_hl_lev.predictFlux(model, includeExtrap=False)
 
     ## bin upper with log10 bins
     log_bins_upper = [0.5, 1, 10, 100, 1000, 10000, 100000]
@@ -1894,6 +1901,14 @@ if __name__=='__main__':
     ## Make table:
     tb_area = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedValues.loc[:, 'mean'], lsd_hl_lev_log10bins.binnedValues.loc[:, 'mean']))
     tb_lev = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedLEV.loc[:, 'mean'], lsd_hl_lev_log10bins.binnedLEV)) * tb_area
+    tb_flux = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedG_day, lsd_hl_lev_log10bins.binnedG_day))
+    tb_comb = pd.concat((tb_area, tb_lev, tb_flux), axis=1)
+    tb_comb.columns = ['Area_km2', 'LEV_km2', 'G_day']
+    tb_comb.to_csv(os.path.join(tb_dir, 'Size_bin_table.csv'))
+
+    ## Normalize
+    tb_comb_norm = tb_comb / tb_comb.sum(axis=0)
+    tb_comb_norm.to_csv(os.path.join(tb_dir, 'Size_bin_table_norm.csv'))
 
     ## print number of ref lakes:
     # len(lsd_hl_trunc)
