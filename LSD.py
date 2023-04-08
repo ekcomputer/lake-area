@@ -1602,7 +1602,7 @@ if __name__=='__main__':
     dataset = 'HL'
     roi_region = 'BAWLD'
     gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' #'/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
     hl_area_var='Shp_Area'
 
     ## BAWLD-NAHL domain
@@ -1781,6 +1781,11 @@ if __name__=='__main__':
     ax2.set_ylim([ymin, ymax])
     plt.tight_layout()
 
+    ## Retrieve data from plot
+    ax.get_lines()[0].get_ydata() # gives right part of LSD plot # [1] is left part 
+    ax2.get_lines()[0].get_ydata() # gives right part of LEV plot
+    X_lev = np.concatenate((ax.get_lines()[1].get_xdata(), ax.get_lines()[0].get_xdata()))
+    S_lev = np.concatenate((ax.get_lines()[1].get_ydata(), ax.get_lines()[0].get_ydata()))
     ## Plot just lev, normalized
     ax = lsd_hl_trunc.plot_extrap_lev(error_bars=True, normalized=True, color='green')
     lsd_hl_trunc.plot_extrap_lev(error_bars=False, normalized=True, color='green')
@@ -1788,12 +1793,21 @@ if __name__=='__main__':
     ## LEV fraction stats, without and with extrap
     m = lsd_hl_lev.meanLev(include_ci=True)
     print(f'Mean LEV: {m[0]:0.2%} ({m[1]:0.2%}, {m[2]:0.2%})')
-    m_extrap = (lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean']).groupby('stat').sum() / lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean'].sum() # estimated plus extrapolated 
+    m_extrap_km2 = (lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean']).groupby('stat').sum()
+    m_extrap = m_extrap_km2 / lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean'].sum() # estimated plus extrapolated 
     # np.average(lsd_hl_trunc.extrapLSD.binnedLEV.unstack(), weights=lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean'], axis=0)
     print(f'Mean extrap LEV: {m_extrap[1]:0.2%} ({m_extrap[0]:0.2%}, {m_extrap[2]:0.2%})') # Note order is diff from output of meanLev()
-    m_comb = ((lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean']).groupby('stat').sum() + \
-        (lsd_hl_trunc.LEV_MEAN * lsd_hl_trunc.Area_km2).sum()) / lsd_hl_trunc.sumAreas(includeExtrap=True)
+    m_comb_km2 = (lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean']).groupby('stat').sum() + \
+        (lsd_hl_trunc.LEV_MEAN * lsd_hl_trunc.Area_km2).sum()
+    m_comb = m_comb_km2 / lsd_hl_trunc.sumAreas(includeExtrap=True)
     print(f'Mean LEV (est and extrap): {m_comb[1]:0.2%} ({m_comb[0]:0.2%}, {m_comb[2]:0.2%})')
+
+    ## Area vs LEV plots (TODO: add extrap points)
+    fig, ax = plt.subplots()
+    # ax.scatter(lsd_hl_trunc.Area_km2, lsd_hl_trunc.LEV_MEAN)
+    sns.scatterplot(lsd_hl_trunc, x='Area_km2', y='LEV_MEAN', ax=ax, alpha=0.1)
+    ax.set_xscale('log')
+    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})')
 
     ## print number of ref lakes:
     # len(lsd_hl_trunc)
