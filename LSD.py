@@ -261,15 +261,26 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list) -> True:
         ''' df is in units of km2, ref_df is in units of px'''
         common_cols = df.columns.intersection(ref_df.columns.drop('Class_sum'))
         assert len(common_cols) == 101, f"{len(common_cols)} common columns found bw datasets. 101 desired."
-        df_tmp = df[common_cols].reindex(columns=common_cols) # change order
-        ref_df = ref_df[common_cols].reindex(columns=common_cols) # change order permanently
+        df_tmp = df[common_cols].reindex(columns=common_cols) # change order and only keep common (hist class) columns [repeats unnecessesarily ev time...]
+        Class_sum = ref_df['Class_sum'] # used for update
+        ref_df = ref_df[common_cols].reindex(columns=common_cols) # change order permanently (note: these orders are actually not numerical- no matter, as long as consistent bw two dfs)
         result = df_tmp /  df.Class_sum.values[:, None] * ref_df.loc['LEV', :] / ref_df.loc['CLASS_sum', :] # Mult Oc fraction of each oc bin by LEV fraction of each Oc bin.Broadcast ref_df over number of lakes
         df_lev['LEV_' + names[i]] = np.nansum(result, axis=1)
 
+        # ## matrix version
+        # C = (df_tmp.fillna(0) /  df.Class_sum.values[:, None]).values
+        # D =  (ref_df.loc[['LEV'], :].values / ref_df.loc[['CLASS_sum'], :].values).T
+        # df_lev['LEV_' + names[i]] = np.matmul(C,D)
+
+        # ## matrix version w third term
+        # C = (df_tmp.fillna(0) /  df.Class_sum.values[:, None]).values
+        # D =  (ref_df.loc[['LEV'], :].values / ref_df.loc[['CLASS_sum'], :].values).T
+        # df_lev['LEV_' + names[i]] = Class_sum.loc['LEV'] / Class_sum.loc['CLASS_sum'] * np.matmul(C,D)
+
     ## Summary stats
-    df_lev['LEV_MEAN'] = df_lev[cols].mean(axis=1)
-    df_lev['LEV_MIN'] = df_lev[cols].min(axis=1)
-    df_lev['LEV_MAX'] = df_lev[cols].max(axis=1)
+    df_lev['LEV_MEAN'] = df_lev[cols].mean(axis=1) # df_lev[cols].mean(axis=1) # TODO: means by region, not by min/max (need arg for extreme regions)
+    df_lev['LEV_MIN'] = df_lev[cols].min(axis=1) # df_lev[] #
+    df_lev['LEV_MAX'] = df_lev[cols].max(axis=1) # df_lev[] #
 
     ## Join and return
     df_lev = pd.concat((df.drop(columns=np.concatenate((common_cols.values, ['Class_sum']))), df_lev), axis=1)
@@ -1262,7 +1273,7 @@ class BinnedLSD():
                     group_means_lev = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
                     # group_means_lev_low = lsd.groupby(['size_bin']).LEV_MIN.mean(numeric_only=True)
                     # group_means_lev_high = lsd.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
-                    group_means_lev_low, group_means_lev_high = [lsd[lsd['Region']==region].groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) for region in extreme_regions_lev]
+                    group_means_lev_low, group_means_lev_high = [lsd[lsd['Region']==region].groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) for region in extreme_regions_lev] # Here, my ref distrib has no LEV_MIN/MAX, since it is observed, so I use extreme reegions for uncertainty bounds
                     ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high, name='LEV_frac')
                     self.binnedLEV = ds_lev
                     self.hasCI_lev = True
@@ -1917,6 +1928,14 @@ if __name__=='__main__':
     
     ## Plot extrapolated fluxes
     lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False, error_bars=False)
+
+    ## Plot combined extrap LSD/Flux
+    norm = True # False
+    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=norm, color='blue')
+    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    ax2=ax.twinx()
+    lsd_hl_trunc.plot_extrap_flux(ax=ax2, reverse=False, normalized=norm, error_bars=False)
+    plt.tight_layout()
 
     ## Compare HL extrapolation to WBD:
     # lsd_hl_trunc.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
