@@ -1987,6 +1987,8 @@ if __name__=='__main__':
 * Use fid_as_index argument when loading with pyarrow
 * Preserve og index when concatenating so I can look up lakes from raw file (combine with above re: fid)
 * Branches for if there is no CI/error bars in binned distrib. Make sure there is still a second index called 'stat' with constant val 'mean'
+* Rewrite meanLEV() to output a series
+* Go back and add branches for no CI to the various methods. Make sure it still has a second index for 'stat' with constant val 'mean'
 
 NOTES:
 * Every time a create an LSD() object in a function from an existing LSD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
