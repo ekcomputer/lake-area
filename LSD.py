@@ -768,7 +768,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         return
 
     ## Plotting
-    def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, **kwargs):
+    def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=False, ax=None, **kwargs):
         '''
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
 
@@ -1651,19 +1651,18 @@ def runTests():
 
     pass
 
-## Testing mode or no.
-parser = argparse.ArgumentParser()
-parser.add_argument("--test", default=False,
-                    help="Whether to run in test mode or not (default=False)")
-args = parser.parse_args()
-if args.test == 'True':
-    print('Test mode.')
-    __name__ ='__test__'
-
-if __name__=='__test__':
-    runTests()
-    
 if __name__=='__main__':
+
+    ## Testing mode or no.
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test", default=False,
+                        help="Whether to run in test mode or not (default=False)")
+    args = parser.parse_args()
+    if args.test == 'True':
+        print('Test mode.')
+        runTests()
+        exit()
+
     ## I/O
     tb_dir = '/mnt/g/Ch4/area_tables'
 
