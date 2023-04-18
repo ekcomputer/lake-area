@@ -22,6 +22,7 @@ import matplotlib
 import matplotlib.mlab as mlab
 import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
+from labellines import labelLine, labelLines
 import seaborn as sns
 import scipy.ndimage as ndi 
 import pandas as pd
@@ -362,7 +363,36 @@ def loadUAVSAR(ref_names = ['CSB', 'CSD', 'PAD', 'YF']):
     ref_dfs = list(map(produceRefDs, [value['pths_csv'] for value in pths_dict.values()])) # load ref dfs 
     lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
     return lsd_lev_cat, ref_dfs
+    
+def regionStats(lsd) -> True:
+    """
+    Analyze regions to choose min and max for confidence interval. Creates a df where each row is a region, with attributes for stats.
 
+    Parameters
+    ----------
+    lsd : LSD
+
+    Returns
+    -------
+    df_regions : pd.DataFrame
+
+    """
+    cols = ['region', 'maxA','A_0.1', 'nGT0.5', 'nGT1','nGT5']
+    df_regions = pd.DataFrame(columns=cols)
+    for i, region in enumerate(np.unique(lsd.Region)):
+        lsd_tmp = lsd.query(f"Region == '{region}'")
+        df_dict = {
+            'region': region, 
+            'maxA': lsd_tmp.Area_km2.max(), # make sure region has data beyond index range
+            'A_0.1': lsd_tmp.area_fraction(0.1),
+            'nGT0.5': lsd_tmp.query("Area_km2 > 0.5").shape[0],
+            'nGT1': lsd_tmp.query("Area_km2 > 1").shape[0],
+            'nGT5': lsd_tmp.query("Area_km2 > 5").shape[0],
+            }
+        df_tmp = pd.DataFrame(df_dict, index=pd.Index([i]))
+        df_regions = pd.concat((df_regions, df_tmp), ignore_index=True)
+    return df_regions
+    
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
     '''Lake size distribution'''
@@ -602,8 +632,9 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         TODO: add option to include extrapolation in estimate.
         '''
-        if self.truncationLimits[1]  is not np.inf:
-            warn("Careful, you are computing an area fraction based on a top-truncated LSD, so the fraction may be too high.")
+        if self.isTruncated:
+            if self.truncationLimits[1]  is not np.inf:
+                warn("Careful, you are computing an area fraction based on a top-truncated LSD, so the fraction may be too high.")
         attr = f'_A_{limit}' # dynamically-named attribute (_ prefix means it won't get copied over after a truncation or concat)
         if attr in self.get_public_attrs():
             return getattr(self, attr)
@@ -812,7 +843,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         return
 
     ## Plotting
-    def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=False, ax=None, **kwargs):
+    def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=False, ax=None, plotLabels=False, **kwargs):
         '''
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
 
@@ -822,6 +853,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ----------
         groupby_name : boolean
             Group plots by dataset name, given by variable 'Name'
+        plotLabels : boolean (False)
+            Label plots by region
         returns: ax
         '''
         ## Cumulative histogram by value (lake area), not count
@@ -846,14 +879,15 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             for j, name in enumerate(names):
                 for i, region in enumerate(np.unique(pd.DataFrame.query(self, 'Name == @name').Region)): # can't use .regions() after using DataFrame.query because it returns a DataFrame
                     plotECDFByValue(pd.DataFrame.query(self, 'Region == @region').Area_km2, ax=ax, alpha=0.6, label=name, color=cmap(j), **kwargs)
-
         ## repeat for all
         if all:
             plotECDFByValue(self.Area_km2, ax=ax, alpha=0.4, color='black', label='All', **kwargs)
 
-        ## Legend
+        ## Legend and labels
         if plotLegend:
             ax.legend(loc= 'center left', bbox_to_anchor=(1.04, 0.5)) # legend on right (see https://stackoverflow.com/a/43439132/7690975)
+        if plotLabels:
+            labelLines(ax.get_lines())
 
         return ax
 
@@ -1599,18 +1633,18 @@ def runTests():
     ####################################
 
     ## Test binnedLSD
-    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']) # compute_ci_lsd=False will disable plotting CI.
+    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
     binned.plot()
 
     ## Test binnedLSD with edges specified
-    binned_manual = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, bins=[0.001, 0.1, 0.5], compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']) # compute_ci_lsd=False will disable plotting CI.
+    binned_manual = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, bins=[0.001, 0.1, 0.5], compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
     binned_manual.plot()
 
     ## Test binnedLSD with fluxes
     model = loadBAWLD_CH4()
     lsd_cir.temp = 10 # placeholder, required for prediction 
     lsd_cir.predictFlux(model, includeExtrap=False)
-    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']) # compute_ci_lsd=False will disable plotting CI.
+    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
 
     ## Test extrapolate on small data
     # lsd_hl_trunc = lsd_hl.truncate(0.1, np.inf, inplace=False) # Beware chaining unless I return a new variable.
@@ -1734,7 +1768,20 @@ if __name__=='__main__':
     lsd = LSD.concat((lsd_cir, lsd_perl, lsd_mullen), broadcast_name=True, ignore_index=True)
 
     ## plot
-    # lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=True)
+    lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=True, plotLabels=False)
+    lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
+
+    # ## Plot just CIR
+    # lsd_cir.truncate(0.0001, 5).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=False)
+    # lsd_cir.truncate(0.0001, 5).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
+
+    # ## Plot just PeRL
+    # lsd_perl.truncate(0.0001, 5).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=False)
+    # lsd_perl.truncate(0.0001, 5).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
+
+    # ## Compute extreme regions and save to spreadsheet
+    # df_regions = regionStats(lsd)
+    # df_regions.to_csv(os.path.join(tb_dir, 'region_stats.csv'))
 
     # ## YF compare
     # LSD(lsd.query("Region=='YF_3Y_lakes-and-ponds' or Region=='Yukon Flats Basin'"), name='compare').plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=False)
@@ -1809,9 +1856,10 @@ if __name__=='__main__':
     # lsd_hl = LSD.from_shapefile(gdf_Sheng_pth, area_var=sheng_area_var, idx_var=None, name='Sheng', region_var=None)
 
     ## Extrapolate
+    extreme_regions_lsd = ['Tuktoyaktuk Peninsula', 'sur00120130802_tsx_nplaea'] #['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']
     tmin, tmax = (0.0001,5) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
     emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']) # reference distrib (try 5, 0.5 as second args)
+    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # reference distrib (try 5, 0.5 as second args)
     lsd_hl_trunc = lsd_hl_lev.truncate(emax, np.inf) # Beware chaining unless I return a new variable. # Try 0.1
     lsd_hl_trunc.extrapolate(binned_ref, binned_lev)
     meas=lsd_hl_lev.sumAreas(includeExtrap=False)
@@ -1841,18 +1889,20 @@ if __name__=='__main__':
 
     ## Plot combined extrap LSD/LEV
     ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
-    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
     ax2=ax.twinx()
-    lsd_hl_trunc.plot_extrap_lev(ax=ax2, error_bars=True, color='green')
+    lsd_hl_trunc.plot_extrap_lev(ax=ax, error_bars=True, color='green')
     ymin, ymax = ax.get_ylim()
-    ax2.set_ylim([ymin, ymax])
+    ax2.set_ylim([ymin, ymax/lsd_hl_trunc.sumAreas()])
+    ax2.set_ylabel('Cumulative area fraction')
     plt.tight_layout()
 
-    ## Retrieve data from plot
-    ax.get_lines()[0].get_ydata() # gives right part of LSD plot # [1] is left part 
-    ax2.get_lines()[0].get_ydata() # gives right part of LEV plot
-    X_lev = np.concatenate((ax.get_lines()[1].get_xdata(), ax.get_lines()[0].get_xdata()))
-    S_lev = np.concatenate((ax.get_lines()[1].get_ydata(), ax.get_lines()[0].get_ydata()))
+    # ## Retrieve data from plot
+    # ax.get_lines()[0].get_ydata() # gives right part of LSD plot # [1] is left part 
+    # ax2.get_lines()[0].get_ydata() # gives right part of LEV plot
+    # X_lev = np.concatenate((ax.get_lines()[1].get_xdata(), ax.get_lines()[0].get_xdata()))
+    # S_lev = np.concatenate((ax.get_lines()[1].get_ydata(), ax.get_lines()[0].get_ydata()))
+
     ## Plot just lev, normalized
     ax = lsd_hl_trunc.plot_extrap_lev(error_bars=True, normalized=True, color='green')
     lsd_hl_trunc.plot_extrap_lev(error_bars=False, normalized=True, color='green')
@@ -1868,6 +1918,17 @@ if __name__=='__main__':
         (lsd_hl_trunc.LEV_MEAN * lsd_hl_trunc.Area_km2).sum()
     m_comb = m_comb_km2 / lsd_hl_trunc.sumAreas(includeExtrap=True)
     print(f'Mean LEV (est and extrap): {m_comb[1]:0.2%} ({m_comb[0]:0.2%}, {m_comb[2]:0.2%})')
+
+    ## Plot extrapolated fluxes
+    lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False, error_bars=False)
+
+    ## Plot combined extrap LSD/Flux
+    norm = True # False
+    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
+    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    ax2=ax.twinx()
+    lsd_hl_trunc.plot_extrap_flux(ax=ax2, reverse=False, normalized=norm, error_bars=False)
+    plt.tight_layout()
 
     ## Area vs LEV plots (TODO: add extrap points)
     fig, ax = plt.subplots()
@@ -1885,7 +1946,7 @@ if __name__=='__main__':
     tmin, tmax = (0.0001,5) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
     log_bins_lower = [tmin, 0.001, 0.01, 0.1, emax]
     emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-    binned_ref_log10bins = BinnedLSD(lsd.truncate(tmin, tmax), bins=log_bins_lower, compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']) # reference distrib (try 5, 0.5 as second args)
+    binned_ref_log10bins = BinnedLSD(lsd.truncate(tmin, tmax), bins=log_bins_lower, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # reference distrib (try 5, 0.5 as second args)
     binned_lev_log10bins = BinnedLSD(lsd_lev_cat, bins=log_bins_lower, compute_ci_lev=True, extreme_regions_lev=extreme_regions_lev_for_extrap) # 0.000125 is native
     lsd_hl_trunc_log10bins = lsd_hl_lev.truncate(emax, np.inf) # Beware chaining unless I return a new variable. # Try 0.1
     lsd_hl_trunc_log10bins.extrapolate(binned_ref_log10bins, binned_lev_log10bins)  
@@ -1918,17 +1979,6 @@ if __name__=='__main__':
     # len(lsd_hl_trunc)
     # lsd_hl_trunc.refBinnedLSD.binnedCounts.sum()
     # lsd_hl_trunc.extrapLSD.sumAreas()
-    
-    ## Plot extrapolated fluxes
-    lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False, error_bars=False)
-
-    ## Plot combined extrap LSD/Flux
-    norm = True # False
-    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=norm, color='blue')
-    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
-    ax2=ax.twinx()
-    lsd_hl_trunc.plot_extrap_flux(ax=ax2, reverse=False, normalized=norm, error_bars=False)
-    plt.tight_layout()
 
     ## Compare HL extrapolation to WBD:
     # lsd_hl_trunc.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
@@ -1957,7 +2007,7 @@ if __name__=='__main__':
     emax = 0.5 # Extrapolation limit emax defines the left bound of the index region (and right bound of the extrapolation region).
     # binned_ref = BinnedLSD(lsd_wbd.truncate(tmin, tmax), tmin, emax) # uncomment to use self-extrap
     # txt='self-'
-    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta'])
+    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd)
     txt=''
     lsd_wbd_trunc = lsd_wbd.truncate(emax, np.inf)
     lsd_wbd_trunc.extrapolate(binned_ref)
