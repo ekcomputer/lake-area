@@ -216,12 +216,17 @@ def loadBAWLD_CH4():
         encoding = "ISO-8859-1", dtype={'CH4.E.FLUX ':'float'}, na_values='-')
     len0 = len(df)
 
+    ## Add total open water flux column
+    df['CH4.E.FLUX'].fillna(df['CH4.D.FLUX']*1.2, inplace=True)
+    df['CH4.D.FLUX'].fillna(df['CH4.E.FLUX']/1.2, inplace=True)
+    df['CH4.DE.FLUX'] = df['CH4.D.FLUX'] + df['CH4.E.FLUX']
+
     ## Filter and pre-process
     df.query("SEASON == 'Icefree' ", inplace=True) # and `D.METHOD` == 'CH'
-    df.dropna(subset=['SA', 'CH4.D.FLUX', 'TEMP'], inplace=True)
+    df.dropna(subset=['SA', 'CH4.DE.FLUX', 'TEMP'], inplace=True)
 
     ## if I want transformed y as its own var
-    df['CH4.D.FLUX.LOG'] = np.log10(df['CH4.D.FLUX']+1) 
+    df['CH4.DE.FLUX.LOG'] = np.log10(df['CH4.DE.FLUX']+1) 
 
     ## print filtering
     len1 = len(df)
@@ -229,7 +234,7 @@ def loadBAWLD_CH4():
     # print(f'Variables: {df.columns}')
 
     ## Linear models (regression)
-    formula = "np.log10(Q('CH4.D.FLUX')) ~ np.log10(SA) + TEMP" # 'Seasonal.Diff.Flux' 'CH4.D.FLUX'
+    formula = "np.log10(Q('CH4.DE.FLUX')+0.01) ~ np.log10(SA) + TEMP" # 'Seasonal.Diff.Flux' 'CH4.D.FLUX'
     model = ols(formula=formula, data=df).fit()
 
     return model
