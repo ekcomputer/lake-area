@@ -112,7 +112,7 @@ def plotECDFByValue(values=None, reverse=True, ax=None, normalized=True, X=None,
         S = S/S[-1] # S/np.sum(X) has unintended result when using for extrapolated, when S is not entirely derived from X
         ylabel = 'Cumulative fraction of total area'
     else:
-        ylabel = 'Cumulative area (km2)'
+        ylabel = 'Cumulative area ($km^2$)'
     if not ax:
         _, ax = plt.subplots()
     ax.plot(X, S, **kwargs) 
@@ -120,7 +120,7 @@ def plotECDFByValue(values=None, reverse=True, ax=None, normalized=True, X=None,
     ## Viz params
     ax.set_xscale('log')
     ax.set_ylabel(ylabel)
-    ax.set_xlabel('Lake area (km2)')
+    ax.set_xlabel('Lake area ($km^2$)')
     return
 
 def plotEPDFByValue(values, ax=None, **kwargs):
@@ -1211,7 +1211,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             ax.set_ylabel('Cumulative fraction of LEV')
         else:
             plotECDFByValue(self.LEV_MEAN * self.Area_km2, ax=ax, alpha=0.4, color='black', label='All', reverse=reverse, normalized=normalized, **kwargs)
-            ax.set_ylabel('Cumulative LEV (km2)')
+            ax.set_ylabel('Cumulative LEV ($km^2$)')
         ax.set_xlabel('LEV fraction')
 
         ## Legend
@@ -1252,7 +1252,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
                 ylabel = 'Cumulative fraction of total LEV'
             else:
                 values_for_sum = self[var] * self.Area_km2
-                ylabel = 'Cumulative LEV (km2)'
+                ylabel = 'Cumulative LEV ($km^2$)'
             X, S = ECDFByValue(self.Area_km2, values_for_sum=values_for_sum, reverse=reverse)
             plotECDFByValue(X=X, S=S, ax=ax, alpha=0.6, color=color, label='All', normalized=normalized, reverse=reverse, **kwargs)
             ax.set_ylabel(ylabel)
@@ -1932,24 +1932,47 @@ if __name__=='__main__':
     lsd_hl_trunc.predictFlux(model, includeExtrap=True)
 
     ## Plot combined extrap LSD/LEV
-    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
+    fig, ax = plt.subplots(2,1, sharex=True)
+    lsd_hl_trunc.plot_extrap_lsd(ax=ax[0], label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
     # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
-    ax2=ax.twinx()
-    lsd_hl_trunc.plot_extrap_lev(ax=ax, error_bars=True, color='green')
-    ymin, ymax = ax.get_ylim()
+    ax2=ax[0].twinx()
+    lsd_hl_trunc.plot_extrap_lev(ax=ax[0], error_bars=True, color='green')
+    ymin, ymax = ax[0].get_ylim()
     ax2.set_ylim([ymin, ymax/lsd_hl_trunc.sumAreas()])
-    ax.set_ylabel('Cumulative area ($km^2$)')
+    ax[0].set_ylabel('Cumulative area ($km^2$)')
+    ax[0].set_xlabel('')
     ax2.set_ylabel('Cumulative area fraction')
+    # plt.tight_layout()
+
+    ## Plot extrapolated fluxes
+    lsd_hl_trunc.plot_extrap_flux(ax=ax[1], reverse=False, normalized=False, error_bars=True)
+    ax2=ax[1].twinx()
+    ymin, ymax = ax[1].get_ylim()
+    ax2.set_ylim([ymin, ymax/lsd_hl_trunc._total_flux_Tg_yr['mean']])
+    ax2.set_ylabel('Cumulative emissions fraction')
     plt.tight_layout()
 
+    # ## Plot combined extrap LSD/Flux
+    # norm = True # False
+    # ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
+    # # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    # ax2=ax.twinx()
+    # lsd_hl_trunc.plot_extrap_flux(ax=ax2, reverse=False, normalized=norm, error_bars=True)
+    # plt.tight_layout()
+
     ## Plot inset with just LEV, with normalized second axis
+    sns.set_theme('poster', font='Ariel')
+    sns.set_style('ticks')
     ax = lsd_hl_trunc.plot_extrap_lev(error_bars=True, color='green')
     ax2=ax.twinx()
     ymin, ymax = ax.get_ylim()
     ax2.set_ylim([ymin, ymax/lsd_hl_trunc.sumLev()['mean']])
-    ax.set_ylabel('Cumulative aquatic vegetation area ($km^2$)')
-    ax2.set_ylabel('Cumulative aquatic vegetation area fraction')
+    ax.set_ylabel('') #'Cumulative aquatic vegetation area ($km^2$)')
+    ax2.set_ylabel('') #'Cumulative aquatic vegetation area fraction')
     plt.tight_layout()
+    ax.get_figure().savefig('/mnt/d/pic/BAWLD_areas_inset_v2.png', transparent=True, dpi=300)
+    sns.set_theme('notebook', font='Ariel')
+    sns.set_style('ticks')
 
     # ## Retrieve data from plot
     # ax.get_lines()[0].get_ydata() # gives right part of LSD plot # [1] is left part 
@@ -1968,22 +1991,6 @@ if __name__=='__main__':
         (lsd_hl_trunc.LEV_MEAN * lsd_hl_trunc.Area_km2).sum()
     m_comb = m_comb_km2 / lsd_hl_trunc.sumAreas(includeExtrap=True)
     print(f'Mean LEV (est and extrap): {m_comb[1]:0.2%} ({m_comb[0]:0.2%}, {m_comb[2]:0.2%})')
-
-    ## Plot extrapolated fluxes
-    ax = lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False, error_bars=True)
-    ax2=ax.twinx()
-    ymin, ymax = ax.get_ylim()
-    ax2.set_ylim([ymin, ymax/lsd_hl_trunc._total_flux_Tg_yr['mean']])
-    ax2.set_ylabel('Cumulative emissions fraction')
-    plt.tight_layout()
-
-    # ## Plot combined extrap LSD/Flux
-    # norm = True # False
-    # ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
-    # # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
-    # ax2=ax.twinx()
-    # lsd_hl_trunc.plot_extrap_flux(ax=ax2, reverse=False, normalized=norm, error_bars=True)
-    # plt.tight_layout()
 
     ## Area vs LEV plots (TODO: add extrap points)
     fig, ax = plt.subplots()
