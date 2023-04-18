@@ -312,12 +312,51 @@ def produceRefDs(ref_df_pth: str) -> True:
 
     return df
 
-# def loadUAVSAR(pth, name): # This can be replaced with LSD(lev_var=em_fractio)
-#     lev = gpd.read_file(pth, engine='pyogrio')
-#     lev.query('edge==0 and cir_observ==1', inplace=True)
-#     lev.rename(columns={'em_fractio': 'LEV_MEAN'}, inplace=True)
-#     lsd_lev = LSD(lev, area_var='area_px_m2', _areaConversionFactor=1e6, name=name)
-#     return lsd_lev
+def loadUAVSAR(ref_names = ['CSB', 'CSD', 'PAD', 'YF']):
+    '''
+    Uses the regions in ref_names for averaging and regions in extreme_regions_lev_for_extrap for confidence interval.
+
+    Returns:
+    lsd_lev_cat: LSD
+        LSD for reference regions. Used as LEV for non-inventoried lakes.
+    ref_dfs: pd.DataFrame
+        Giving Occurrence values by land cover class (e.g. LEV, Water) for reference UAVSAR regions. Used to estimate LEV for inventoried lakes.
+    '''
+
+    ## Load LEV/LSD from UAVSAR
+    print('Loading UAVSAR and Pekel overlay...')
+    default_ref_names = ['CSB', 'CSD', 'PAD', 'YF']
+    pths_shp = ['/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
+        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
+        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
+        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp']
+    
+    pths_csv = [ # CSV
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_train_zHist_Oc_LEV_s.csv' # Note YF is split into train/holdout XX vs XX %
+        ]
+    values = [{ 'pths_shp': pths_shp[i], 'pths_csv': pths_csv[i] } for i in range(len(pths_shp))]
+    pths_dict = {k: v for k, v in zip(default_ref_names, values)}
+
+    ## Filter based on ref_names
+    _ = [pths_dict.pop(key) for key in default_ref_names if not key in ref_names]
+
+    lsd_levs = []
+    for i, pth in enumerate(pths_dict.values()):
+        lsd_lev_tmp = LSD.from_shapefile(pth['pths_shp'], name=ref_names[i], area_var='area_px_m2', lev_var='em_fractio', idx_var='label', _areaConversionFactor=1e6, other_vars = ['edge', 'cir_observ'])
+        lsd_lev_tmp.query('edge==0 and cir_observ==1', inplace=True)
+        lsd_levs.append(lsd_lev_tmp)
+
+    ## Plots (only works for four regions)
+    # fig, axes = plt.subplots(2,2, sharex=True, sharey=True)
+    # for i, ax in enumerate(axes.flatten()):
+    #     lsd_levs[i].plot_lev_cdf_by_lake_area(error_bars=False, ax=ax, plotLegend=False)
+
+    ref_dfs = list(map(produceRefDs, [value['pths_csv'] for value in pths_dict.values()])) # load ref dfs 
+    lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
+    return lsd_lev_cat, ref_dfs
 
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
@@ -1516,39 +1555,15 @@ def runTests():
     ####################################
     ## LEV Tests
     ####################################
-
-
-    ## Test LEV ACDF on UAVSAR data
-    ## Load LEV/LSD from UAVSAR
-    pths = ['/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
-        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
-        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
-        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp']
-
-    print('Loading UAVSAR...')
-    lsd_levs = []
-    for i, pth in enumerate(pths):
-        lsd_lev_tmp = LSD.from_shapefile(pth, name=ref_names[i], area_var='area_px_m2', lev_var='em_fractio', idx_var='label', _areaConversionFactor=1e6, other_vars = ['edge', 'cir_observ'])
-        lsd_lev_tmp.query('edge==0 and cir_observ==1', inplace=True)
-        lsd_levs.append(lsd_lev_tmp)
-
-    # lsd_levs = list(map(loadUAVSAR, pths[-1::-1], ref_names[-1::-1]))
-    fig, axes = plt.subplots(2,2, sharex=True, sharey=True)
-    for i, ax in enumerate(axes.flatten()):
-        lsd_levs[i].plot_lev_cdf_by_lake_area(error_bars=False, ax=ax, plotLegend=False)
+    
+    ref_names = ['CSB', 'CSD', 'PAD', 'YF']
+    lsd_lev_cat, ref_dfs = loadUAVSAR(ref_names)
 
     ## Test LEV estimate: Load UAVSAR/GSW overlay stats
     print('Load HL with joined occurrence...')
     # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
     lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', nrows=10000) # read smaller csv gzip version of data.
-    pths = [ # CSV
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_zHist_Oc_LEV_s.csv'
-        ]
-    print('Loading UAVSAR/Pekel overlay and computing LEV...')
-    ref_dfs = list(map(produceRefDs, pths)) # load ref dfs 
+
     lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names)
     lsd_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id')
 
@@ -1569,8 +1584,9 @@ def runTests():
     # pd.DataFrame(lsd_lev_binneds).T
 
     ## Test 2: Concat all ref LEV distributions and bin
-    lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
+    # lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
     # def ci_from_named_regions(LSD, regions):
+    extreme_regions_lev_for_extrap = ['CSD','PAD']
     binned_lev = BinnedLSD(lsd_lev_cat, 0.0001, 0.5, compute_ci_lev=True, extreme_regions_lev=extreme_regions_lev_for_extrap) # 0.000125 is native
 
     ####################################
@@ -1722,44 +1738,18 @@ if __name__=='__main__':
     ## LEV Analysis
     ####################################
 
-    ## For LEV
+    ## Load csv and shapefiles
+    ref_names = ['CSB', 'CSD', 'PAD', 'YF']
     extreme_regions_lev_for_extrap = ['CSD', 'PAD']
-    ref_names = ['CSB', 
-                'CSD', 
-                'PAD',
-                'YF']
-
-    ## Test LEV ACDF on UAVSAR data
-    ## Load LEV/LSD from UAVSAR
-    pths = ['/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
-        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
-        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
-        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp']
-
-    print('Loading UAVSAR...')
-    lsd_levs = []
-    for i, pth in enumerate(pths):
-        lsd_lev_tmp = LSD.from_shapefile(pth, name=ref_names[i], area_var='area_px_m2', lev_var='em_fractio', idx_var='label', _areaConversionFactor=1e6, other_vars = ['edge', 'cir_observ'])
-        lsd_lev_tmp.query('edge==0 and cir_observ==1', inplace=True)
-        lsd_levs.append(lsd_lev_tmp)
-
+    lsd_lev_cat, ref_dfs = loadUAVSAR(ref_names)
+    
     ## Create binned ref LEV distribution from UAVSAR
-    lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
     binned_lev = BinnedLSD(lsd_lev_cat, 0.0001, 0.5, compute_ci_lev=True, extreme_regions_lev=extreme_regions_lev_for_extrap) # 0.000125 is native
 
     ## LEV estimate: Load UAVSAR/GSW overlay stats
-
     print('Load HL with joined occurrence...')
     # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values
     lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip') # read smaller csv gzip version of data.
-    pths = [ # CSV
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_train_zHist_Oc_LEV_s.csv' # Note YF is split into train/holdout XX vs XX %
-        ]
-    print('Loading UAVSAR/Pekel overlay and computing LEV...')
-    ref_dfs = list(map(produceRefDs, pths)) # load ref dfs 
     lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names)
     lsd_hl_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL')
 
