@@ -1517,8 +1517,6 @@ def runTests():
     ## LEV Tests
     ####################################
 
-    ## For LEV
-    ref_names = ['CSB', 'CSD', 'PAD', 'YF']
 
     ## Test LEV ACDF on UAVSAR data
     ## Load LEV/LSD from UAVSAR
@@ -1573,7 +1571,7 @@ def runTests():
     ## Test 2: Concat all ref LEV distributions and bin
     lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
     # def ci_from_named_regions(LSD, regions):
-    binned_lev = BinnedLSD(lsd_lev_cat, 0.0001, 0.5, compute_ci_lev=True, extreme_regions_lev=['CSD', 'YF']) # 0.000125 is native
+    binned_lev = BinnedLSD(lsd_lev_cat, 0.0001, 0.5, compute_ci_lev=True, extreme_regions_lev=extreme_regions_lev_for_extrap) # 0.000125 is native
 
     ####################################
     ## LSD/bin/extrap Tests
@@ -1725,16 +1723,17 @@ if __name__=='__main__':
     ####################################
 
     ## For LEV
+    extreme_regions_lev_for_extrap = ['CSD', 'PAD']
     ref_names = ['CSB', 
                 'CSD', 
-                #  'PAD', 
+                'PAD',
                 'YF']
 
     ## Test LEV ACDF on UAVSAR data
     ## Load LEV/LSD from UAVSAR
     pths = ['/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
         '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
-        # '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
+        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
         '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp']
 
     print('Loading UAVSAR...')
@@ -1746,7 +1745,7 @@ if __name__=='__main__':
 
     ## Create binned ref LEV distribution from UAVSAR
     lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
-    binned_lev = BinnedLSD(lsd_lev_cat, 0.0001, 0.5, compute_ci_lev=True, extreme_regions_lev=['CSD', 'YF']) # 0.000125 is native
+    binned_lev = BinnedLSD(lsd_lev_cat, 0.0001, 0.5, compute_ci_lev=True, extreme_regions_lev=extreme_regions_lev_for_extrap) # 0.000125 is native
 
     ## LEV estimate: Load UAVSAR/GSW overlay stats
 
@@ -1756,7 +1755,7 @@ if __name__=='__main__':
     pths = [ # CSV
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
-        # '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
         '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_train_zHist_Oc_LEV_s.csv' # Note YF is split into train/holdout XX vs XX %
         ]
     print('Loading UAVSAR/Pekel overlay and computing LEV...')
@@ -1865,7 +1864,7 @@ if __name__=='__main__':
 
     ## LEV fraction stats, without and with extrap
     m = lsd_hl_lev.meanLev(include_ci=True)
-    print(f'Mean LEV: {m[0]:0.2%} ({m[1]:0.2%}, {m[2]:0.2%})')
+    print(f'Mean inventoried-lake LEV: {m[0]:0.2%} ({m[1]:0.2%}, {m[2]:0.2%})')
     m_extrap_km2 = (lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean']).groupby('stat').sum()
     m_extrap = m_extrap_km2 / lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean'].sum() # estimated plus extrapolated 
     # np.average(lsd_hl_trunc.extrapLSD.binnedLEV.unstack(), weights=lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean'], axis=0)
@@ -1892,7 +1891,7 @@ if __name__=='__main__':
     log_bins_lower = [tmin, 0.001, 0.01, 0.1, emax]
     emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
     binned_ref_log10bins = BinnedLSD(lsd.truncate(tmin, tmax), bins=log_bins_lower, compute_ci_lsd=True, extreme_regions_lsd=['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']) # reference distrib (try 5, 0.5 as second args)
-    binned_lev_log10bins = BinnedLSD(lsd_lev_cat, bins=log_bins_lower, compute_ci_lev=True, extreme_regions_lev=['CSD', 'YF']) # 0.000125 is native
+    binned_lev_log10bins = BinnedLSD(lsd_lev_cat, bins=log_bins_lower, compute_ci_lev=True, extreme_regions_lev=extreme_regions_lev_for_extrap) # 0.000125 is native
     lsd_hl_trunc_log10bins = lsd_hl_lev.truncate(emax, np.inf) # Beware chaining unless I return a new variable. # Try 0.1
     lsd_hl_trunc_log10bins.extrapolate(binned_ref_log10bins, binned_lev_log10bins)  
 
