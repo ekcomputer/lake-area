@@ -188,6 +188,14 @@ def confidence_interval_from_extreme_regions(group_means, group_low, group_high,
     '''
     idx = pd.MultiIndex.from_tuples([(label, stat) for label in group_means.index for stat in ['mean', 'lower', 'upper']], names=['size_bin', 'stat'])
     ds = pd.Series(index=idx, name=name, dtype=float)
+
+    ## fille with nan if no CI
+    if group_low is None:
+        group_low = pd.Series(np.full_like(group_means, np.nan), index=group_means.index)
+    if group_high is None:
+        group_high = pd.Series(np.full_like(group_means, np.nan), index=group_means.index)
+
+    ## set values
     ds.loc[ds.index.get_level_values(1) == 'lower'] = group_low.values
     ds.loc[ds.index.get_level_values(1) == 'upper'] = group_high.values
     ds.loc[ds.index.get_level_values(1) == 'mean'] = group_means.values
@@ -227,7 +235,7 @@ def loadBAWLD_CH4():
     df.dropna(subset=['SA', 'CH4.DE.FLUX', 'TEMP'], inplace=True)
 
     ## if I want transformed y as its own var
-    df['CH4.DE.FLUX.LOG'] = np.log10(df['CH4.DE.FLUX']+1) 
+    # df['CH4.DE.FLUX.LOG'] = np.log10(df['CH4.DE.FLUX']+1) 
 
     ## print filtering
     len1 = len(df)
@@ -743,7 +751,6 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             assert ref_BinnedLSD.topEdge == ref_BinnedLEV.topEdge, f"Ref binned LSD top edge ({ref_BinnedLSD.topEdge}) doesn't equal ref binned LEV top edge ({ref_BinnedLEV.topEdge})"
         ## Perform the extrapolation (bin self by its bottom truncation limit to the indexTopLim, and simply multiply it by the normalized refBinnedLSD to do the extrapolation)!
         
-
         index_region_sum = self.truncate(ref_BinnedLSD.topEdge, ref_BinnedLSD.truncationLimits[1]).Area_km2.sum() # Sum all area in LSD in the index region, defined by the topEdge and top-truncation limit of the ref LSD.
         last = ref_BinnedLSD.binnedValues.index.get_level_values(0).max() # last index with infinity to drop (use as mask)
         binned_values = ref_BinnedLSD.binnedValues.drop(index=last) * index_region_sum # remove the last entries, which are mean, lower, upper for the bin that goes to np.inf
@@ -800,6 +807,23 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         
         return out
     
+    def sumLev(self, ci=False, includeExtrap=True):
+        '''
+        Sums all lev area in distribution. Works for CI or no CI.
+        
+        Parameters
+        ----------
+        ci : Boolean
+            Whether to output the lower and upper confidence intervals.
+        includeExtrap : Boolean
+            Whether to include any extrapolated areas, if present
+        '''
+        sum = (confidence_interval_from_extreme_regions(lsd_hl_trunc.LEV_MEAN, lsd_hl_trunc.LEV_MIN, lsd_hl_trunc.LEV_MAX) *\
+               confidence_interval_from_extreme_regions(lsd_hl_trunc.Area_km2, lsd_hl_trunc.Area_km2, lsd_hl_trunc.Area_km2)).sum(level=1)
+        if includeExtrap:
+            sum += (lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues).sum(level=1)
+        return sum
+
     def meanLev(self, include_ci=False):
         ''' Weighted mean of LEV by area'''
         if include_ci:
@@ -833,7 +857,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ## Flux (areal, mgCH4/m2/day)
         self['est_mg_m2_day'] = 10**(model.params.Intercept +
         model.params['np.log10(SA)'] * np.log10(self.Area_km2) 
-        + model.params['TEMP'] * self.temp) # jja, ann, son, mam
+        + model.params['TEMP'] * self.temp) - 0.01 # jja, ann, son, mam
 
         ## Flux (flux rate, gCH4/day)
         self['est_g_day'] = self.est_mg_m2_day * self.Area_km2 * 1e3 # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
@@ -939,9 +963,9 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         ## Override default axes
         if normalized:
-            ylabel = 'Cumulative fraction of total flux'
+            ylabel = 'Cumulative fraction of emissions'
         else:
-            ylabel = 'Total flux (Tg/yr)'
+            ylabel = 'Cumulative emissions (Tg/yr)'
         ax.set_ylabel(ylabel)
 
         return ax
@@ -980,12 +1004,12 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
             ## as area plot: extrap section
             ax.fill_between(geom_means, np.cumsum(self.extrapLSD.binnedValues.loc[:, 'lower']), # extrap section
-                            np.cumsum(self.extrapLSD.binnedValues.loc[:, 'upper']), alpha=0.3, color=kwargs['color'])
+                            np.cumsum(self.extrapLSD.binnedValues.loc[:, 'upper']), alpha=0.1, color=kwargs['color'])
             
             ## Observed section
             yerr_top = self.extrapLSD.binnedValues.loc[:, 'mean'].sum() - self.extrapLSD.binnedValues.loc[:, 'lower'].sum()
             yerr_btm = self.extrapLSD.binnedValues.loc[:, 'upper'].sum() - self.extrapLSD.binnedValues.loc[:, 'mean'].sum()
-            ax.fill_between(X, np.maximum(S-yerr_top, 0), S+yerr_btm, alpha=0.3, color=kwargs['color'])            
+            ax.fill_between(X, np.maximum(S-yerr_top, 0), S+yerr_btm, alpha=0.1, color=kwargs['color'])            
         ## Plot
         if normalized: # need to normalize outside of plotECDFByValue function
             denom = self.sumAreas()
@@ -1051,21 +1075,21 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             
             ## as area plot: extrapolated LEV
             ax.fill_between(geom_means, np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'lower']*self.extrapLSD.binnedValues.loc[:, 'mean']), # btm section
-                            np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'upper']*self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color=kwargs['color'])
+                            np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'upper']*self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.1, color=kwargs['color'])
             
             ## as area plot: estimated LEV from obs
             X_low, S_low = ECDFByValue(self.Area_km2, self.LEV_MIN*self.Area_km2, reverse=False)
             S_low += binned_lev_km2.loc[:, 'lower'].sum()
             _, S_up = ECDFByValue(self.Area_km2, self.LEV_MAX*self.Area_km2, reverse=False)
             S_up += binned_lev_km2.loc[:, 'upper'].sum()
-            ax.fill_between(X_low, S_low, S_up, alpha=0.3, color=kwargs['color']) # TODO: remove overlap line
+            ax.fill_between(X_low, S_low, S_up, alpha=0.1, color=kwargs['color']) # TODO: remove overlap line
 
         ## Plot main curves 
         if normalized:
-            ylabel = 'Cumulative fraction of total LEV'
+            ylabel = 'Cumulative aquatic vegetation fraction'
             denom = binned_lev_km2.loc[:, 'mean'].sum() # self.sumLEV() # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
         else:
-            ylabel = 'Cumulative LEV (km2)'
+            ylabel = 'Cumulative aquatic vegetation ($km^2$)'
             denom = 1
         plotECDFByValue(ax=ax, alpha=1, X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs) # obs values
         plotECDFByValue(ax=ax, alpha=1, X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
@@ -1096,39 +1120,60 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ## Prepare values
         if ax==None:
             _, ax = plt.subplots() # figsize=(5,3)
-
-        means = self.extrapLSD.binnedG_day # used to be a branch for if self.extrapLSD.hasCI_lsd...
+        
+        # Create plot values for observed part
+        means = self.extrapLSD.binnedG_day.loc[:,'mean']
         X, S = ECDFByValue(self.Area_km2, values_for_sum=self.est_g_day * 365.25 / 1e12, reverse=False) # scale to Tg / yr
         geom_means = np.array(list(map(interval_geometric_mean, means.index))) # take geom mean of each interval Try self.extrapLSD.binnedValues.loc[:, 'mean'].index.get_level_values(0)
         # X = np.concatenate((geom_means, X))
-        S += self.extrapLSD.sumFluxes() # add to original cumsum
+        S += self.extrapLSD.sumFluxes()['mean'] # add to original cumsum
         # S = np.concatenate((np.cumsum(means)* 365.25 / 1e12, S)) # pre-pend the binned vals
         S0 = np.cumsum(means)* 365.25 / 1e12 # pre-pend the binned vals
         if not 'color' in kwargs:
             kwargs['color']='red'
+        # TODO: rewrite vectorized to use cumsum over three indexes (mean, upper, lower). Right now, seems to not be equivalent... Try using .sum(level=1)
+      
+        if normalized:
+            ylabel = 'Cumulative fraction of emissions'
+            denom = self._total_flux_Tg_yr['mean'] # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
+        else:
+            ylabel = 'Cumulative emissions (Tg/yr)'
+            denom = 1
 
         ## Add error bars
+        # if None:
         if error_bars == True and self.extrapLSD.hasCI_lsd:
-            raise ValueError('No branch yet written for flux plots with error bars.')
-            assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
+            assert self.extrapLSD.hasCI_lsd, "error_bars is set, but extrapolated LSD has no CI (self.extrapLSD.hasCI_lsd is False)"
+            
+            # ...
+
+            ## as area plot: extrapolated flux
+            ax.fill_between(geom_means, np.cumsum(self.extrapLSD.binnedG_day.loc[:, 'lower'])* 365.25 / 1e12 / denom, # btm section
+                            np.cumsum(self.extrapLSD.binnedG_day.loc[:, 'upper'])* 365.25 / 1e12 / denom, alpha=0.1, color=kwargs['color'])
+            
+            ## as area plot: estimated flux from obs
+            X_low, S_low = ECDFByValue(self.Area_km2, self.est_g_day * 365.25 / 1e12 / denom, reverse=False)
+            S_low += self.extrapLSD.binnedG_day.loc[:, 'lower'].sum() * 365.25 / 1e12 / denom
+            _, S_up = ECDFByValue(self.Area_km2, self.est_g_day * 365.25 / 1e12 / denom, reverse=False) # re-compute
+            S_up += self.extrapLSD.binnedG_day.loc[:, 'upper'].sum() * 365.25 / 1e12 / denom
+            ax.fill_between(X_low, S_low, S_up, alpha=0.1, color=kwargs['color']) # TODO: remove overlap line
+
+            # ...
+            # raise ValueError('No branch yet written for flux plots with error bars.')
+            # assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
             ## as error bars (miniscule)
-            yerr = binnedVals2Error(self.extrapLSD.binnedValues, self.extrapLSD.nbins)
+            # yerr = binnedVals2Error(self.extrapLSD.binnedValues, self.extrapLSD.nbins)
             # yerr = np.concatenate((np.cumsum(yerr[0][-1::-1])[-1::-1][np.newaxis, :], np.cumsum(yerr[1][-1::-1])[-1::-1][np.newaxis, :])) # don't need to cumsum errors?
             
             ## As errorbar (replaced by area plot)
             # ax.errorbar(geom_means, np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), xerr=None, yerr=yerr, fmt='none', )
             
             ## as area plot
-            ax.fill_between(geom_means, np.maximum(-np.cumsum(yerr[1][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), 0), # btm section
-                            np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color=kwargs['color'])
+            # ax.fill_between(geom_means, np.maximum(-np.cumsum(yerr[1][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), 0), # btm section
+            #                 np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color=kwargs['color'])
 
         ## Plot main curves
-        if normalized:
-            ylabel = 'Cumulative fraction of total flux'
-            denom = self._total_flux_Tg_yr # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
-        else:
-            ylabel = 'Total flux (Tg/yr)'
-            denom = 1
+
         plotECDFByValue(ax=ax, alpha=1, X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs)
         plotECDFByValue(ax=ax, alpha=1, X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
         ax.set_ylabel(ylabel)
@@ -1226,7 +1271,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
 class BinnedLSD():
     '''This class represents lakes as area bins with summed areas.'''
-    def __init__(self, lsd=None, btm=None, top=None, nbins=None, bins=None, normalize=True, compute_ci_lsd=False, compute_ci_lev=False, binned_values=None, extreme_regions_lsd=None, extreme_regions_lev=None):
+    def __init__(self, lsd=None, btm=None, top=None, nbins=None, bins=None, normalize=True, compute_ci_lsd=False, compute_ci_lev=False, compute_ci_flux=False, binned_values=None, extreme_regions_lsd=None, extreme_regions_lev=None):
         '''
         Bins will have left end closed and right end open.
         When creating this class to extrapolate a LSD, ensure that lsd is top-truncated to ~1km to reduce variability in bin sums. This chosen top limit will be used as the upper limit to the index region (used for normalization) and will be applied to the target LSD used for extrapolation.
@@ -1250,6 +1295,8 @@ class BinnedLSD():
             Compute confidence interval for lsd by breaking down by region. Function will always bin LSD (at least without CI)
         compute_ci_lev : Boolean
             Compute confidence interval for lev by breaking down by region. Function will always bin LEV (at least without CI)
+        compute_ci_flux : Boolean
+            Compute confidence interval for flux by multiplying by ci_lsd CI. Function will always bin LEV (at least without CI)
         binnedValues : pandas.DataFrame
             Used for LSD.extrapolate(). Has structure similar to what is returned by self.binnedValues if called with lsd argument. Format: multi-index with two columns, first giving bins, and second giving normalized lake area sum statistic (mean, upper, lower).
         extreme_regions_lsd : array-like
@@ -1364,22 +1411,17 @@ class BinnedLSD():
 
             ## bin flux
             if hasFlux:
-                if None: # CI
-                    assert extreme_regions_lev is not None, "If compute_ci_lsd is True, and LSD has LEV, extreme_regions_lev must be provided"
-                    assert np.all([region in lsd.Region.unique() for region in extreme_regions_lev]), "One region name in extreme_regions_lsd is not present in lsd."
-                    group_means_lev = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
-                    # group_means_lev_low = lsd.groupby(['size_bin']).LEV_MIN.mean(numeric_only=True)
-                    # group_means_lev_high = lsd.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
-                    group_means_lev_low, group_means_lev_high = [lsd[lsd['Region']==region].groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) for region in extreme_regions_lev]
-                    ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high, name='LEV_frac')
-                    self.binnedLEV = ds_lev
-                    self.hasCI_lev = True
-                    self.extreme_regions_lev = extreme_regions_lev
+                ds_g_day_from_sum = lsd.groupby(['size_bin']).est_g_day.sum(numeric_only=True) # method #1: sum g/day for each lake   
+                self.binnedG_day = confidence_interval_from_extreme_regions(ds_g_day_from_sum, None, None, name='est_g_day')
+                if compute_ci_flux: # CI
+                    assert compute_ci_lsd is not None, "If compute_ci_flux is True, compute_ci_lsd must be provided"
+                    # group_means_flux0, group_means_flux_low0, group_means_flux_high0 = [lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) * self.binnedValues.loc[:,stat] * 1e3 for stat in ['mean', 'lower', 'upper']] # method #2: would have units of g / day (don't multiply by area yet). 
+                    group_means_flux, group_means_flux_low, group_means_flux_high = [lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) for stat in ['mean', 'lower', 'upper']] # Low/mean/high are all the same on a per-area basis!
+                    ds_mg_m2_day = confidence_interval_from_extreme_regions(group_means_flux, group_means_flux_low, group_means_flux_high, name='est_g_day')
+                    self.binnedMg_m2_day = ds_mg_m2_day
+                    self.hasCI_flux = True
                     pass
-                # if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
-                #     self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) 
-                else:
-                    self.binnedG_day = lsd.groupby(['size_bin']).est_g_day.sum(numeric_only=True)       
+                else: # TODO: don't need this branch  
                     self.binnedMg_m2_day = lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True)        
                         
             for attr in ['isTruncated', 'truncationLimits', 'name', 'size_bin']: # copy attribute from parent LSD (note 'size_bin' is added in earlier this method)
@@ -1531,16 +1573,17 @@ class BinnedLSD():
         ## Flux (areal, mgCH4/m2/day)
         est_mg_m2_day = 10**(model.params.Intercept +
         model.params['np.log10(SA)'] * np.log10(geom_mean_areas) 
-        + model.params['TEMP'] * self.temp) # jja, ann, son, mam
+        + model.params['TEMP'] * self.temp) - 0.01 # jja, ann, son, mam # no uncertainty yet
 
         ## Flux (flux rate, gCH4/day)
         if self.hasCI_lsd:
-            est_g_day = est_mg_m2_day * self.binnedValues.loc[:,'mean'] * 1e3 # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
-
-        self._total_flux_Tg_yr = est_g_day.sum() * 365.25 / 1e12 # see Tg /yr
+            est_g_day_mean, est_g_day_low, est_g_day_high = [est_mg_m2_day * self.binnedValues.loc[:,stat] * 1e3 for stat in ['mean', 'lower', 'upper']] # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
+                    # group_means_flux, group_means_flux_low, group_means_flux_high = [lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) for stat in ['mean', 'lower', 'upper']] # Low/mean/high are all the same on a per-area basis!
+        est_g_day = confidence_interval_from_extreme_regions(est_g_day_mean, est_g_day_low, est_g_day_high, name='est_g_day')
+        self._total_flux_Tg_yr = est_g_day.groupby('stat').sum() * 365.25 / 1e12 # see Tg /yr
 
         ## Add attrs
-        self.binnedMg_m2_day = est_mg_m2_day # in analogy with binnedValues and binnedCounts
+        self.binnedMg_m2_day = confidence_interval_from_extreme_regions(pd.Series(est_mg_m2_day, index=est_g_day.loc[:,'mean'].index), None, None, name='est_mg_m2_day') # in analogy with binnedValues and binnedCounts
         self.binnedG_day = est_g_day # in analogy with binnedValues and binnedCounts
 
         # return self._Total_flux_Tg_yr
@@ -1633,6 +1676,7 @@ def runTests():
     ####################################
 
     ## Test binnedLSD
+    extreme_regions_lsd = ['Tuktoyaktuk Peninsula', 'Prairie Potholes North'] # tmp
     binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
     binned.plot()
 
@@ -1644,7 +1688,7 @@ def runTests():
     model = loadBAWLD_CH4()
     lsd_cir.temp = 10 # placeholder, required for prediction 
     lsd_cir.predictFlux(model, includeExtrap=False)
-    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
+    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, compute_ci_flux=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
 
     ## Test extrapolate on small data
     # lsd_hl_trunc = lsd_hl.truncate(0.1, np.inf, inplace=False) # Beware chaining unless I return a new variable.
@@ -1699,8 +1743,8 @@ def runTests():
     # lsd_hl_trunc.plot_flux(reverse=False, normalized=False, all=False)
 
     ## Test plot extrap fluxes
-    lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False)
-    lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=True)
+    lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False, error_bars=True)
+    lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=True, error_bars=True)
 
     pass
 
@@ -1767,9 +1811,9 @@ if __name__=='__main__':
     ## Combine PeRL and CIR and Mullen
     lsd = LSD.concat((lsd_cir, lsd_perl, lsd_mullen), broadcast_name=True, ignore_index=True)
 
-    ## plot
-    lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=True, plotLabels=False)
-    lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
+    # ## plot
+    # lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=True, plotLabels=False)
+    # lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
 
     # ## Plot just CIR
     # lsd_cir.truncate(0.0001, 5).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=False)
@@ -1805,9 +1849,9 @@ if __name__=='__main__':
     lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names)
     lsd_hl_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL')
 
-    ## Plot LEV CDF by lake area (no extrap) and report mean LEV fraction
-    lsd_hl_lev.plot_lev_cdf_by_lake_area()
-    lsd_hl_lev.plot_lev_cdf_by_lake_area(normalized=False)
+    # ## Plot LEV CDF by lake area (no extrap) and report mean LEV fraction
+    # lsd_hl_lev.plot_lev_cdf_by_lake_area()
+    # lsd_hl_lev.plot_lev_cdf_by_lake_area(normalized=False)
 
     ## Load measured holdout LEV dataset
     # a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
@@ -1894,7 +1938,17 @@ if __name__=='__main__':
     lsd_hl_trunc.plot_extrap_lev(ax=ax, error_bars=True, color='green')
     ymin, ymax = ax.get_ylim()
     ax2.set_ylim([ymin, ymax/lsd_hl_trunc.sumAreas()])
+    ax.set_ylabel('Cumulative area ($km^2$)')
     ax2.set_ylabel('Cumulative area fraction')
+    plt.tight_layout()
+
+    ## Plot inset with just LEV, with normalized second axis
+    ax = lsd_hl_trunc.plot_extrap_lev(error_bars=True, color='green')
+    ax2=ax.twinx()
+    ymin, ymax = ax.get_ylim()
+    ax2.set_ylim([ymin, ymax/lsd_hl_trunc.sumLev()['mean']])
+    ax.set_ylabel('Cumulative aquatic vegetation area ($km^2$)')
+    ax2.set_ylabel('Cumulative aquatic vegetation area fraction')
     plt.tight_layout()
 
     # ## Retrieve data from plot
@@ -1902,10 +1956,6 @@ if __name__=='__main__':
     # ax2.get_lines()[0].get_ydata() # gives right part of LEV plot
     # X_lev = np.concatenate((ax.get_lines()[1].get_xdata(), ax.get_lines()[0].get_xdata()))
     # S_lev = np.concatenate((ax.get_lines()[1].get_ydata(), ax.get_lines()[0].get_ydata()))
-
-    ## Plot just lev, normalized
-    ax = lsd_hl_trunc.plot_extrap_lev(error_bars=True, normalized=True, color='green')
-    lsd_hl_trunc.plot_extrap_lev(error_bars=False, normalized=True, color='green')
 
     ## LEV fraction stats, without and with extrap
     m = lsd_hl_lev.meanLev(include_ci=True)
@@ -1920,15 +1970,20 @@ if __name__=='__main__':
     print(f'Mean LEV (est and extrap): {m_comb[1]:0.2%} ({m_comb[0]:0.2%}, {m_comb[2]:0.2%})')
 
     ## Plot extrapolated fluxes
-    lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False, error_bars=False)
-
-    ## Plot combined extrap LSD/Flux
-    norm = True # False
-    ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
-    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    ax = lsd_hl_trunc.plot_extrap_flux(reverse=False, normalized=False, error_bars=True)
     ax2=ax.twinx()
-    lsd_hl_trunc.plot_extrap_flux(ax=ax2, reverse=False, normalized=norm, error_bars=False)
+    ymin, ymax = ax.get_ylim()
+    ax2.set_ylim([ymin, ymax/lsd_hl_trunc._total_flux_Tg_yr['mean']])
+    ax2.set_ylabel('Cumulative emissions fraction')
     plt.tight_layout()
+
+    # ## Plot combined extrap LSD/Flux
+    # norm = True # False
+    # ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
+    # # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    # ax2=ax.twinx()
+    # lsd_hl_trunc.plot_extrap_flux(ax=ax2, reverse=False, normalized=norm, error_bars=True)
+    # plt.tight_layout()
 
     ## Area vs LEV plots (TODO: add extrap points)
     fig, ax = plt.subplots()
