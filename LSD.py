@@ -1795,6 +1795,8 @@ if __name__=='__main__':
     gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
     gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' #'/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
     hl_area_var='Shp_Area'
+    hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
+    bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
 
     ## BAWLD-NAHL domain
     # dataset = 'HL'
@@ -1855,6 +1857,20 @@ if __name__=='__main__':
 
     # ## YF compare
     # LSD(lsd.query("Region=='YF_3Y_lakes-and-ponds' or Region=='Yukon Flats Basin'"), name='compare').plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=False)
+
+    ####################################
+    ## Climate Analysis
+    ####################################
+    # print('Loading BAWLD and climate data...')
+    # # df_clim = pd.read_csv(hl_join_clim_pth) # Index(['Unnamed: 0', 'BAWLDCell_', 'Hylak_id', 'Shp_Area', 'geometry','index_right', 'id', 'area', 'perimeter', 'lat', 'lon', 'djf', 'mam', 'jja', 'son', 'ann'],
+    # df_clim = pd.read_csv(bawld_join_clim_pth)
+    # gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
+    # df_clim = df_clim.merge(gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
+
+    # ## Take cell-area-weighted average of climate
+    # print(f'Mean JJA temperature across {roi_region} domain: {np.average(df_clim.jja, weights=df_clim.Shp_Area)}')
+    # months = ['djf','mam','jja','son']
+    # print(pd.DataFrame(np.average(df_clim[months], weights=df_clim.Shp_Area, axis=0), index=months))
 
     ####################################
     ## LEV Analysis
@@ -1954,7 +1970,7 @@ if __name__=='__main__':
 
     ## Test flux prediction from observed lakes
     model = loadBAWLD_CH4()
-    lsd_hl_trunc.temp = 10 # placeholder, required for prediction 
+    lsd_hl_trunc.temp = 9.82 # required for prediction, using mean JJA for now.
     lsd_hl_trunc.predictFlux(model, includeExtrap=True)
 
     ## Plot combined extrap LSD/LEV
