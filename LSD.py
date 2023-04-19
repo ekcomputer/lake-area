@@ -915,7 +915,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         if groupby_name==False: # wish there was a way to do this without both plots in the if/then statement
             for region in self.regions():
-                plotECDFByValue(pd.DataFrame.query(self, 'Region == @region').Area_km2, ax=ax, alpha=0.4, label=region, **kwargs)
+                X, S = ECDFByValue(pd.DataFrame.query(self, 'Region == @region').Area_km2, reverse=False)
+                plotECDFByValue(X=X, S=S/1e6, ax=ax, alpha=0.4, label=region, **kwargs)
 
         else:
             assert 'Name' in self.columns, "LSD is missing 'Name' column."
@@ -924,11 +925,13 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             cmap = plt.cm.get_cmap('Paired', len(names))
             for j, name in enumerate(names):
                 for i, region in enumerate(np.unique(pd.DataFrame.query(self, 'Name == @name').Region)): # can't use .regions() after using DataFrame.query because it returns a DataFrame
-                    plotECDFByValue(pd.DataFrame.query(self, 'Region == @region').Area_km2, ax=ax, alpha=0.6, label=name, color=cmap(j), **kwargs)
+                    X, S = ECDFByValue(pd.DataFrame.query(self, 'Region == @region').Area_km2, reverse=False)
+                    plotECDFByValue(X=X, S=S/1e6, ax=ax, alpha=0.6, label=name, color=cmap(j), **kwargs)
         
         ## repeat for all
         if all:
-            plotECDFByValue(self.Area_km2, ax=ax, alpha=0.4, color='black', label='All', **kwargs)
+            X, S = ECDFByValue(self.Area_km2, reverse=False)
+            plotECDFByValue(X=X, S=S/1e6, ax=ax, alpha=0.4, color='black', label='All', **kwargs)
 
         ## Legend and labels
         if plotLegend:
@@ -1790,20 +1793,20 @@ if __name__=='__main__':
     tb_dir = '/mnt/g/Ch4/area_tables'
 
     ## BAWLD domain
-    dataset = 'HL'
-    roi_region = 'BAWLD'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' #'/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
-    hl_area_var='Shp_Area'
-    hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
-    bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+    # dataset = 'HL'
+    # roi_region = 'BAWLD'
+    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' #'/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
+    # hl_area_var='Shp_Area'
+    # hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
+    # bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
 
     ## BAWLD-NAHL domain
-    # dataset = 'HL'
-    # roi_region = 'WBD_BAWLD'
-    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
-    # hl_area_var='Shp_Area'
+    dataset = 'HL'
+    roi_region = 'WBD_BAWLD'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+    hl_area_var='Shp_Area'
 
     ## BAWLD domain (Sheng lakes)
     # dataset = 'Sheng'
@@ -1911,14 +1914,15 @@ if __name__=='__main__':
     # plt.ylabel('Measured LEV (%)')
 
     ## Load WBD
-    # print('Load WBD...')
-    # lsd_wbd = LSD.from_shapefile('/mnt/g/Other/Feng-High-res-inland-surface-water-tundra-boreal-NA/edk_out/fixed_geoms/WBD.shp', area_var='Area', name='WBD', idx_var='OBJECTID')
-    # lsd_wbd.truncate(0.001, inplace=True)
+    if roi_region == 'WBD_BAWLD':
+        print('Load WBD...')
+        lsd_wbd = LSD.from_shapefile('/mnt/g/Other/Feng-High-res-inland-surface-water-tundra-boreal-NA/edk_out/fixed_geoms/WBD.shp', area_var='Area', name='WBD', idx_var='OBJECTID')
+        lsd_wbd.truncate(0.001, inplace=True)
 
     ## Plot WBD
     # lsd_wbd.plot_lsd(reverse=False, all=False)
 
-    ## Combine WBD with HR dataset for plotting comparison
+    ## Combine WBD with HR dataset over small lakes for plotting comparison
     # setattr(lsd, 'name', 'HR datasets')
     # lsd['Region'] = 'NaN' # Hot fix to tell it not to plot a curve for each region # ***This is the buggy line!!!! Uncomment to get good curves, but no error bars if I haven't set compute_ci = False.
     # lsd_compare = LSD.concat((lsd.truncate(0.001, 50), lsd_wbd.truncate(0.001, 50)), broadcast_name=True, ignore_index=True)
@@ -1994,7 +1998,6 @@ if __name__=='__main__':
     ax2.set_ylabel('Cumulative emissions fraction')
     plt.tight_layout()
     [ax2.get_figure().savefig('/mnt/d/pic/BAWLD_areas_v3'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
-
 
     # ## Plot combined extrap LSD/Flux
     # norm = True # False
@@ -2096,12 +2099,13 @@ if __name__=='__main__':
     print(f'Area fraction < 0.01 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.01):,.2%}')
     print(f'Area fraction < 0.1 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.1):,.2%}')
 
-    ## Compare HL to WBD measured lakes in same domain:
-    # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False) 
-    # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None) # reload, if needed # don't truncate this time
-    ax = lsd_wbd.truncate(0.1, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
-    lsd_hl.truncate(0.1, 1000).plot_lsd(normalized=False, reverse=False, ax=ax, all=False)
-    ax.set_title(f'[{roi_region}]')
+    # ## Compare HL to WBD measured lakes in same domain:
+    # # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False) 
+    # # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None) # reload, if needed # don't truncate this time
+    # ax = lsd_wbd.truncate(0.1, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
+    # lsd_hl.truncate(0.1, 1000).plot_lsd(normalized=False, reverse=False, ax=ax, all=False) # need to have loaded proper lsd hl bawld
+    # ax.set_title(f'[{roi_region}]')
+    # ax.get_figure().tight_layout()
 
     ## Compare WBD [self-]extrapolation to WBD (control tests):
     # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
@@ -2113,9 +2117,12 @@ if __name__=='__main__':
     txt=''
     lsd_wbd_trunc = lsd_wbd.truncate(emax, np.inf)
     lsd_wbd_trunc.extrapolate(binned_ref)
-    ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
-    lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax, error_bars=False)
-    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='blue', plotLegend=False)
+    lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax, error_bars=True, plotLegend=False)
+    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    ax.get_figure().tight_layout()
+    [ax.get_figure().savefig('/mnt/d/pic/WBD_compare_v1'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
+
     
     pass
 ################
