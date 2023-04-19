@@ -1022,14 +1022,18 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ## Add error bars
         if error_bars == True and self.extrapLSD.hasCI_lsd:      
             assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
+            
             ## as area plot: extrap section
-            ax.fill_between(geom_means, np.cumsum(self.extrapLSD.binnedValues.loc[:, 'lower']), # extrap section
-                            np.cumsum(self.extrapLSD.binnedValues.loc[:, 'upper']), alpha=0.1, color=kwargs['color'])
+            S_low0 = np.cumsum(self.extrapLSD.binnedValues.loc[:, 'lower']) # btm section
+            S_up0  = np.cumsum(self.extrapLSD.binnedValues.loc[:, 'upper'])
             
             ## Observed section
             yerr_top = self.extrapLSD.binnedValues.loc[:, 'mean'].sum() - self.extrapLSD.binnedValues.loc[:, 'lower'].sum()
             yerr_btm = self.extrapLSD.binnedValues.loc[:, 'upper'].sum() - self.extrapLSD.binnedValues.loc[:, 'mean'].sum()
-            ax.fill_between(X, np.maximum(S-yerr_top, 0), S+yerr_btm, alpha=0.1, color=kwargs['color'])            
+            S_low = np.maximum(S-yerr_top, 0)
+            S_up = S + yerr_btm
+            ax.fill_between(np.concatenate((geom_means, X)), np.concatenate((S_low0, S_low)), np.concatenate((S_up0, S_up)), alpha=0.1, color=kwargs['color'])
+        
         ## Plot
         if normalized: # need to normalize outside of plotECDFByValue function
             denom = self.sumAreas()
@@ -1092,16 +1096,18 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         if error_bars == True:
             assert self.extrapLSD.hasCI_lev, "error_bars is set, but extrapolated lev has no CI (self.extrapLSD.hasCI_lev is False)"
             
-            ## as area plot: extrapolated LEV
-            ax.fill_between(geom_means, np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'lower']*self.extrapLSD.binnedValues.loc[:, 'mean']), # btm section
-                            np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'upper']*self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.1, color=kwargs['color'])
+            ## Compute error bounds for extrapolated LEV
+            S_low0 = np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'lower']*self.extrapLSD.binnedValues.loc[:, 'mean']) # btm section
+            S_up0 =  np.cumsum(self.extrapLSD.binnedLEV.loc[:, 'upper']*self.extrapLSD.binnedValues.loc[:, 'mean'])
             
-            ## as area plot: estimated LEV from obs
+            ## Compute error bounds for estimated LEV from obs
             X_low, S_low = ECDFByValue(self.Area_km2, self.LEV_MIN*self.Area_km2, reverse=False)
             S_low += binned_lev_km2.loc[:, 'lower'].sum()
             _, S_up = ECDFByValue(self.Area_km2, self.LEV_MAX*self.Area_km2, reverse=False)
             S_up += binned_lev_km2.loc[:, 'upper'].sum()
-            ax.fill_between(X_low, S_low, S_up, alpha=0.1, color=kwargs['color']) # TODO: remove overlap line
+
+            ## Area plot
+            ax.fill_between(np.concatenate((geom_means, X_low)), np.concatenate((S_low0, S_low)), np.concatenate((S_up0, S_up)), alpha=0.1, color=kwargs['color']) # TODO: remove overlap line
 
         ## Plot main curves 
         if normalized:
@@ -1164,32 +1170,16 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         if error_bars == True and self.extrapLSD.hasCI_lsd:
             assert self.extrapLSD.hasCI_lsd, "error_bars is set, but extrapolated LSD has no CI (self.extrapLSD.hasCI_lsd is False)"
             
-            # ...
-
             ## as area plot: extrapolated flux
-            ax.fill_between(geom_means, np.cumsum(self.extrapLSD.binnedG_day.loc[:, 'lower'])* 365.25 / 1e12 / denom, # btm section
-                            np.cumsum(self.extrapLSD.binnedG_day.loc[:, 'upper'])* 365.25 / 1e12 / denom, alpha=0.1, color=kwargs['color'])
+            S_low0 = np.cumsum(self.extrapLSD.binnedG_day.loc[:, 'lower'])* 365.25 / 1e12 / denom # btm section
+            S_up0  = np.cumsum(self.extrapLSD.binnedG_day.loc[:, 'upper'])* 365.25 / 1e12 / denom
             
             ## as area plot: estimated flux from obs
             X_low, S_low = ECDFByValue(self.Area_km2, self.est_g_day * 365.25 / 1e12 / denom, reverse=False)
             S_low += self.extrapLSD.binnedG_day.loc[:, 'lower'].sum() * 365.25 / 1e12 / denom
             _, S_up = ECDFByValue(self.Area_km2, self.est_g_day * 365.25 / 1e12 / denom, reverse=False) # re-compute
             S_up += self.extrapLSD.binnedG_day.loc[:, 'upper'].sum() * 365.25 / 1e12 / denom
-            ax.fill_between(X_low, S_low, S_up, alpha=0.1, color=kwargs['color']) # TODO: remove overlap line
-
-            # ...
-            # raise ValueError('No branch yet written for flux plots with error bars.')
-            # assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
-            ## as error bars (miniscule)
-            # yerr = binnedVals2Error(self.extrapLSD.binnedValues, self.extrapLSD.nbins)
-            # yerr = np.concatenate((np.cumsum(yerr[0][-1::-1])[-1::-1][np.newaxis, :], np.cumsum(yerr[1][-1::-1])[-1::-1][np.newaxis, :])) # don't need to cumsum errors?
-            
-            ## As errorbar (replaced by area plot)
-            # ax.errorbar(geom_means, np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), xerr=None, yerr=yerr, fmt='none', )
-            
-            ## as area plot
-            # ax.fill_between(geom_means, np.maximum(-np.cumsum(yerr[1][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), 0), # btm section
-            #                 np.cumsum(yerr[0][-1::-1])[-1::-1]+np.cumsum(self.extrapLSD.binnedValues.loc[:, 'mean']), alpha=0.3, color=kwargs['color'])
+            ax.fill_between(np.concatenate((geom_means, X_low)), np.concatenate((S_low0, S_low)), np.concatenate((S_up0, S_up)), alpha=0.1, color=kwargs['color']) # TODO: remove overlap line
 
         ## Plot main curves
 
