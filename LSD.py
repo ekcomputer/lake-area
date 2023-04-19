@@ -123,7 +123,7 @@ def plotECDFByValue(values=None, reverse=True, ax=None, normalized=True, X=None,
     ax.set_xlabel('Lake area ($km^2$)')
     return
 
-def plotEPDFByValue(values, ax=None, **kwargs):
+def plotEPDFByValue(values, ax=None, bins=100, **kwargs):
     '''Cumulative histogram by value (lake area), not count. Creates, but doesn't return fig, ax if they are not provided. No binning used.'''
     X = np.sort(values)
     S = np.cumsum(X) # cumulative sum, starting with lowest values
@@ -136,7 +136,7 @@ def plotEPDFByValue(values, ax=None, **kwargs):
     # ax.set_yscale('log')
     ax.set_ylabel('Fraction of total area')
     ax.set_xlabel('Lake area')
-    # return S
+    return  # S
 
 def weightedStd(x, w):
     '''Computes standard deviation of values given as group means x, with weights w'''
@@ -867,7 +867,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         return
 
     ## Plotting
-    def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=False, ax=None, plotLabels=False, **kwargs):
+    def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, plotLabels=False, **kwargs):
         '''
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
 
@@ -903,6 +903,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             for j, name in enumerate(names):
                 for i, region in enumerate(np.unique(pd.DataFrame.query(self, 'Name == @name').Region)): # can't use .regions() after using DataFrame.query because it returns a DataFrame
                     plotECDFByValue(pd.DataFrame.query(self, 'Region == @region').Area_km2, ax=ax, alpha=0.6, label=name, color=cmap(j), **kwargs)
+        
         ## repeat for all
         if all:
             plotECDFByValue(self.Area_km2, ax=ax, alpha=0.4, color='black', label='All', **kwargs)
@@ -1502,7 +1503,7 @@ class BinnedLSD():
             else:
                 return self.binnedLEV.sum()
     
-    def plot(self, show_rightmost=False):
+    def plot(self, show_rightmost=False, as_lineplot=False, ax=None):
         '''
         To roughly visualize bins.
         
@@ -1525,18 +1526,28 @@ class BinnedLSD():
                 diff+=1 # subtract from number of bin edges to get plot x axis
         
         ## Plot
-        fig, ax = plt.subplots()
+        if ax is None:
+            _, ax = plt.subplots()
         # plt.bar(self.bin_edges[:-1], binned_values)
+        if as_lineplot:
+            assert isinstance(binned_values, pd.Series), "As written, BinnedLSD.plot requires pd.Series argument is as_lineplot==True."
+            xlabel = 'Lake area ($km^2$)'
 
-        if self.hasCI_lsd:
-            ## Convert confidence interval vals to anomalies
-            yerr = binnedVals2Error(binned_values, self.nbins+diff)
-            ax.bar(range(self.nbins), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
-        else:  # Needs testing
-            ax.bar(range(self.nbins), binned_values)
+            ## Normalize by total to make true PDF
+            binned_values /= binned_values.sum()
+            geom_means = np.array(list(map(interval_geometric_mean, binned_values.index))) # x-vector
+            ax.plot(geom_means, binned_values)
+        else:
+            xlabel = 'Bin number'
+            if self.hasCI_lsd:
+                ## Convert confidence interval vals to anomalies
+                yerr = binnedVals2Error(binned_values, self.nbins+diff)
+                ax.bar(range(self.nbins), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
+            else:  # Needs testing
+                ax.bar(range(self.nbins), binned_values)
         
         ax.set_yscale('log')
-        ax.set_xlabel('Bin number')
+        ax.set_xlabel(xlabel)
         if self.isNormalized:
             ax.set_ylabel('Fraction of large lake area')
         else:
@@ -1634,6 +1645,9 @@ def runTests():
     regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
     lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
+    ## Test binned PDF
+    # plotEPDFByValue(lsd_cir.Area_km2)
+
     ####################################
     ## LEV Tests
     ####################################
@@ -1657,7 +1671,8 @@ def runTests():
     print(f'Mean LEV: {lsd_lev.meanLev():0.2%}')
 
     ## Test binned LEV HL LSD (won't actually use this for analysis)
-    # binned = BinnedLSD(lsd_lev.truncate(0.5,1), 0.5, 1000, compute_ci_lsd=True) # compute_ci_lsd=False will disable plotting CI.
+    # extreme_regions_lsd = ['Tuktoyaktuk Peninsula', 'Prairie Potholes North'] # tmp
+    # binned = BinnedLSD(lsd_lev.truncate(0.5,1), 0.5, 1000, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
 
     ## Test 1: Bin the reference UAVSAR LEV LSDs
     # lsd_lev_binneds = []
@@ -1677,8 +1692,10 @@ def runTests():
 
     ## Test binnedLSD
     extreme_regions_lsd = ['Tuktoyaktuk Peninsula', 'Prairie Potholes North'] # tmp
-    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
+    # binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
+    binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=False) # compute_ci_lsd=False will disable plotting CI.
     binned.plot()
+    binned.plot(as_lineplot=True)
 
     ## Test binnedLSD with edges specified
     binned_manual = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, bins=[0.001, 0.1, 0.5], compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
