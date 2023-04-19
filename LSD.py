@@ -816,34 +816,27 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         
         return out
     
-    def sumLev(self, ci=False, includeExtrap=True):
+    def sumLev(self, includeExtrap=True, asFraction=False):
         '''
-        Sums all lev area in distribution. Works for CI or no CI.
+        Sums all lev area in distribution. Requires LEV CI, even if including nans.
         
         Parameters
         ----------
-        ci : Boolean
-            Whether to output the lower and upper confidence intervals.
-        includeExtrap : Boolean
+        includeExtrap : Boolean (True)
             Whether to include any extrapolated areas, if present
+        asFraction : Boolean (False)
+            If True: computes weighted mean LEV (unitless, equal to total LEV / total lake area)
         '''
-        sum = (confidence_interval_from_extreme_regions(lsd_hl_trunc.LEV_MEAN, lsd_hl_trunc.LEV_MIN, lsd_hl_trunc.LEV_MAX) *\
-               confidence_interval_from_extreme_regions(lsd_hl_trunc.Area_km2, lsd_hl_trunc.Area_km2, lsd_hl_trunc.Area_km2)).sum(level=1)
-        if includeExtrap:
-            sum += (lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues).sum(level=1)
-        return sum
-
-    def meanLev(self, includeExtrap=True, asFraction=False):
-        ''' Weighted mean of LEV by area. TODO: add for extrap lakes.'''
-        m = confidence_interval_from_extreme_regions(*[(pd.Series((self[param]* self.Area_km2).sum())) for param in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']]).loc[0,:]
+        lev_sum = confidence_interval_from_extreme_regions(*[(pd.Series((self[param]* self.Area_km2).sum())) for param in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']]).loc[0,:]
         # m = confidence_interval_from_extreme_regions(*[pd.Series(np.average(self[param], weights=self.Area_km2)) for param in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']]).loc[0,:]
-        result = m
+        result = lev_sum
         total_area = self.sumAreas(includeExtrap=False, ci=False)
         if includeExtrap:
             if hasattr(self, 'extrapLSD'):
                 if hasattr(self.extrapLSD, 'binnedLEV'):
-                    m_extrap = self.extrapLSD.meanLev(asFraction=True)
-                    m = m * self.sumAreas(includeExtrap=False) + m_extrap * self.extrapLSD.sumAreas(ci=False)
+                    lev_sum_extrap = self.extrapLSD.sumLev(asFraction=False)
+                    result = lev_sum  + lev_sum_extrap
+                    # result = lev_sum * self.sumAreas(includeExtrap=False) + lev_sum_extrap * self.extrapLSD.sumAreas(ci=False)
                     total_area = self.sumAreas(includeExtrap=True)
                     # np.average(pd.concat((m, m_extrap), axis=1), axis=1, weights=[self.sumAreas(includeExtrap=False), self.extrapLSD.sumAreas(ci=False)]) # Note:weights are scalers
                     pass
@@ -1091,7 +1084,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         X, S = ECDFByValue(self.Area_km2, values_for_sum=self.LEV_MEAN*self.Area_km2, reverse=False) # convert from frac to km2
         binned_lev_km2 = (self.extrapLSD.binnedLEV * self.extrapLSD.binnedValues.loc[:, 'mean']) # TODO: need branch for if no 'mean' col for all occurrences, or ensure it always will have one # HERE 4/5/2023
-        S += binned_lev_km2.loc[:, 'mean'].sum() # self.extrapLSD.sumLEV() # add sum of extrap distrib to original cumsum
+        S += binned_lev_km2.loc[:, 'mean'].sum() # self.extrapLSD.sumLev0() # add sum of extrap distrib to original cumsum
         S0 = np.cumsum(means.loc[:, 'mean']) # pre-pend the cumsum of extrap distrib binned vals
         if not 'color' in kwargs:
             kwargs['color']='green'
@@ -1114,7 +1107,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ## Plot main curves 
         if normalized:
             ylabel = 'Cumulative aquatic vegetation fraction'
-            denom = binned_lev_km2.loc[:, 'mean'].sum() # self.sumLEV() # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
+            denom = binned_lev_km2.loc[:, 'mean'].sum() # self.sumLev0() # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
         else:
             ylabel = 'Cumulative aquatic vegetation ($km^2$)'
             denom = 1
@@ -1283,7 +1276,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             X, S = ECDFByValue(self.Area_km2, values_for_sum=values_for_sum, reverse=reverse)
             plotECDFByValue(X=X, S=S, ax=ax, alpha=0.6, color=color, label='All', normalized=normalized, reverse=reverse, **kwargs)
             ax.set_ylabel(ylabel)
-            ax.set_title(f"{self.name}: {self.meanLev(asFraction=True)['mean']:.2%} LEV")
+            ax.set_title(f"{self.name}: {self.sumLev(asFraction=True)['mean']:.2%} LEV")
 
         ## Run plots
         makePlots('LEV_MEAN')
@@ -1507,27 +1500,6 @@ class BinnedLSD():
                 raise ValueError('BinnedLSD doesnt have a confidence interval, so it cant be included in sum.')
             else:
                 return self.binnedValues.sum()
-
-    def sumLEV(self, ci=False):
-        return None # TODO: if statements are too complicated...
-        '''
-        Sum the LEV area within the dataframe self.binnedValues.
-
-        If ci==True, returns the mean, lower and upper estimate. Otherwise, just the mean.
-        
-        ci : Boolean
-            Whether to output the lower and upper confidence intervals.
-        '''
-        if self.hasCI_lev:
-            if ci:
-                return self.binnedLEV.loc[:,'mean'].sum(), self.binnedLEV.loc[:,'lower'].sum(), self.binnedLEV.loc[:,'upper'].sum()
-            else:
-                return self.binnedLEV.loc[:,'mean'] * self.binnedLEV.loc[:,'mean'].sum()
-        else: # no .hasCI_lev
-            if ci:
-                raise ValueError('BinnedLSD doesnt have a confidence interval, so it cant be included in sum.')
-            else:
-                return self.binnedLEV.sum()
     
     def plot(self, show_rightmost=False, as_lineplot=False, ax=None):
         '''
@@ -1630,7 +1602,7 @@ class BinnedLSD():
         '''Convenience function for symmetry with sumAreas. Returns total value in Tg/yr.'''
         return self._total_flux_Tg_yr
     
-    def meanLev(self, asFraction=False):
+    def sumLev(self, asFraction=False):
         '''Weighted mean of LEV fraction by lake area within bin'''
         summed_lev = (self.binnedLEV * self.binnedValues).sum(level=1) # km2
         if asFraction:
@@ -1705,7 +1677,7 @@ def runTests():
 
     ## Test plot LEV CDF by lake area
     lsd_lev.plot_lev_cdf_by_lake_area()
-    print(f"Mean LEV: {lsd_lev.meanLev(asFraction=True)['mean']:.2%}")
+    print(f"Mean LEV: {lsd_lev.sumLev(asFraction=True)['mean']:.2%}")
 
     ## Test binned LEV HL LSD (won't actually use this for analysis)
     # extreme_regions_lsd = ['Tuktoyaktuk Peninsula', 'Prairie Potholes North'] # tmp
@@ -1752,7 +1724,7 @@ def runTests():
     lsd_hl_trunc.extrapolate(binned, binned_lev)
 
     ## Test mean lev with extrap
-    print(f"Mean LEV: {lsd_hl_trunc.meanLev(asFraction=True)['mean']:.2%}")
+    print(f"Mean LEV: {lsd_hl_trunc.sumLev(asFraction=True)['mean']:.2%}")
 
     ## Compare extrapolated sums
     lsd_hl_trunc.extrapLSD.sumAreas()
@@ -2037,12 +2009,12 @@ if __name__=='__main__':
     # S_lev = np.concatenate((ax.get_lines()[1].get_ydata(), ax.get_lines()[0].get_ydata()))
 
     ## LEV fraction stats, without and with extrap
-    m = lsd_hl_lev.meanLev(asFraction=True) # TODO
+    m = lsd_hl_lev.sumLev(asFraction=True) # TODO
     print(f'Mean inventoried-lake LEV: {m[0]:0.2%} ({m[1]:0.2%}, {m[2]:0.2%})')
     m_extrap_km2 = (lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean']).groupby('stat').sum()
     m_extrap = m_extrap_km2 / lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean'].sum() # estimated plus extrapolated 
     # np.average(lsd_hl_trunc.extrapLSD.binnedLEV.unstack(), weights=lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean'], axis=0)
-    print(f'Mean extrap LEV: {m_extrap[1]:0.2%} ({m_extrap[0]:0.2%}, {m_extrap[2]:0.2%})') # Note order is diff from output of meanLev(asFraction=True)
+    print(f'Mean extrap LEV: {m_extrap[1]:0.2%} ({m_extrap[0]:0.2%}, {m_extrap[2]:0.2%})') # Note order is diff from output of sumLev(asFraction=True)
     m_comb_km2 = (lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean']).groupby('stat').sum() + \
         (lsd_hl_trunc.LEV_MEAN * lsd_hl_trunc.Area_km2).sum()
     m_comb = m_comb_km2 / lsd_hl_trunc.sumAreas(includeExtrap=True)
@@ -2150,7 +2122,7 @@ if __name__=='__main__':
 * Use fid_as_index argument when loading with pyarrow
 * Preserve og index when concatenating so I can look up lakes from raw file (combine with above re: fid)
 * Branches for if there is no CI/error bars in binned distrib. Make sure there is still a second index called 'stat' with constant val 'mean'
-* Rewrite meanLEV() to output a series x
+* Rewrite sumLev() to output a series x
 * Go back and add branches for no CI to the various methods. Make sure it still has a second index for 'stat' with constant val 'mean'
 
 NOTES:
