@@ -17,6 +17,7 @@ from statsmodels.formula.api import ols
 from glob import glob
 from matplotlib import pyplot as plt
 from matplotlib.colors import Colormap
+import matplotlib as mpl
 import matplotlib.colors as colors
 import matplotlib
 import matplotlib.mlab as mlab
@@ -34,6 +35,8 @@ from tqdm import tqdm
 ## Plotting params
 sns.set_theme('notebook', font='Ariel')
 sns.set_style('ticks')
+# mpl.rc('text', usetex=True)
+mpl.rcParams['pdf.fonttype'] = 42
 
 # ## Functions and classes
 # ### Plotting functions
@@ -112,7 +115,7 @@ def plotECDFByValue(values=None, reverse=True, ax=None, normalized=True, X=None,
         S = S/S[-1] # S/np.sum(X) has unintended result when using for extrapolated, when S is not entirely derived from X
         ylabel = 'Cumulative fraction of total area'
     else:
-        ylabel = 'Cumulative area ($km^2$)'
+        ylabel = 'Cumulative area (million $km^2$)'
     if not ax:
         _, ax = plt.subplots()
     ax.plot(X, S, **kwargs) 
@@ -1032,7 +1035,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             yerr_btm = self.extrapLSD.binnedValues.loc[:, 'upper'].sum() - self.extrapLSD.binnedValues.loc[:, 'mean'].sum()
             S_low = np.maximum(S-yerr_top, 0)
             S_up = S + yerr_btm
-            ax.fill_between(np.concatenate((geom_means, X)), np.concatenate((S_low0, S_low)), np.concatenate((S_up0, S_up)), alpha=0.1, color=kwargs['color'])
+            ax.fill_between(np.concatenate((geom_means, X)), np.concatenate((S_low0, S_low))/1e6, np.concatenate((S_up0, S_up))/1e6, alpha=0.1, color=kwargs['color'])
         
         ## Plot
         if normalized: # need to normalize outside of plotECDFByValue function
@@ -1041,12 +1044,12 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             denom = 1
         
         ## Plot main curves 
-        plotECDFByValue(ax=ax, alpha=1, X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs)
-        plotECDFByValue(ax=ax, alpha=1, X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot in dashed for extrapolated
+        plotECDFByValue(ax=ax, alpha=1, X=X, S=S/denom/1e6, normalized=False, reverse=reverse, **kwargs)
+        plotECDFByValue(ax=ax, alpha=1, X=geom_means, S=S0/denom/1e6, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot in dashed for extrapolated
         if normalized: # need to change label outside of plotECDFByValue function
             ax.set_ylabel('Cumulative fraction of total area')
         if plotLegend:
-            ax.legend()
+            ax.legend(loc='best')
         ax.set_ylim(0, ax.get_ylim()[1])
         return ax
     
@@ -1107,19 +1110,20 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             S_up += binned_lev_km2.loc[:, 'upper'].sum()
 
             ## Area plot
-            ax.fill_between(np.concatenate((geom_means, X_low)), np.concatenate((S_low0, S_low)), np.concatenate((S_up0, S_up)), alpha=0.1, color=kwargs['color']) # TODO: remove overlap line
+            ax.fill_between(np.concatenate((geom_means, X_low)), np.concatenate((S_low0, S_low))/1e6, np.concatenate((S_up0, S_up))/1e6, alpha=0.1, color=kwargs['color']) # TODO: remove overlap line
 
         ## Plot main curves 
         if normalized:
             ylabel = 'Cumulative aquatic vegetation fraction'
             denom = binned_lev_km2.loc[:, 'mean'].sum() # self.sumLev0() # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
         else:
-            ylabel = 'Cumulative aquatic vegetation ($km^2$)'
+            ylabel = 'Cumulative aquatic vegetation (million $km^2$)'
             denom = 1
-        plotECDFByValue(ax=ax, alpha=1, X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs) # obs values
-        plotECDFByValue(ax=ax, alpha=1, X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
+        plotECDFByValue(ax=ax, alpha=1, X=X, S=S/denom/1e6, normalized=False, reverse=reverse, **kwargs) # obs values
+        plotECDFByValue(ax=ax, alpha=1, X=geom_means, S=S0/denom/1e6, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
         ax.set_ylabel(ylabel)
-        # ax.legend()
+        if plotLegend:
+            ax.legend(loc='best')
         ax.set_ylim(0, ax.get_ylim()[1])
         return ax
 
@@ -1186,7 +1190,8 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         plotECDFByValue(ax=ax, alpha=1, X=X, S=S/denom, normalized=False, reverse=reverse, **kwargs)
         plotECDFByValue(ax=ax, alpha=1, X=geom_means, S=S0/denom, normalized=False, reverse=reverse, linestyle='dashed', **kwargs) # second plot is dashed for extrapolation
         ax.set_ylabel(ylabel)
-        # ax.legend()
+        if plotLegend:
+            ax.legend(loc='best')
         ax.set_ylim(0, ax.get_ylim()[1])
         return ax
     
@@ -1220,7 +1225,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             ax.set_ylabel('Cumulative fraction of LEV')
         else:
             plotECDFByValue(self.LEV_MEAN * self.Area_km2, ax=ax, alpha=0.4, color='black', label='All', reverse=reverse, normalized=normalized, **kwargs)
-            ax.set_ylabel('Cumulative LEV ($km^2$)')
+            ax.set_ylabel('Cumulative LEV (million $km^2$)')
         ax.set_xlabel('LEV fraction')
 
         ## Legend
@@ -1261,7 +1266,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
                 ylabel = 'Cumulative fraction of total LEV'
             else:
                 values_for_sum = self[var] * self.Area_km2
-                ylabel = 'Cumulative LEV ($km^2$)'
+                ylabel = 'Cumulative LEV (million $km^2$)'
             X, S = ECDFByValue(self.Area_km2, values_for_sum=values_for_sum, reverse=reverse)
             plotECDFByValue(X=X, S=S, ax=ax, alpha=0.6, color=color, label='All', normalized=normalized, reverse=reverse, **kwargs)
             ax.set_ylabel(ylabel)
@@ -1954,24 +1959,26 @@ if __name__=='__main__':
 
     ## Plot combined extrap LSD/LEV
     fig, ax = plt.subplots(2,1, sharex=True)
-    lsd_hl_trunc.plot_extrap_lsd(ax=ax[0], label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
+    lsd_hl_trunc.plot_extrap_lsd(ax=ax[0], label='Lake area', error_bars=True, normalized=False, color='blue')
     # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
     ax2=ax[0].twinx()
-    lsd_hl_trunc.plot_extrap_lev(ax=ax[0], error_bars=True, color='green')
+    lsd_hl_trunc.plot_extrap_lev(ax=ax[0], error_bars=True, color='green', label='Lake vegetation area')
     ymin, ymax = ax[0].get_ylim()
     ax2.set_ylim([ymin, ymax/lsd_hl_trunc.sumAreas()])
-    ax[0].set_ylabel('Cumulative area ($km^2$)')
+    ax[0].set_ylabel('Cumulative area (million $km^2$)')
     ax[0].set_xlabel('')
     ax2.set_ylabel('Cumulative area fraction')
     # plt.tight_layout()
 
     ## Plot extrapolated fluxes
-    lsd_hl_trunc.plot_extrap_flux(ax=ax[1], reverse=False, normalized=False, error_bars=True)
+    lsd_hl_trunc.plot_extrap_flux(ax=ax[1], reverse=False, normalized=False, error_bars=True, plotLegend=True, label='Emissions')
     ax2=ax[1].twinx()
     ymin, ymax = ax[1].get_ylim()
     ax2.set_ylim([ymin, ymax/lsd_hl_trunc._total_flux_Tg_yr['mean']])
     ax2.set_ylabel('Cumulative emissions fraction')
     plt.tight_layout()
+    [ax2.get_figure().savefig('/mnt/d/pic/BAWLD_areas_v3'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
+
 
     # ## Plot combined extrap LSD/Flux
     # norm = True # False
@@ -1984,14 +1991,14 @@ if __name__=='__main__':
     ## Plot inset with just LEV, with normalized second axis
     sns.set_theme('poster', font='Ariel')
     sns.set_style('ticks')
-    ax = lsd_hl_trunc.plot_extrap_lev(error_bars=True, color='green')
+    ax = lsd_hl_trunc.plot_extrap_lev(error_bars=True, color='green', plotLegend=False)
     ax2=ax.twinx()
     ymin, ymax = ax.get_ylim()
     ax2.set_ylim([ymin, ymax/lsd_hl_trunc.sumLev()['mean']])
-    ax.set_ylabel('') #'Cumulative aquatic vegetation area ($km^2$)')
+    ax.set_ylabel('') #'Cumulative aquatic vegetation area (million $km^2$)')
     ax2.set_ylabel('') #'Cumulative aquatic vegetation area fraction')
     plt.tight_layout()
-    ax.get_figure().savefig('/mnt/d/pic/BAWLD_areas_inset_v2.png', transparent=True, dpi=300)
+    [ax.get_figure().savefig('/mnt/d/pic/BAWLD_areas_inset_v3', transparent=True, dpi=300) for ext in ['.png','.pdf']]
     sns.set_theme('notebook', font='Ariel')
     sns.set_style('ticks')
 
