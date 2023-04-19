@@ -248,7 +248,7 @@ def loadBAWLD_CH4():
 
     return model
 
-def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list) -> True:
+def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev=None) -> True:
     """
     Uses Bayes' law and reference Lake Emergent Vegetation (LEV) distribution to estimate the LEV in a given df, based on water Occurrence.
 
@@ -259,6 +259,9 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list) -> True:
     ref_dfs (list) : where each item is a dataframe with format: Index: (LEV, dry land, invalid, water, SUM), Columns: ('HISTO_0', ... 'HISTO_100')
     
     names (list) : list of strings with dataset/region names in same order as ref_dfs
+    
+    extreme_regions_lev : array-like
+        List of two region names to use for min/max LEV. Note, here region names must match entries in 'names,' so must be acronyms (e.g. CSD), unlike in BinnedLSD.
     Returns
     -------
     lev : pd.DataFrame with same index as df and a column for each reference LEV distribution with name from names. Units are unitless (fraction)
@@ -292,9 +295,15 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list) -> True:
         # df_lev['LEV_' + names[i]] = Class_sum.loc['LEV'] / Class_sum.loc['CLASS_sum'] * np.matmul(C,D)
 
     ## Summary stats
-    df_lev['LEV_MEAN'] = df_lev[cols].mean(axis=1) # df_lev[cols].mean(axis=1) # TODO: means by region, not by min/max (need arg for extreme regions)
-    df_lev['LEV_MIN'] = df_lev[cols].min(axis=1) # df_lev[] #
-    df_lev['LEV_MAX'] = df_lev[cols].max(axis=1) # df_lev[] #
+    if extreme_regions_lev is not None:
+        assert np.all(['LEV_'+region_col in df_lev.columns for region_col in extreme_regions_lev]), "One region name in extreme_regions_lev is not present in lsd."
+        df_lev['LEV_MEAN'] = df_lev[cols].mean(axis=1)
+        df_lev['LEV_MIN'] = df_lev['LEV_'+extreme_regions_lev[0]]
+        df_lev['LEV_MAX'] = df_lev['LEV_'+extreme_regions_lev[1]]
+    else:
+        df_lev['LEV_MEAN'] = df_lev[cols].mean(axis=1) # df_lev[cols].mean(axis=1)
+        df_lev['LEV_MIN'] = df_lev[cols].min(axis=1) # df_lev[] #
+        df_lev['LEV_MAX'] = df_lev[cols].max(axis=1) # df_lev[] #
 
     ## Join and return
     df_lev = pd.concat((df.drop(columns=np.concatenate((common_cols.values, ['Class_sum']))), df_lev), axis=1)
@@ -1395,7 +1404,7 @@ class BinnedLSD():
             if hasLEV:
                 if compute_ci_lev:
                     assert extreme_regions_lev is not None, "If compute_ci_lsd is True, and LSD has LEV, extreme_regions_lev must be provided"
-                    assert np.all([region in lsd.Region.unique() for region in extreme_regions_lev]), "One region name in extreme_regions_lsd is not present in lsd."
+                    assert np.all([region in lsd.Region.unique() for region in extreme_regions_lev]), "One region name in extreme_regions_lev is not present in lsd."
                     group_means_lev = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
                     # group_means_lev_low = lsd.groupby(['size_bin']).LEV_MIN.mean(numeric_only=True)
                     # group_means_lev_high = lsd.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
@@ -1660,7 +1669,8 @@ def runTests():
     # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
     lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', nrows=10000) # read smaller csv gzip version of data.
 
-    lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names)
+    extreme_regions_lev_for_extrap = ['CSD','PAD']
+    lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap) # use same regions for extrap as for estimate
     lsd_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id')
 
     ## Test plot LEV  CDF
@@ -1683,7 +1693,6 @@ def runTests():
     ## Test 2: Concat all ref LEV distributions and bin
     # lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
     # def ci_from_named_regions(LSD, regions):
-    extreme_regions_lev_for_extrap = ['CSD','PAD']
     binned_lev = BinnedLSD(lsd_lev_cat, 0.0001, 0.5, compute_ci_lev=True, extreme_regions_lev=extreme_regions_lev_for_extrap) # 0.000125 is native
 
     ####################################
@@ -1863,7 +1872,7 @@ if __name__=='__main__':
     print('Load HL with joined occurrence...')
     # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values
     lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip') # read smaller csv gzip version of data.
-    lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names)
+    lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap) # use same extreme regions for est as for extrap
     lsd_hl_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL')
 
     # ## Plot LEV CDF by lake area (no extrap) and report mean LEV fraction
@@ -2008,6 +2017,8 @@ if __name__=='__main__':
         (lsd_hl_trunc.LEV_MEAN * lsd_hl_trunc.Area_km2).sum()
     m_comb = m_comb_km2 / lsd_hl_trunc.sumAreas(includeExtrap=True)
     print(f'Mean LEV (est and extrap): {m_comb[1]:0.2%} ({m_comb[0]:0.2%}, {m_comb[2]:0.2%})')
+
+    # lsd_hl_trunc.sumLev()['mean']/lsd_hl_trunc.sumAreas() # double check (same!)
 
     ## Area vs LEV plots (TODO: add extrap points)
     fig, ax = plt.subplots()
