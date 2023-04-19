@@ -1074,7 +1074,6 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ## Prepare values
         if ax==None:
             _, ax = plt.subplots() # figsize=(5,3)
-
         try:
             geom_means = np.array(list(map(interval_geometric_mean, self.extrapLSD.binnedLEV.index))) # take geom mean of each interval
 
@@ -1603,10 +1602,14 @@ class BinnedLSD():
         return self._total_flux_Tg_yr
     
     def sumLev(self, asFraction=False):
-        '''Weighted mean of LEV fraction by lake area within bin'''
-        summed_lev = (self.binnedLEV * self.binnedValues).sum(level=1) # km2
+        '''
+        Weighted mean of LEV fraction by lake area within bin.
+        
+        Area used for multiplication is the central estimate, not the CI, even when multiplying by LEV CI.
+        '''
+        summed_lev = (self.binnedLEV * self.binnedValues.loc[:,'mean']).groupby(level=1).sum() # km2
         if asFraction:
-            result = summed_lev / self.binnedValues.sum(level=1)
+            result = summed_lev / self.sumAreas(ci=False)
         else:
             result = summed_lev
         return result
@@ -2009,18 +2012,12 @@ if __name__=='__main__':
     # S_lev = np.concatenate((ax.get_lines()[1].get_ydata(), ax.get_lines()[0].get_ydata()))
 
     ## LEV fraction stats, without and with extrap
-    m = lsd_hl_lev.sumLev(asFraction=True) # TODO
-    print(f'Mean inventoried-lake LEV: {m[0]:0.2%} ({m[1]:0.2%}, {m[2]:0.2%})')
-    m_extrap_km2 = (lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean']).groupby('stat').sum()
-    m_extrap = m_extrap_km2 / lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean'].sum() # estimated plus extrapolated 
-    # np.average(lsd_hl_trunc.extrapLSD.binnedLEV.unstack(), weights=lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean'], axis=0)
-    print(f'Mean extrap LEV: {m_extrap[1]:0.2%} ({m_extrap[0]:0.2%}, {m_extrap[2]:0.2%})') # Note order is diff from output of sumLev(asFraction=True)
-    m_comb_km2 = (lsd_hl_trunc.extrapLSD.binnedLEV * lsd_hl_trunc.extrapLSD.binnedValues.loc[:,'mean']).groupby('stat').sum() + \
-        (lsd_hl_trunc.LEV_MEAN * lsd_hl_trunc.Area_km2).sum()
-    m_comb = m_comb_km2 / lsd_hl_trunc.sumAreas(includeExtrap=True)
-    print(f'Mean LEV (est and extrap): {m_comb[1]:0.2%} ({m_comb[0]:0.2%}, {m_comb[2]:0.2%})')
-
-    # lsd_hl_trunc.sumLev()['mean']/lsd_hl_trunc.sumAreas() # double check (same!)
+    lev_est = lsd_hl_trunc.sumLev(includeExtrap=False, asFraction=True)
+    print(f"Mean inventoried-lake LEV: {lev_est['mean']:0.2%} ({lev_est['lower']:0.2%}, {lev_est['upper']:0.2%})")
+    lev_est = lsd_hl_trunc.extrapLSD.sumLev(asFraction=True)
+    print(f"Mean non-inventoried-lake LEV: {lev_est['mean']:0.2%} ({lev_est['lower']:0.2%}, {lev_est['upper']:0.2%})")
+    lev_est = lsd_hl_trunc.sumLev(includeExtrap=True, asFraction=True)
+    print(f"Mean total LEV: {lev_est['mean']:0.2%} ({lev_est['lower']:0.2%}, {lev_est['upper']:0.2%})")
 
     ## Area vs LEV plots (TODO: add extrap points)
     fig, ax = plt.subplots()
