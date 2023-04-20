@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 from labellines import labelLine, labelLines
 import seaborn as sns
 import scipy.ndimage as ndi 
+from sklearn.metrics import mean_squared_error
 import pandas as pd
 import geopandas as gpd
 import pyogrio
@@ -1899,19 +1900,20 @@ if __name__=='__main__':
     # lsd_hl_lev.plot_lev_cdf_by_lake_area(normalized=False)
 
     ## Load measured holdout LEV dataset
-    # a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
-    # a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
-    # print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
+    a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
+    a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
+    print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
 
     ## Compare to holdout dataset
-    # val_lakes_idx = [368946, 365442, 362977,362911,362697,362623,362193,361869,359283] # by Hylak_ID
-    # lev_holdout = lsd_lev[np.isin(lsd_lev.idx_HL, val_lakes_idx)]
-    # a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
-    # print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
-    # print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
-    # plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
-    # plt.xlabel('Predicted LEV (%)')
-    # plt.ylabel('Measured LEV (%)')
+    val_lakes_idx = [368946, 365442, 362977,362911,362697,362623,362193,361869,359283] # by Hylak_ID
+    lev_holdout = lsd_hl_lev[np.isin(lsd_hl_lev.idx_HL, val_lakes_idx)]
+    a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
+    print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
+    print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
+    print(f'RMSE: {mean_squared_error(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV, squared=False)}')
+    plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
+    plt.xlabel('Predicted LEV (%)')
+    plt.ylabel('Measured LEV (%)')
 
     ## Load WBD
     if roi_region == 'WBD_BAWLD':
