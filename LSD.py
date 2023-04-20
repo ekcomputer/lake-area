@@ -1793,20 +1793,20 @@ if __name__=='__main__':
     tb_dir = '/mnt/g/Ch4/area_tables'
 
     ## BAWLD domain
-    # dataset = 'HL'
-    # roi_region = 'BAWLD'
-    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' #'/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
-    # hl_area_var='Shp_Area'
-    # hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
-    # bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+    dataset = 'HL'
+    roi_region = 'BAWLD'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' #'/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
+    hl_area_var='Shp_Area'
+    hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
+    bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
 
     ## BAWLD-NAHL domain
-    dataset = 'HL'
-    roi_region = 'WBD_BAWLD'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
-    hl_area_var='Shp_Area'
+    # dataset = 'HL'
+    # roi_region = 'WBD_BAWLD'
+    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+    # hl_area_var='Shp_Area'
 
     ## BAWLD domain (Sheng lakes)
     # dataset = 'Sheng'
@@ -1979,10 +1979,10 @@ if __name__=='__main__':
 
     ## Plot combined extrap LSD/LEV
     fig, ax = plt.subplots(2,1, sharex=True)
-    lsd_hl_trunc.plot_extrap_lsd(ax=ax[0], label='Lake area', error_bars=True, normalized=False, color='blue')
+    lsd_hl_trunc.plot_extrap_lsd(ax=ax[0], label='Lake area', error_bars=True, normalized=False, color='blue', plotLegend=False)
     # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
     ax2=ax[0].twinx()
-    lsd_hl_trunc.plot_extrap_lev(ax=ax[0], error_bars=True, color='green', label='Lake vegetation area')
+    lsd_hl_trunc.plot_extrap_lev(ax=ax[0], error_bars=True, color='green', label='Lake vegetation area', plotLegend=False, )
     ymin, ymax = ax[0].get_ylim()
     ax2.set_ylim([ymin, ymax/lsd_hl_trunc.sumAreas()])
     ax[0].set_ylabel('Cumulative area (million $km^2$)')
@@ -1991,13 +1991,13 @@ if __name__=='__main__':
     # plt.tight_layout()
 
     ## Plot extrapolated fluxes
-    lsd_hl_trunc.plot_extrap_flux(ax=ax[1], reverse=False, normalized=False, error_bars=True, plotLegend=True, label='Emissions')
+    lsd_hl_trunc.plot_extrap_flux(ax=ax[1], reverse=False, normalized=False, error_bars=True, plotLegend=False, label='Emissions')
     ax2=ax[1].twinx()
     ymin, ymax = ax[1].get_ylim()
     ax2.set_ylim([ymin, ymax/lsd_hl_trunc._total_flux_Tg_yr['mean']])
     ax2.set_ylabel('Cumulative emissions fraction')
     plt.tight_layout()
-    [ax2.get_figure().savefig('/mnt/d/pic/BAWLD_areas_v3'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
+    [ax2.get_figure().savefig('/mnt/d/pic/BAWLD_areas_v4'+ext, transparent=True, dpi=300) for ext in ['.png','.pdf']]
 
     # ## Plot combined extrap LSD/Flux
     # norm = True # False
@@ -2017,7 +2017,7 @@ if __name__=='__main__':
     ax.set_ylabel('') #'Cumulative aquatic vegetation area (million $km^2$)')
     ax2.set_ylabel('') #'Cumulative aquatic vegetation area fraction')
     plt.tight_layout()
-    [ax.get_figure().savefig('/mnt/d/pic/BAWLD_areas_inset_v3', transparent=True, dpi=300) for ext in ['.png','.pdf']]
+    [ax.get_figure().savefig('/mnt/d/pic/BAWLD_areas_inset_v4', transparent=True, dpi=300) for ext in ['.png','.pdf']]
     sns.set_theme('notebook', font='Ariel')
     sns.set_style('ticks')
 
@@ -2057,29 +2057,35 @@ if __name__=='__main__':
     lsd_hl_trunc_log10bins.extrapolate(binned_ref_log10bins, binned_lev_log10bins)  
 
     ## Predict flux on extrapolated part
-    lsd_hl_trunc_log10bins.temp = 10 # placeholder, required for prediction 
+    lsd_hl_trunc_log10bins.temp = 9.82 # required for prediction, using mean JJA for now.
     lsd_hl_trunc_log10bins.predictFlux(model, includeExtrap=True)
 
     ## Predict flux on upper part
-    lsd_hl_lev.temp = 10 # placeholder, required for prediction 
+    lsd_hl_lev.temp = 9.82 # required for prediction, using mean JJA for now.
     lsd_hl_lev.predictFlux(model, includeExtrap=False)
 
     ## bin upper with log10 bins
     log_bins_upper = [0.5, 1, 10, 100, 1000, 10000, 100000]
-    lsd_hl_lev_log10bins = BinnedLSD(lsd_hl_lev, bins=log_bins_upper, compute_ci_lsd=True, normalize=False, extreme_regions_lsd=['HL', 'HL']) # now, bin upper values for Table estimate, use regions as placeholder to get dummy CI
+    lsd_hl_lev_log10bins = BinnedLSD(lsd_hl_lev, bins=log_bins_upper, compute_ci_lsd=True, compute_ci_lev=True, normalize=False, extreme_regions_lsd=['HL', 'HL'], extreme_regions_lev=['HL', 'HL']) # now, bin upper values for Table estimate, use regions as placeholder to get dummy CI
 
-    ## Make table:
-    tb_area = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedValues.loc[:, 'mean'], lsd_hl_lev_log10bins.binnedValues.loc[:, 'mean']))
-    tb_lev = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedLEV.loc[:, 'mean'], lsd_hl_lev_log10bins.binnedLEV)) * tb_area
+    ## Make table: can ignore CI if nan or same as mean
+    tb_area = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedValues, lsd_hl_lev_log10bins.binnedValues))
+    tb_lev = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedLEV, lsd_hl_lev_log10bins.binnedLEV)) * tb_area #.loc[:, 'mean']
     tb_flux = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedG_day, lsd_hl_lev_log10bins.binnedG_day))
     tb_comb = pd.concat((tb_area, tb_lev, tb_flux), axis=1)
     tb_comb.columns = ['Area_km2', 'LEV_km2', 'G_day']
-    tb_comb.to_csv(os.path.join(tb_dir, 'Size_bin_table.csv'))
 
     ## Normalize
-    tb_comb_norm = tb_comb / tb_comb.sum(axis=0)
+    tb_comb_norm = tb_comb / tb_comb.loc[:,'mean',:].sum(axis=0)
+
+    ## Save as csv
+    tb_comb.to_csv(os.path.join(tb_dir, 'Size_bin_table.csv'))
     tb_comb_norm.to_csv(os.path.join(tb_dir, 'Size_bin_table_norm.csv'))
 
+    ## Print totals
+    sums = tb_comb.loc[:,'mean',:].sum(axis=0)
+    sums
+    print(f"Total flus: {sums['G_day'] * 365.25 / 1e12}")
     ## print number of ref lakes:
     # len(lsd_hl_trunc)
     # lsd_hl_trunc.refBinnedLSD.binnedCounts.sum()
