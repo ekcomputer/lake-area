@@ -1025,10 +1025,16 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         S0 = np.cumsum(means) # pre-pend the cumsum of extrap distrib binned vals
         if not 'color' in kwargs:
             kwargs['color']='black'
-            
+
+        ## Plot
+        if normalized: # need to normalize outside of plotECDFByValue function
+            denom = self.sumAreas() / 1e6
+        else:
+            denom = 1
+
         ## Add error bars
-        if error_bars == True and self.extrapLSD.hasCI_lsd:      
-            assert normalized==False, 'Havent written a branch to plot normalized extrap lsd with error bars...'
+        if error_bars == True:      
+            assert self.extrapLSD.hasCI_lsd, 'If plotting error bars, self.extrapLSD.hasCI_lsd needs a CI.'
             
             ## as area plot: extrap section
             S_low0 = np.cumsum(self.extrapLSD.binnedValues.loc[:, 'lower']) # btm section
@@ -1039,13 +1045,9 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             yerr_btm = self.extrapLSD.binnedValues.loc[:, 'upper'].sum() - self.extrapLSD.binnedValues.loc[:, 'mean'].sum()
             S_low = np.maximum(S-yerr_top, 0)
             S_up = S + yerr_btm
-            ax.fill_between(np.concatenate((geom_means, X)), np.concatenate((S_low0, S_low))/1e6, np.concatenate((S_up0, S_up))/1e6, alpha=0.1, color=kwargs['color'])
-        
-        ## Plot
-        if normalized: # need to normalize outside of plotECDFByValue function
-            denom = self.sumAreas()
+            ax.fill_between(np.concatenate((geom_means, X)), np.concatenate((S_low0, S_low))/denom/1e6, np.concatenate((S_up0, S_up))/denom/1e6, alpha=0.1, color=kwargs['color'])
         else:
-            denom = 1
+            pass
         
         ## Plot main curves 
         plotECDFByValue(ax=ax, alpha=1, X=X, S=S/denom/1e6, normalized=False, reverse=reverse, **kwargs)
