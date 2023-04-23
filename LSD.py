@@ -1904,48 +1904,48 @@ if __name__=='__main__':
     ## Map Analysis
     ####################################
 
-    ## Rescale to km2
-    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
-        lsd_hl_lev[col+'_km2'] = lsd_hl_lev[col] * lsd_hl_lev['Area_km2'] # add absolute area units
-    # lsd_hl_lev.to_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
+    # ## Rescale to km2
+    # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+    #     lsd_hl_lev[col+'_km2'] = lsd_hl_lev[col] * lsd_hl_lev['Area_km2'] # add absolute area units
+    # # lsd_hl_lev.to_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
 
-    ## Join df with LEV to df with nearest BAWLD (quicker than in Arcgis)
-    df_hl_nearest_bawld = pyogrio.read_dataframe(hl_nearest_bawld_pth, read_geometry=False) # Ignore the 0-5 etc. joined Oc columns because they are per grid cell
-    df_hl_nearest_bawld = df_hl_nearest_bawld.groupby('Hylak_id').first().reset_index() # take only first lake (for cases where lake is equidistant from multiple cells)
-    lsd_hl_lev_nearest_bawld = lsd_hl_lev.merge(df_hl_nearest_bawld[['Hylak_id', 'BAWLD_Cell']], how='left', left_on='idx_HL', right_on='Hylak_id') # '0-5', '5-50', '50-95', '95-100', 'Class_sum', 'BAWLD_Long', 'BAWLD_Lat', 
+    # ## Join df with LEV to df with nearest BAWLD (quicker than in Arcgis)
+    # df_hl_nearest_bawld = pyogrio.read_dataframe(hl_nearest_bawld_pth, read_geometry=False) # Ignore the 0-5 etc. joined Oc columns because they are per grid cell
+    # df_hl_nearest_bawld = df_hl_nearest_bawld.groupby('Hylak_id').first().reset_index() # take only first lake (for cases where lake is equidistant from multiple cells)
+    # lsd_hl_lev_nearest_bawld = lsd_hl_lev.merge(df_hl_nearest_bawld[['Hylak_id', 'BAWLD_Cell']], how='left', left_on='idx_HL', right_on='Hylak_id') # '0-5', '5-50', '50-95', '95-100', 'Class_sum', 'BAWLD_Long', 'BAWLD_Lat', 
 
-    ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
-    df_bawld_sum_lev = lsd_hl_lev_nearest_bawld.groupby('BAWLD_Cell').sum(numeric_only=True) # Could add Occ
+    # ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
+    # df_bawld_sum_lev = lsd_hl_lev_nearest_bawld.groupby('BAWLD_Cell').sum(numeric_only=True) # Could add Occ
 
-    ## Rescale back to LEV percent (lf lake and of grid cell) as well
-    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
-        df_bawld_sum_lev[(col+ '_km2').replace('_km2', '_frac')] = df_bawld_sum_lev[col+ '_km2'] / df_bawld_sum_lev['Area_km2'] # add absolute area units
-        df_bawld_sum_lev.drop(columns=col, inplace=True) # remove summed means, which are meaningless
-    df_bawld_sum_lev.drop(columns=['idx_HL', 'Hylak_id'], inplace=True) # meaningless
+    # ## Rescale back to LEV percent (lf lake and of grid cell) as well
+    # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+    #     df_bawld_sum_lev[(col+ '_km2').replace('_km2', '_frac')] = df_bawld_sum_lev[col+ '_km2'] / df_bawld_sum_lev['Area_km2'] # add absolute area units
+    #     df_bawld_sum_lev.drop(columns=col, inplace=True) # remove summed means, which are meaningless
+    # df_bawld_sum_lev.drop(columns=['idx_HL', 'Hylak_id'], inplace=True) # meaningless
 
-    ## Join to BAWLD 
-    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
-    gdf_bawld_sum_lev = df_bawld_sum_lev.merge(gdf_bawld, how='left', right_on='Cell_ID', left_index=True) # [['Cell_ID', 'Shp_Area']]
-    ## Could also join % Occ to lsd_hl_lev
+    # ## Join to BAWLD 
+    # gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
+    # gdf_bawld_sum_lev = df_bawld_sum_lev.merge(gdf_bawld, how='left', right_on='Cell_ID', left_index=True) # [['Cell_ID', 'Shp_Area']]
+    # ## Could also join % Occ to lsd_hl_lev
 
-    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
-        gdf_bawld_sum_lev[(col+ '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col+ '_km2'] / gdf_bawld_sum_lev['Shp_Area'] # add cell LEV fraction
+    # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+    #     gdf_bawld_sum_lev[(col+ '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col+ '_km2'] / gdf_bawld_sum_lev['Shp_Area'] # add cell LEV fraction
      
-    ## and write out
-    gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file('/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV.shp')
+    # ## and write out
+    # gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file('/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV.shp')
     
-    ## Stats from BAWLD LEV
-    s=gdf_bawld_sum_lev.sum()
-    print(f"BAWLD domain is {s.LEV_MEAN_km2/s.Shp_Area:0.4%} [{s.LEV_MIN_km2/s.Shp_Area:0.4%}-{s.LEV_MAX_km2/s.Shp_Area:0.4%}] lake vegetation.")
-    print(f"BAWLD domain is {s.WET/s.Shp_Area:0.4%} [{s.WET_L/s.Shp_Area:0.4%}-{s.WET_H/s.Shp_Area:0.4%}] wetlands.")
-    print(f"BAWLD domain: {s.WET/1e6:0.3} [{s.WET_L/1e6:0.3}-{s.WET_H/1e6:0.3}] wetlands.")
-    print(f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] lake vegetation.")
+    # ## Stats from BAWLD LEV
+    # s=gdf_bawld_sum_lev.sum()
+    # print(f"BAWLD domain is {s.LEV_MEAN_km2/s.Shp_Area:0.4%} [{s.LEV_MIN_km2/s.Shp_Area:0.4%}-{s.LEV_MAX_km2/s.Shp_Area:0.4%}] lake vegetation.")
+    # print(f"BAWLD domain is {s.WET/s.Shp_Area:0.4%} [{s.WET_L/s.Shp_Area:0.4%}-{s.WET_H/s.Shp_Area:0.4%}] wetlands.")
+    # print(f"BAWLD domain: {s.WET/1e6:0.3} [{s.WET_L/1e6:0.3}-{s.WET_H/1e6:0.3}] wetlands.")
+    # print(f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] lake vegetation.")
 
     ## What percentage of HL is 0-50 Oc bin?
     # print('Load HL...')
     # # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None) # Need to load version with joined in Oc stats per lake
     # use df_hl_nearest_bawld
-    
+
     ####################################
     ## Holdout Analysis
     ####################################
@@ -2094,6 +2094,38 @@ if __name__=='__main__':
     sns.scatterplot(lsd_hl_trunc, x='Area_km2', y='LEV_MEAN', ax=ax, alpha=0.1)
     ax.set_xscale('log')
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})')
+
+    ####################################
+    ## Downing Analysis
+    ####################################
+
+    ## Remake plot for LSD
+    fig, ax = plt.subplots()
+    lsd_hl_trunc.plot_extrap_lsd(ax=ax, label='Lake area', error_bars=False, normalized=True, color='blue', plotLegend=False)
+    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    # ax2=ax.twinx()
+    ax.set_ylabel('Cumulative area (normalized)')
+    # ax.set_xlabel('')
+    # ax2.set_ylabel('Cumulative area (normalized)')
+
+    ## Compare to Downing, re-using code snippet from BinnedLSD and plot over first plot
+    btm = 0.001
+    top = 100000
+    nbins = 8
+    bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6) # bins computed from nbins and edges
+    area_bins = pd.IntervalIndex.from_breaks(bin_edges, closed='left')
+    # X = np.array(list(map(interval_geometric_mean, area_bins))) # take geom mean of each interval to get X-val
+    X = bin_edges[:-1]
+    d06 = [692600, 602100, 523400, 455100, 392362, 329816, 257856, 607650, 378119]
+    group_sums = pd.Series(d06, index=area_bins, name='Area_km2') # from Downing 2006 paper
+    binnedValues = confidence_interval_from_extreme_regions(group_sums, None, None, name='Area_km2') # # Why are lower/upper non NaN?? Ignore.
+    lsd_d06 = BinnedLSD(btm=btm, top=top, nbins=nbins, binned_values=binnedValues, compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedValues args
+    # fig, ax = plt.subplots()
+    ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
+    # ax.set_xscale('log')
+    # ax.set_xticks(X)
+
+    print(f'Area in two smallest bins: {np.sum(d06[:2])/1e6}\nArea in three largest: {np.sum(d06[-3:])/1e6}')
 
     ###########################
     ## Create Table
