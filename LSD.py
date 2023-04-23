@@ -1797,10 +1797,11 @@ if __name__=='__main__':
     dataset = 'HL'
     roi_region = 'BAWLD'
     gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' #'/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
     hl_area_var='Shp_Area'
     hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
     bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+    hl_nearest_bawld_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp' # HL shapefile with ID of nearest BAWLD cell (still uses V3)
 
     ## BAWLD-NAHL domain
     # dataset = 'HL'
@@ -1890,7 +1891,7 @@ if __name__=='__main__':
 
     ## LEV estimate: Load UAVSAR/GSW overlay stats
     print('Load HL with joined occurrence...')
-    # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values
+    # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values # outdated version
     lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip') # read smaller csv gzip version of data.
     lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap) # use same extreme regions for est as for extrap
     lsd_hl_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL')
@@ -1899,21 +1900,71 @@ if __name__=='__main__':
     # lsd_hl_lev.plot_lev_cdf_by_lake_area()
     # lsd_hl_lev.plot_lev_cdf_by_lake_area(normalized=False)
 
+    ####################################
+    ## Map Analysis
+    ####################################
+
+    ## Rescale to km2
+    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+        lsd_hl_lev[col+'_km2'] = lsd_hl_lev[col] * lsd_hl_lev['Area_km2'] # add absolute area units
+    # lsd_hl_lev.to_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
+
+    ## Join df with LEV to df with nearest BAWLD (quicker than in Arcgis)
+    df_hl_nearest_bawld = pyogrio.read_dataframe(hl_nearest_bawld_pth, read_geometry=False) # Ignore the 0-5 etc. joined Oc columns because they are per grid cell
+    df_hl_nearest_bawld = df_hl_nearest_bawld.groupby('Hylak_id').first().reset_index() # take only first lake (for cases where lake is equidistant from multiple cells)
+    lsd_hl_lev_nearest_bawld = lsd_hl_lev.merge(df_hl_nearest_bawld[['Hylak_id', 'BAWLD_Cell']], how='left', left_on='idx_HL', right_on='Hylak_id') # '0-5', '5-50', '50-95', '95-100', 'Class_sum', 'BAWLD_Long', 'BAWLD_Lat', 
+
+    ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
+    df_bawld_sum_lev = lsd_hl_lev_nearest_bawld.groupby('BAWLD_Cell').sum(numeric_only=True) # Could add Occ
+
+    ## Rescale back to LEV percent (lf lake and of grid cell) as well
+    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+        df_bawld_sum_lev[(col+ '_km2').replace('_km2', '_frac')] = df_bawld_sum_lev[col+ '_km2'] / df_bawld_sum_lev['Area_km2'] # add absolute area units
+        df_bawld_sum_lev.drop(columns=col, inplace=True) # remove summed means, which are meaningless
+    df_bawld_sum_lev.drop(columns=['idx_HL', 'Hylak_id'], inplace=True) # meaningless
+
+    ## Join to BAWLD 
+    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
+    gdf_bawld_sum_lev = df_bawld_sum_lev.merge(gdf_bawld, how='left', right_on='Cell_ID', left_index=True) # [['Cell_ID', 'Shp_Area']]
+    ## Could also join % Occ to lsd_hl_lev
+
+    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+        gdf_bawld_sum_lev[(col+ '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col+ '_km2'] / gdf_bawld_sum_lev['Shp_Area'] # add cell LEV fraction
+     
+    ## and write out
+    gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file('/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV.shp')
+    
+    ## Stats from BAWLD LEV
+    s=gdf_bawld_sum_lev.sum()
+    print(f"BAWLD domain is {s.LEV_MEAN_km2/s.Shp_Area:0.4%} [{s.LEV_MIN_km2/s.Shp_Area:0.4%}-{s.LEV_MAX_km2/s.Shp_Area:0.4%}] lake vegetation.")
+    print(f"BAWLD domain is {s.WET/s.Shp_Area:0.4%} [{s.WET_L/s.Shp_Area:0.4%}-{s.WET_H/s.Shp_Area:0.4%}] wetlands.")
+    print(f"BAWLD domain: {s.WET/1e6:0.3} [{s.WET_L/1e6:0.3}-{s.WET_H/1e6:0.3}] wetlands.")
+    print(f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] lake vegetation.")
+
+    ## What percentage of HL is 0-50 Oc bin?
+    # print('Load HL...')
+    # # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None) # Need to load version with joined in Oc stats per lake
+    # use df_hl_nearest_bawld
+    
+    ####################################
+    ## Holdout Analysis
+    ####################################
+
     ## Load measured holdout LEV dataset
-    a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
-    a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
-    print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
+    # a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
+    # a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
+    # print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
 
     ## Compare to holdout dataset
-    val_lakes_idx = [368946, 365442, 362977,362911,362697,362623,362193,361869,359283] # by Hylak_ID
-    lev_holdout = lsd_hl_lev[np.isin(lsd_hl_lev.idx_HL, val_lakes_idx)]
-    a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
-    print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
-    print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
-    print(f'RMSE: {mean_squared_error(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV, squared=False)}')
-    plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
-    plt.xlabel('Predicted LEV (%)')
-    plt.ylabel('Measured LEV (%)')
+    # val_lakes_idx = [368946, 365442, 362977,362911,362697,362623,362193,361869,359283] # by Hylak_ID
+    # lev_holdout = lsd_hl_lev[np.isin(lsd_hl_lev.idx_HL, val_lakes_idx)]
+    # a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
+    # print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
+    # print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
+    # print(f'RMSE: {mean_squared_error(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV, squared=False)}')
+    # plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
+    # plt.xlabel('Predicted LEV (%)')
+    # plt.ylabel('Measured LEV (%)')
 
     ## Load WBD
     if roi_region == 'WBD_BAWLD':
