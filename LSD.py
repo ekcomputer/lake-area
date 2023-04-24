@@ -2103,7 +2103,7 @@ if __name__=='__main__':
 
     ## Remake plot for LSD
     fig, ax = plt.subplots()
-    lsd_hl_trunc.plot_extrap_lsd(ax=ax, label='Lake area', error_bars=False, normalized=True, color='blue', plotLegend=False)
+    lsd_hl_trunc.plot_extrap_lsd(ax=ax, label='Lake area', error_bars=True, normalized=True, color='grey', plotLegend=False)
     # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
     # ax2=ax.twinx()
     ax.set_ylabel('Cumulative area (normalized)')
@@ -2117,13 +2117,19 @@ if __name__=='__main__':
     bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6) # bins computed from nbins and edges
     area_bins = pd.IntervalIndex.from_breaks(bin_edges, closed='left')
     # X = np.array(list(map(interval_geometric_mean, area_bins))) # take geom mean of each interval to get X-val
-    X = bin_edges[:-1]
+    X = bin_edges[1:] # plot against right bin edge
     d06 = [692600, 602100, 523400, 455100, 392362, 329816, 257856, 607650, 378119]
     group_sums = pd.Series(d06, index=area_bins, name='Area_km2') # from Downing 2006 paper
     binnedValues = confidence_interval_from_extreme_regions(group_sums, None, None, name='Area_km2') # # Why are lower/upper non NaN?? Ignore.
     lsd_d06 = BinnedLSD(btm=btm, top=top, nbins=nbins, binned_values=binnedValues, compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedValues args
     # fig, ax = plt.subplots()
-    ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
+    # ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
+    d06_canonical = d06[4:]
+    d06_extrap = d06[:4]
+    ax.plot(X[:-1], np.cumsum(d06[:-1])/np.sum(d06[:-1]), color='orange', marker='x',linestyle='dashed') # This time, exclude top bin to better compare with BAWLD domain
+    ax.plot(X[4:-1], (np.cumsum(d06_canonical[:-1])+np.sum(d06_extrap))/(np.sum(d06_canonical[:-1]) + np.sum(d06_extrap)), color='orange') # Plot canonical
+    # ax.plot(X[:4], np.cumsum(d06_extrap)/np.sum(d06[:-1]), color='orange', linestyle='dashed') # Plot extrap
+    fig.tight_layout()
     # ax.set_xscale('log')
     # ax.set_xticks(X)
 
