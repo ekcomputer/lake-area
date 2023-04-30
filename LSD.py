@@ -2218,11 +2218,14 @@ if __name__=='__main__':
     lsd_wbd_trunc.extrapolate(binned_ref)
     ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='blue', plotLegend=False)
     lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax, error_bars=True, plotLegend=False)
-    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
-    ax.get_figure().tight_layout()
-    [ax.get_figure().savefig('/mnt/d/pic/WBD_compare_v1'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
 
-    
+    ax2=ax.twinx() # Add normalized axis
+    ymin, ymax = ax.get_ylim()
+    ax2.set_ylim([ymin, ymax/lsd_wbd_trunc.sumAreas()*1e6*1.28]) # hot fix
+    ax2.set_ylabel('Cumulative area fraction')
+    ax.get_figure().tight_layout()
+    [ax.get_figure().savefig('/mnt/d/pic/WBD_compare_v2'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
+ 
     pass
 ################
 
