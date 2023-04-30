@@ -1796,21 +1796,21 @@ if __name__=='__main__':
     tb_dir = '/mnt/g/Ch4/area_tables'
 
     ## BAWLD domain
-    dataset = 'HL'
-    roi_region = 'BAWLD'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
-    hl_area_var='Shp_Area'
-    hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
-    bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
-    hl_nearest_bawld_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp' # HL shapefile with ID of nearest BAWLD cell (still uses V3)
+    # dataset = 'HL'
+    # roi_region = 'BAWLD'
+    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
+    # hl_area_var='Shp_Area'
+    # hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
+    # bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+    # hl_nearest_bawld_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp' # HL shapefile with ID of nearest BAWLD cell (still uses V3)
 
     ## BAWLD-NAHL domain
-    # dataset = 'HL'
-    # roi_region = 'WBD_BAWLD'
-    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
-    # hl_area_var='Shp_Area'
+    dataset = 'HL'
+    roi_region = 'WBD_BAWLD'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+    hl_area_var='Shp_Area'
 
     ## BAWLD domain (Sheng lakes)
     # dataset = 'Sheng'
@@ -2101,39 +2101,39 @@ if __name__=='__main__':
     ## Downing Analysis
     ####################################
 
-    ## Remake plot for LSD
-    fig, ax = plt.subplots()
-    lsd_hl_trunc.plot_extrap_lsd(ax=ax, label='Lake area', error_bars=True, normalized=True, color='grey', plotLegend=False)
-    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
-    # ax2=ax.twinx()
-    ax.set_ylabel('Cumulative area (normalized)')
-    # ax.set_xlabel('')
-    # ax2.set_ylabel('Cumulative area (normalized)')
-
-    ## Compare to Downing, re-using code snippet from BinnedLSD and plot over first plot
-    btm = 0.001
-    top = 100000
-    nbins = 8
-    bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6) # bins computed from nbins and edges
-    area_bins = pd.IntervalIndex.from_breaks(bin_edges, closed='left')
-    # X = np.array(list(map(interval_geometric_mean, area_bins))) # take geom mean of each interval to get X-val
-    X = bin_edges[1:] # plot against right bin edge
-    d06 = [692600, 602100, 523400, 455100, 392362, 329816, 257856, 607650, 378119]
-    group_sums = pd.Series(d06, index=area_bins, name='Area_km2') # from Downing 2006 paper
-    binnedValues = confidence_interval_from_extreme_regions(group_sums, None, None, name='Area_km2') # # Why are lower/upper non NaN?? Ignore.
-    lsd_d06 = BinnedLSD(btm=btm, top=top, nbins=nbins, binned_values=binnedValues, compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedValues args
+    # ## Remake plot for LSD
     # fig, ax = plt.subplots()
-    # ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
-    d06_canonical = d06[4:]
-    d06_extrap = d06[:4]
-    ax.plot(X[:-1], np.cumsum(d06[:-1])/np.sum(d06[:-1]), color='orange', marker='x',linestyle='dashed') # This time, exclude top bin to better compare with BAWLD domain
-    ax.plot(X[4:-1], (np.cumsum(d06_canonical[:-1])+np.sum(d06_extrap))/(np.sum(d06_canonical[:-1]) + np.sum(d06_extrap)), color='orange') # Plot canonical
-    # ax.plot(X[:4], np.cumsum(d06_extrap)/np.sum(d06[:-1]), color='orange', linestyle='dashed') # Plot extrap
-    fig.tight_layout()
-    # ax.set_xscale('log')
-    # ax.set_xticks(X)
+    # lsd_hl_trunc.plot_extrap_lsd(ax=ax, label='Lake area', error_bars=True, normalized=True, color='grey', plotLegend=False)
+    # # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    # # ax2=ax.twinx()
+    # ax.set_ylabel('Cumulative area (normalized)')
+    # # ax.set_xlabel('')
+    # # ax2.set_ylabel('Cumulative area (normalized)')
 
-    print(f'Area in two smallest bins: {np.sum(d06[:2])/1e6}\nArea in three largest: {np.sum(d06[-3:])/1e6}')
+    # ## Compare to Downing, re-using code snippet from BinnedLSD and plot over first plot
+    # btm = 0.001
+    # top = 100000
+    # nbins = 8
+    # bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6) # bins computed from nbins and edges
+    # area_bins = pd.IntervalIndex.from_breaks(bin_edges, closed='left')
+    # # X = np.array(list(map(interval_geometric_mean, area_bins))) # take geom mean of each interval to get X-val
+    # X = bin_edges[1:] # plot against right bin edge
+    # d06 = [692600, 602100, 523400, 455100, 392362, 329816, 257856, 607650, 378119]
+    # group_sums = pd.Series(d06, index=area_bins, name='Area_km2') # from Downing 2006 paper
+    # binnedValues = confidence_interval_from_extreme_regions(group_sums, None, None, name='Area_km2') # # Why are lower/upper non NaN?? Ignore.
+    # lsd_d06 = BinnedLSD(btm=btm, top=top, nbins=nbins, binned_values=binnedValues, compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedValues args
+    # # fig, ax = plt.subplots()
+    # # ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
+    # d06_canonical = d06[4:]
+    # d06_extrap = d06[:4]
+    # ax.plot(X[:-1], np.cumsum(d06[:-1])/np.sum(d06[:-1]), color='orange', marker='x',linestyle='dashed') # This time, exclude top bin to better compare with BAWLD domain
+    # ax.plot(X[4:-1], (np.cumsum(d06_canonical[:-1])+np.sum(d06_extrap))/(np.sum(d06_canonical[:-1]) + np.sum(d06_extrap)), color='orange') # Plot canonical
+    # # ax.plot(X[:4], np.cumsum(d06_extrap)/np.sum(d06[:-1]), color='orange', linestyle='dashed') # Plot extrap
+    # fig.tight_layout()
+    # # ax.set_xscale('log')
+    # # ax.set_xticks(X)
+
+    # print(f'Area in two smallest bins: {np.sum(d06[:2])/1e6}\nArea in three largest: {np.sum(d06[-3:])/1e6}')
 
     ###########################
     ## Create Table
@@ -2183,6 +2183,31 @@ if __name__=='__main__':
     # len(lsd_hl_trunc)
     # lsd_hl_trunc.refBinnedLSD.binnedCounts.sum()
     # lsd_hl_trunc.extrapLSD.sumAreas()
+
+    ###########################
+    ## Compare emissions from small lakes if they are considered lakes vs wl
+    # 33 marsh studies.
+    # Marshes: mean: 171.6
+    # Marshes: median: 106.0
+    # Median flux from lakes < 0.001 km2: 90.6
+    # Mean flux from lakes < 0.001 km2: 185.8
+    # Flux ratio (Marsh:OW, method 1): 3.1
+    ###########################
+
+    ## filter out small size bins and compute area-weighted emissions # TODO: run with the actual veg methane estimate I'll be using
+    non_inv_lks = tb_comb.loc[(tb_comb.index.get_level_values('size_bin')[0:9], 'mean'), :] # non-inventoried lakes
+    non_inv_lks_mean_flux =  non_inv_lks.G_day.sum() / non_inv_lks.Area_km2.sum() / 1e6 * 1000 # area-weighted mean flux in mg/m2/day
+    all_lks_mean_flux =  tb_comb.G_day.sum() / tb_comb.Area_km2.sum() / 1e6 * 1000
+    emissions_factor_ni_lks = non_inv_lks_mean_flux / all_lks_mean_flux # emissions factor (ratio) for non-inventoried lakes (compare to 3.1 for wl, from bald marsh:lake emissions ratio)
+    
+    ## load bawld veg
+    df_terr = pd.read_csv('/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/BAWLD_CH4_Terrestrial.csv', 
+    encoding = "ISO-8859-1", dtype={'CH4.E.FLUX ':'float'}, na_values='-')
+    df_terr.query('Class == "Marshes"')['CH4Av'].median()
+
+    ####################################
+    ## WBD comparison Analysis
+    ####################################
 
     ## Compare HL extrapolation to WBD:
     # lsd_hl_trunc.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
