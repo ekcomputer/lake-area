@@ -1501,13 +1501,15 @@ class BinnedLSD():
             else:
                 return self.binnedValues.sum()
     
-    def plot(self, show_rightmost=False, as_lineplot=False, ax=None):
+    def plot(self, show_rightmost=False, as_lineplot=False, ax=None, as_cumulative=False):
         '''
         To roughly visualize bins.
         
         show_rightmost : Boolean
             Show remainder bin on right (ignored if self.isExtrapolated==True)
         '''
+        if as_cumulative == True:
+            assert as_lineplot==True, "If plotting as cumulative plot, be sure to indicate as_lineplot=True"
         binned_values = self.binnedValues.copy() # create copy to modify
         diff=0
 
@@ -1519,7 +1521,7 @@ class BinnedLSD():
                 #                                 'lower': binned_values.values[1].iloc[:-1],
                 #                                 'upper': binned_values.values[2].iloc[:-1]})
                 # else:
-                binned_values.drop(index=binned_values.index.get_level_values(0)[-1], inplace=True)
+                binned_values.drop(index=binned_values.index.get_level_values(0)[-1], level=0, inplace=True)
             else:
                 diff+=1 # subtract from number of bin edges to get plot x axis
         
@@ -1532,9 +1534,13 @@ class BinnedLSD():
             xlabel = 'Lake area ($km^2$)'
 
             ## Normalize by total to make true PDF
-            binned_values /= binned_values.sum()
-            geom_means = np.array(list(map(interval_geometric_mean, binned_values.index))) # x-vector
-            ax.plot(geom_means, binned_values)
+            binned_values /= binned_values[binned_values.index.get_level_values(1) == 'mean'].sum()
+            geom_means = np.array(list(map(interval_geometric_mean, binned_values[binned_values.index.get_level_values(1) == 'mean'].index.get_level_values(0)))) # x-vector
+            if as_cumulative:
+                data = np.cumsum(binned_values[binned_values.index.get_level_values(1) == 'mean'])
+            else:
+                data = binned_values[binned_values.index.get_level_values(1) == 'mean']
+            ax.plot(geom_means, data)
         else:
             xlabel = 'Bin number'
             if self.hasCI_lsd:
@@ -2101,37 +2107,44 @@ if __name__=='__main__':
     ## Downing Analysis
     ####################################
 
-    # ## Remake plot for LSD
-    # fig, ax = plt.subplots()
-    # lsd_hl_trunc.plot_extrap_lsd(ax=ax, label='Lake area', error_bars=True, normalized=True, color='grey', plotLegend=False)
-    # # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
-    # # ax2=ax.twinx()
-    # ax.set_ylabel('Cumulative area (normalized)')
-    # # ax.set_xlabel('')
-    # # ax2.set_ylabel('Cumulative area (normalized)')
+    ## Remake plot for LSD
+    fig, ax = plt.subplots()
+    lsd_hl_trunc.plot_extrap_lsd(ax=ax, label='Lake area', error_bars=True, normalized=True, color='grey', plotLegend=False)
+    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    # ax2=ax.twinx()
+    ax.set_ylabel('Cumulative area (normalized)')
+    # ax.set_xlabel('')
+    # ax2.set_ylabel('Cumulative area (normalized)')
 
-    # ## Compare to Downing, re-using code snippet from BinnedLSD and plot over first plot
-    # btm = 0.001
-    # top = 100000
-    # nbins = 8
-    # bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6) # bins computed from nbins and edges
-    # area_bins = pd.IntervalIndex.from_breaks(bin_edges, closed='left')
-    # # X = np.array(list(map(interval_geometric_mean, area_bins))) # take geom mean of each interval to get X-val
-    # X = bin_edges[1:] # plot against right bin edge
-    # d06 = [692600, 602100, 523400, 455100, 392362, 329816, 257856, 607650, 378119]
-    # group_sums = pd.Series(d06, index=area_bins, name='Area_km2') # from Downing 2006 paper
-    # binnedValues = confidence_interval_from_extreme_regions(group_sums, None, None, name='Area_km2') # # Why are lower/upper non NaN?? Ignore.
-    # lsd_d06 = BinnedLSD(btm=btm, top=top, nbins=nbins, binned_values=binnedValues, compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedValues args
-    # # fig, ax = plt.subplots()
-    # # ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
-    # d06_canonical = d06[4:]
-    # d06_extrap = d06[:4]
-    # ax.plot(X[:-1], np.cumsum(d06[:-1])/np.sum(d06[:-1]), color='orange', marker='x',linestyle='dashed') # This time, exclude top bin to better compare with BAWLD domain
-    # ax.plot(X[4:-1], (np.cumsum(d06_canonical[:-1])+np.sum(d06_extrap))/(np.sum(d06_canonical[:-1]) + np.sum(d06_extrap)), color='orange') # Plot canonical
-    # # ax.plot(X[:4], np.cumsum(d06_extrap)/np.sum(d06[:-1]), color='orange', linestyle='dashed') # Plot extrap
-    # fig.tight_layout()
-    # # ax.set_xscale('log')
-    # # ax.set_xticks(X)
+    ## Compare to Downing, re-using code snippet from BinnedLSD and plot over first plot
+    btm = 0.001
+    top = 100000
+    nbins = 8
+    bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6) # bins computed from nbins and edges
+    area_bins = pd.IntervalIndex.from_breaks(bin_edges, closed='left')
+    # X = np.array(list(map(interval_geometric_mean, area_bins))) # take geom mean of each interval to get X-val
+    X = bin_edges[1:] # plot against right bin edge
+    d06 = [692600, 602100, 523400, 455100, 392362, 329816, 257856, 607650, 378119]
+    group_sums = pd.Series(d06, index=area_bins, name='Area_km2') # from Downing 2006 paper
+    binnedValues = confidence_interval_from_extreme_regions(group_sums, None, None, name='Area_km2') # # Why are lower/upper non NaN?? Ignore.
+
+    ## Put Downing number into my BinnedLSD data structure, just to verify plot
+    lsd_d06 = BinnedLSD(btm=btm, top=top, nbins=nbins, binned_values=binnedValues, compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedValues args
+    # lsd_d06_canon = BinnedLSD(btm=bin_edges[4], top=bin_edges[-2], nbins=4, binned_values=confidence_interval_from_extreme_regions(group_sums[4:-1], None, None, name='Area_km2'), compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedValues args
+    # lsd_d06_extrap = BinnedLSD(btm=bin_edges[0], top=bin_edges[4], nbins=4, binned_values=confidence_interval_from_extreme_regions(group_sums[:4], None, None, name='Area_km2'), compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedValues args
+    lsd_d06.plot(ax=ax, show_rightmost=False, as_lineplot=True, as_cumulative=True) # plot as binnedLSD, skipping top bin with Caspian Sea
+    
+    # fig, ax = plt.subplots()
+    # ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
+    d06_canonical = d06[4:]
+    d06_extrap = d06[:4]
+    ax.plot(X[:-1], np.cumsum(d06[:-1])/np.sum(d06[:-1]), color='orange', marker='x',linestyle='dashed') # This time, exclude top bin to better compare with BAWLD domain
+    ax.plot(X[4:-1], (np.cumsum(d06_canonical[:-1])+np.sum(d06_extrap))/(np.sum(d06_canonical[:-1]) + np.sum(d06_extrap)), color='orange') # Plot canonical
+    # ax.plot(X[:4], np.cumsum(d06_extrap)/np.sum(d06[:-1]), color='orange', linestyle='dashed') # Plot extrap
+    fig.tight_layout()
+    ax.set_yscale('linear')
+    # ax.set_xscale('log')
+    # ax.set_xticks(X)
 
     # print(f'Area in two smallest bins: {np.sum(d06[:2])/1e6}\nArea in three largest: {np.sum(d06[-3:])/1e6}')
 
@@ -2194,7 +2207,7 @@ if __name__=='__main__':
     # Flux ratio (Marsh:OW, method 1): 3.1
     ###########################
 
-    ## filter out small size bins and compute area-weighted emissions # TODO: run with the actual veg methane estimate I'll be using
+    ## filter out small size bins and compute area-weighted emissions # TODO: run with the actual veg methane estimate I'll be using # TODO: double check why my values are so much lower than BAWLD means, even when I compare my non-inv mean flux to 0.1-1 km2 BAWLD size bin
     non_inv_lks = tb_comb.loc[(tb_comb.index.get_level_values('size_bin')[0:9], 'mean'), :] # non-inventoried lakes
     non_inv_lks_mean_flux =  non_inv_lks.G_day.sum() / non_inv_lks.Area_km2.sum() / 1e6 * 1000 # area-weighted mean flux in mg/m2/day
     all_lks_mean_flux =  tb_comb.G_day.sum() / tb_comb.Area_km2.sum() / 1e6 * 1000
