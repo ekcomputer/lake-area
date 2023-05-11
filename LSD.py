@@ -1341,7 +1341,7 @@ class BinnedLSD():
         self.isExtrapolated = False
         self.extreme_regions_lsd = None # init
         self.extreme_regions_lev = None # init
-
+        self.isNormalized = False # init
 
         if lsd is not None: # sets binnedLSD from existing LSD
             assert (btm is not None and top is not None) or bins is not None, "if 'lsd' argument is given, so must be 'btm' and 'top' or 'bins'"
@@ -1355,7 +1355,6 @@ class BinnedLSD():
                 self.bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6) # bins computed from nbins and edges
             self.area_bins = pd.IntervalIndex.from_breaks(self.bin_edges, closed='left')
             lsd['size_bin'] = pd.cut(lsd.Area_km2, self.area_bins, right=False)
-            self.isNormalized = False # init
             self.hasCI_lev = False # init
 
             ## # Boolean to determine branch for LEV
@@ -1445,15 +1444,18 @@ class BinnedLSD():
             if self.binnedCounts.values[0] == 0:
                 warn('The first bin has count zero. Did you set the lowest bin edge < the lower truncation limit of the dataset?')   
                     
-        else: # used for extrapolation
+        else: # used for area extrapolation
             assert nbins is not None and compute_ci_lsd is not None, "If 'binned_values' argument is given, so must be 'nbins', and 'compute_ci_lsd'."
             self.bin_edges = 'See self.refBinnedLSD'
             self.area_bins = 'See self.refBinnedLSD'
-            self.isNormalized = False
             self.hasCI_lsd = compute_ci_lsd # retain from arg
             self.hasCI_lev = compute_ci_lev # retain
             self.binnedValues = binned_values # retain from arg
             self.binnedCounts = 'See self.refBinnedLSD'
+            self.binnedLEV = 'See self.refBinnedLSD'
+            self.binnedG_day = None
+            self.binnedMg_m2_day = None
+            self.hasCI_flux = None
         
         ## More common args at end
         self.isBinned = True
