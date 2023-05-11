@@ -1367,83 +1367,77 @@ class BinnedLSD():
             if not hasFlux:
                 self.binnedG_day = None
                 self.binnedMg_m2_day = None
+            
             ## Bin
+            group_sums = lsd.groupby(['size_bin']).Area_km2.sum(numeric_only=True) # These don't get lower/upper estimates for now
+            group_counts = lsd.groupby(['size_bin']).Area_km2.count() # These don't get lower/upper estimates for now
             if compute_ci_lsd:
                 assert extreme_regions_lsd is not None, "If compute_ci_lsd is True, extreme_regions_lsd must be provided"
                 assert np.all([region in lsd.Region.unique() for region in extreme_regions_lsd]), "One region name in extreme_regions_lsd is not present in lsd."
+                
                 ## First, group by area bin and take sum and counts of each bin
-                group_sums = lsd.groupby(['size_bin']).Area_km2.sum(numeric_only=True)
                 group_low_sums, group_high_sums = [lsd[lsd['Region']==region].groupby(['size_bin']).Area_km2.sum() for region in extreme_regions_lsd]
-                group_counts = lsd.groupby(['size_bin']).Area_km2.count()
-
-                ## Create a series to emulate the structure I used to use to store region confidence intervals                  
-                ds = confidence_interval_from_extreme_regions(group_sums, group_low_sums, group_high_sums, name='Area_km2')
-                self.binnedValues = ds
-                self.binnedCounts = group_counts
                 self.hasCI_lsd = True
                 self.extreme_regions_lsd = extreme_regions_lsd
-
-                ## Normalize areas after binning
-                if normalize:
-                    divisor = ds.loc[ds.index.get_level_values(0)[-1], :] # sum of lake areas in largest bin (Careful: can't be == 0 !!)
-                    self.isNormalized = True
-                else:
-                    divisor =1
-                if np.any(divisor == 0): warn("Careful, normalizing by zero.")
-                ds /= divisor
-                # self.binnedValuesNotNormalized = lsd.groupby('size_bin').Area_km2.sum(numeric_only=True) # gives o.g. group_sums, e.g. Not normalized # Ignores mean/upper/lower, so sums 3x
-
-            else: # Don't compute CI. Previously used to avoid throwing out data from regions w/o lakes in the index size bin
-                ## First, group by area bin and take sum and counts of each bin
-                group_sums = lsd.groupby(['size_bin']).Area_km2.sum(numeric_only=True)
-                group_counts = lsd.groupby(['size_bin']).Area_km2.count()
-
-                ## Normalize before binning
-                if normalize:
-                    divisor = group_sums.loc[group_sums.index[-1]] # sum of lake areas in largest bin (Careful: can't be == 0 !!)
-                    self.isNormalized = True
-                else:
-                    divisor=1
-                group_sums /= divisor
-                self.binnedValuesNotNormalized = lsd.groupby('size_bin').Area_km2.sum(numeric_only=True) # gives o.g. group_sums, e.g. Not normalized
-                self.binnedValues = group_sums
-                self.binnedCounts = group_counts
+            else:
+                ## Create a series to emulate the structure I used to use to store region confidence intervals                  
+                group_low_sums, group_high_sums = None, None
                 self.hasCI_lsd = False
+
+            ds = confidence_interval_from_extreme_regions(group_sums, group_low_sums, group_high_sums, name='Area_km2')
+            self.binnedValuesNotNormalized = ds.copy()
+
+            ## Normalize areas after binning
+            if normalize:
+                divisor = ds.loc[ds.index.get_level_values(0)[-1], :] # sum of lake areas in largest bin (Careful: can't be == 0 !!)
+                self.isNormalized = True
+            else:
+                divisor =1
+            if np.any(divisor == 0): warn("Careful, normalizing by zero.")
+            ds /= divisor
+
+            ## Save values
+            self.binnedValues = ds
+            self.binnedCounts = group_counts
 
             ## bin LEV
             if hasLEV:
+                group_means_lev = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
                 if compute_ci_lev:
                     assert extreme_regions_lev is not None, "If compute_ci_lsd is True, and LSD has LEV, extreme_regions_lev must be provided"
                     assert np.all([region in lsd.Region.unique() for region in extreme_regions_lev]), "One region name in extreme_regions_lev is not present in lsd."
-                    group_means_lev = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
                     # group_means_lev_low = lsd.groupby(['size_bin']).LEV_MIN.mean(numeric_only=True)
                     # group_means_lev_high = lsd.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
-                    group_means_lev_low, group_means_lev_high = [lsd[lsd['Region']==region].groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) for region in extreme_regions_lev] # Here, my ref distrib has no LEV_MIN/MAX, since it is observed, so I use extreme reegions for uncertainty bounds
-                    ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high, name='LEV_frac')
-                    self.binnedLEV = ds_lev
+                    group_means_lev_low, group_means_lev_high = [lsd[lsd['Region']==region].groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) for region in extreme_regions_lev] # Here, my ref distrib has no LEV_MIN/MAX, since it is observed, so I use extreme reegions for uncertainty bounds                    
                     self.hasCI_lev = True
                     self.extreme_regions_lev = extreme_regions_lev
                     pass
                 # if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
                 #     self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) 
                 else:
-                    self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)            
+                    group_means_lev_low, group_means_lev_high = None, None        
+                    self.hasCI_lev = False
+
+                ## Common branch: put in mean/upper/lower format
+                ds_lev = confidence_interval_from_extreme_regions(group_means_lev, group_means_lev_low, group_means_lev_high, name='LEV_frac')
+                self.binnedLEV = ds_lev
 
             ## bin flux
             if hasFlux:
                 ds_g_day_from_sum = lsd.groupby(['size_bin']).est_g_day.sum(numeric_only=True) # method #1: sum g/day for each lake   
-                self.binnedG_day = confidence_interval_from_extreme_regions(ds_g_day_from_sum, None, None, name='est_g_day')
+                self.binnedG_day = confidence_interval_from_extreme_regions(ds_g_day_from_sum, None, None, name='est_g_day') # Save for potential comparison?
                 if compute_ci_flux: # CI
                     assert compute_ci_lsd is not None, "If compute_ci_flux is True, compute_ci_lsd must be provided"
                     # group_means_flux0, group_means_flux_low0, group_means_flux_high0 = [lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) * self.binnedValues.loc[:,stat] * 1e3 for stat in ['mean', 'lower', 'upper']] # method #2: would have units of g / day (don't multiply by area yet). 
-                    group_means_flux, group_means_flux_low, group_means_flux_high = [lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) for stat in ['mean', 'lower', 'upper']] # Low/mean/high are all the same on a per-area basis!
-                    ds_mg_m2_day = confidence_interval_from_extreme_regions(group_means_flux, group_means_flux_low, group_means_flux_high, name='est_g_day')
-                    self.binnedMg_m2_day = ds_mg_m2_day
+                    group_means_flux, group_means_flux_low, group_means_flux_high = [lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) for stat in ['mean', 'lower', 'upper']] # Low/mean/high are all the same on a per-area basis!               
                     self.hasCI_flux = True
                     pass
-                else: # TODO: don't need this branch  
-                    self.binnedMg_m2_day = lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True)        
-                        
+                else: # This branch is silly, because neither branch computes a meaningful confidence interval. See self.PredictFlux() for actual conversion to CI based on CI of areas and given per-area fluxes
+                    group_means_flux = lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) # Low/mean/high are all the same on a per-area basis!
+                    group_means_flux_low, group_means_flux_high = None, None
+                    self.hasCI_flux = False
+                self.binnedMg_m2_day = confidence_interval_from_extreme_regions(group_means_flux, group_means_flux_low, group_means_flux_high, name='est_g_day')
+
             for attr in ['isTruncated', 'truncationLimits', 'name', 'size_bin']: # copy attribute from parent LSD (note 'size_bin' is added in earlier this method)
                 setattr(self, attr, getattr(lsd, attr))
             
@@ -1543,12 +1537,11 @@ class BinnedLSD():
             ax.plot(geom_means, data)
         else:
             xlabel = 'Bin number'
-            if self.hasCI_lsd:
-                ## Convert confidence interval vals to anomalies
-                yerr = binnedVals2Error(binned_values, self.nbins+diff)
-                ax.bar(range(self.nbins), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
-            else:  # Needs testing
-                ax.bar(range(self.nbins), binned_values)
+            
+            ## Convert confidence interval vals to anomalies
+            yerr = binnedVals2Error(binned_values, self.nbins+diff)
+            ax.bar(range(self.nbins), binned_values.loc[:, 'mean'], yerr=yerr, color='orange') 
+
         
         ax.set_yscale('log')
         ax.set_xlabel(xlabel)
@@ -1599,7 +1592,7 @@ class BinnedLSD():
 
         ## Add attrs
         self.binnedMg_m2_day = confidence_interval_from_extreme_regions(pd.Series(est_mg_m2_day, index=est_g_day.loc[:,'mean'].index), None, None, name='est_mg_m2_day') # in analogy with binnedValues and binnedCounts
-        self.binnedG_day = est_g_day # in analogy with binnedValues and binnedCounts
+        self.binnedG_day = est_g_day # in analogy with binnedValues and binnedCounts # HERE: is this updated value the same as the one computed in BinnedLSD.init?
 
         # return self._Total_flux_Tg_yr
         return
@@ -2281,6 +2274,8 @@ if __name__=='__main__':
 * Branches for if there is no CI/error bars in binned distrib. Make sure there is still a second index called 'stat' with constant val 'mean'
 * Rewrite sumLev() to output a series x
 * Go back and add branches for no CI to the various methods. Make sure it still has a second index for 'stat' with constant val 'mean'
+* Make predictFlux() calls consistent bw LSD and BinnedLSD, whether they return a value or add an attribute.
+* Thorough testing of all function options
 
 NOTES:
 * Every time a create an LSD() object in a function from an existing LSD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
