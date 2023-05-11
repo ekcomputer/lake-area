@@ -868,10 +868,10 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             list of model coefficients
         returns: ax
         '''
-        assert hasattr(self, 'temp'), "LSD needs a temp attribute in order to predict flux."
+        assert 'Temp_C' in self.columns, "LSD needs a Temp_C attribute in order to predict flux."
         if includeExtrap==True:
             assert hasattr(self, 'extrapLSD'), "includeExtrap was set to true, but no self.extrapLSD found."
-            self.extrapLSD.temp = self.temp # copy over temperature variable, regardless of whether it exists.
+            self.extrapLSD.Temp_C = np.average(self.Temp_C, weights=self.Area_km2) # copy over temperature variable, regardless of whether it exists.
             self.extrapLSD.predictFlux(model)
             binned_total_flux_Tg_yr = self.extrapLSD._total_flux_Tg_yr
         else:
@@ -880,7 +880,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         ## Flux (areal, mgCH4/m2/day)
         self['est_mg_m2_day'] = 10**(model.params.Intercept +
         model.params['np.log10(SA)'] * np.log10(self.Area_km2) 
-        + model.params['TEMP'] * self.temp) - 0.01 # jja, ann, son, mam
+        + model.params['TEMP'] * self.Temp_C) - 0.01 # jja, ann, son, mam
 
         ## Flux (flux rate, gCH4/day)
         self['est_g_day'] = self.est_mg_m2_day * self.Area_km2 * 1e3 # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
@@ -1579,7 +1579,7 @@ class BinnedLSD():
         ## Flux (areal, mgCH4/m2/day)
         est_mg_m2_day = 10**(model.params.Intercept +
         model.params['np.log10(SA)'] * np.log10(geom_mean_areas) 
-        + model.params['TEMP'] * self.temp) - 0.01 # jja, ann, son, mam # no uncertainty yet
+        + model.params['TEMP'] * self.Temp_C) - 0.01 # jja, ann, son, mam # no uncertainty yet
 
         ## Flux (flux rate, gCH4/day)
         est_g_day_mean, est_g_day_low, est_g_day_high = [est_mg_m2_day * self.binnedAreas.loc[:,stat] * 1e3 for stat in ['mean', 'lower', 'upper']] # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
@@ -1709,9 +1709,16 @@ def runTests():
     binned_manual = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, bins=[0.001, 0.1, 0.5], compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
     binned_manual.plot()
 
+    ## Load climate
+    bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    df_clim = pd.read_csv(bawld_join_clim_pth)
+    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )   
+    df_clim = df_clim.merge(gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
+    
     ## Test binnedLSD with fluxes
     model = loadBAWLD_CH4()
-    lsd_cir.temp = 10 # placeholder, required for prediction 
+    lsd_cir['Temp_C'] = 10 # placeholder, required for prediction 
     lsd_cir.predictFlux(model, includeExtrap=False)
     binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, compute_ci_flux=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
 
@@ -1756,11 +1763,11 @@ def runTests():
 
     ## Test flux prediction from observed lakes
     model = loadBAWLD_CH4()
-    lsd_hl_trunc.temp = 10 # placeholder, required for prediction 
+    lsd_hl_trunc['Temp_C'] = 10 # placeholder until I load from file, required for prediction 
     lsd_hl_trunc.predictFlux(model, includeExtrap=False)
 
     ## Test flux prediction from extrapolated lakes
-    lsd_hl_trunc.extrapLSD.temp = lsd_hl_trunc.temp # placeholder, required for prediction 
+    lsd_hl_trunc.extrapLSD.Temp_C = np.average(lsd_hl_trunc.Temp_C, weights=lsd_hl_trunc.Area_km2)
     lsd_hl_trunc.extrapLSD.predictFlux(model)
 
     ## Test combined prediction
@@ -1792,21 +1799,21 @@ if __name__=='__main__':
     tb_dir = '/mnt/g/Ch4/area_tables'
 
     ## BAWLD domain
-    # dataset = 'HL'
-    # roi_region = 'BAWLD'
-    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
-    # hl_area_var='Shp_Area'
-    # hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
-    # bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
-    # hl_nearest_bawld_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp' # HL shapefile with ID of nearest BAWLD cell (still uses V3)
+    dataset = 'HL'
+    roi_region = 'BAWLD'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
+    hl_area_var='Shp_Area'
+    hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
+    bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+    hl_nearest_bawld_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp' # HL shapefile with ID of nearest BAWLD cell (still uses V3)
 
     ## BAWLD-NAHL domain
-    dataset = 'HL'
-    roi_region = 'WBD_BAWLD'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
-    hl_area_var='Shp_Area'
+    # dataset = 'HL'
+    # roi_region = 'WBD_BAWLD'
+    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+    # hl_area_var='Shp_Area'
 
     ## BAWLD domain (Sheng lakes)
     # dataset = 'Sheng'
@@ -1864,16 +1871,16 @@ if __name__=='__main__':
     ####################################
     ## Climate Analysis
     ####################################
-    # print('Loading BAWLD and climate data...')
-    # # df_clim = pd.read_csv(hl_join_clim_pth) # Index(['Unnamed: 0', 'BAWLDCell_', 'Hylak_id', 'Shp_Area', 'geometry','index_right', 'id', 'area', 'perimeter', 'lat', 'lon', 'djf', 'mam', 'jja', 'son', 'ann'],
-    # df_clim = pd.read_csv(bawld_join_clim_pth)
-    # gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
-    # df_clim = df_clim.merge(gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
+    print('Loading BAWLD and climate data...')
+    # df_clim = pd.read_csv(hl_join_clim_pth) # Index(['Unnamed: 0', 'BAWLDCell_', 'Hylak_id', 'Shp_Area', 'geometry','index_right', 'id', 'area', 'perimeter', 'lat', 'lon', 'djf', 'mam', 'jja', 'son', 'ann'],
+    df_clim = pd.read_csv(bawld_join_clim_pth)
+    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
+    df_clim = df_clim.merge(gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
 
-    # ## Take cell-area-weighted average of climate
-    # print(f'Mean JJA temperature across {roi_region} domain: {np.average(df_clim.jja, weights=df_clim.Shp_Area)}')
-    # months = ['djf','mam','jja','son']
-    # print(pd.DataFrame(np.average(df_clim[months], weights=df_clim.Shp_Area, axis=0), index=months))
+    ## Take cell-area-weighted average of climate
+    print(f'Mean JJA temperature across {roi_region} domain: {np.average(df_clim.jja, weights=df_clim.Shp_Area)}')
+    months = ['djf','mam','jja','son']
+    print(pd.DataFrame(np.average(df_clim[months], weights=df_clim.Shp_Area, axis=0), index=months))
 
     ####################################
     ## LEV Analysis
@@ -2025,7 +2032,7 @@ if __name__=='__main__':
 
     ## Test flux prediction from observed lakes
     model = loadBAWLD_CH4()
-    lsd_hl_trunc.temp = 9.82 # required for prediction, using mean JJA for now.
+    lsd_hl_trunc['Temp_C'] = 9.82 # required for prediction, using mean JJA for now.
     lsd_hl_trunc.predictFlux(model, includeExtrap=True)
 
     ## Plot combined extrap LSD/LEV
@@ -2153,11 +2160,11 @@ if __name__=='__main__':
     lsd_hl_trunc_log10bins.extrapolate(binned_ref_log10bins, binned_lev_log10bins)  
 
     ## Predict flux on extrapolated part
-    lsd_hl_trunc_log10bins.temp = 9.82 # required for prediction, using mean JJA for now.
+    lsd_hl_trunc_log10bins['Temp_C'] = 9.82 # required for prediction, using mean JJA for now.
     lsd_hl_trunc_log10bins.predictFlux(model, includeExtrap=True)
 
     ## Predict flux on upper part
-    lsd_hl_lev.temp = 9.82 # required for prediction, using mean JJA for now.
+    lsd_hl_lev['Temp_C'] = 9.82 # required for prediction, using mean JJA for now.
     lsd_hl_lev.predictFlux(model, includeExtrap=False)
 
     ## bin upper with log10 bins
