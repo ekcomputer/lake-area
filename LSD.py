@@ -1573,12 +1573,8 @@ class BinnedLSD():
         '''
         assert hasattr(self, 'temp'), "Binned LSD needs a temp attribute in order to predict flux."
         assert self.isNormalized == False, "Binned LSD is normalized so values will be unitless for area."
-        if self.hasCI_lsd: # Need to extract means in a different way if there is no CI
-            means = self.binnedAreas.loc[:, 'mean']
-            geom_mean_areas = np.array(list(map(interval_geometric_mean, means.index)))
-        else:
-            means = self.binnedAreas
-            raise ValueError('Havent written this branch yet.')
+        means = self.binnedAreas.loc[:, 'mean']
+        geom_mean_areas = np.array(list(map(interval_geometric_mean, means.index)))
         
         ## Flux (areal, mgCH4/m2/day)
         est_mg_m2_day = 10**(model.params.Intercept +
@@ -1586,8 +1582,7 @@ class BinnedLSD():
         + model.params['TEMP'] * self.temp) - 0.01 # jja, ann, son, mam # no uncertainty yet
 
         ## Flux (flux rate, gCH4/day)
-        if self.hasCI_lsd:
-            est_g_day_mean, est_g_day_low, est_g_day_high = [est_mg_m2_day * self.binnedAreas.loc[:,stat] * 1e3 for stat in ['mean', 'lower', 'upper']] # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
+        est_g_day_mean, est_g_day_low, est_g_day_high = [est_mg_m2_day * self.binnedAreas.loc[:,stat] * 1e3 for stat in ['mean', 'lower', 'upper']] # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
                     # group_means_flux, group_means_flux_low, group_means_flux_high = [lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) for stat in ['mean', 'lower', 'upper']] # Low/mean/high are all the same on a per-area basis!
         est_g_day = confidence_interval_from_extreme_regions(est_g_day_mean, est_g_day_low, est_g_day_high, name='est_g_day')
         self._total_flux_Tg_yr = est_g_day.groupby('stat').sum() * 365.25 / 1e12 # see Tg /yr
@@ -1736,12 +1731,12 @@ def runTests():
     lsd_hl_trunc.sumAreas()
 
     ## Test plot extrap LEV
-    ax = lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=True, color='blue')
-    ax2=ax.twinx()
-    lsd_hl_trunc.plot_extrap_lev(ax=ax2, error_bars=True, color='green')
-    ymin, ymax = ax.get_ylim()
-    ax2.set_ylim([ymin, ymax])
-    plt.tight_layout()
+    # ax = lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=True, color='blue')
+    # ax2=ax.twinx()
+    # lsd_hl_trunc.plot_extrap_lev(ax=ax2, error_bars=True, color='green')
+    # ymin, ymax = ax.get_ylim()
+    # ax2.set_ylim([ymin, ymax])
+    # plt.tight_layout()
 
     ## Compare extrapolated area fractions
     # frac = lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.0001, 0.01)
@@ -1752,8 +1747,8 @@ def runTests():
     ## Plot
     # lsd_hl_trunc.extrapLSD.plot()
     # ax = lsd_hl_trunc.plot_lsd(reverse=False, normalized=True)
-    lsd_hl_trunc.plot_extrap_lsd(normalized=True, error_bars=False, reverse=False) # ax=ax, 
-    lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=True, reverse=False) # ax=ax, 
+    # lsd_hl_trunc.plot_extrap_lsd(normalized=True, error_bars=False, reverse=False) # ax=ax, 
+    # lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=True, reverse=False) # ax=ax, 
 
     ####################################
     ## Flux Tests
