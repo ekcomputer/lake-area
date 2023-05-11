@@ -417,7 +417,7 @@ def regionStats(lsd) -> True:
 ## Class (using inheritance)
 class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame # 
     '''Lake size distribution'''
-    def __init__(self, df, name=None, area_var=None, region_var=None, idx_var=None, name_var=None, lev_var=None, _areaConversionFactor=1, regions=None, computeArea=False, other_vars=None, **kwargs):
+    def __init__(self, df, name=None, area_var=None, region_var=None, idx_var=None, name_var=None, lev_var=None, t_var=None, _areaConversionFactor=1, regions=None, computeArea=False, other_vars=None, **kwargs):
         '''
         Loads df or gdf and creates copy only with relevant var names.
         If called with additional arguments (e.g. attributes from LSD class that is having a pd operation applied to it), they will be added as attributes
@@ -475,7 +475,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         else: t_var = None
 
         ## Choose which columns to keep (based on function arguments, or existing vars with default names that have become arguments)
-        columns = [col for col in [idx_var, area_var, region_var, name_var, geometry_var, mg_var, g_var, lev_var] if col is not None] # allows 'region_var' to be None
+        columns = [col for col in [idx_var, area_var, region_var, name_var, geometry_var, mg_var, g_var, lev_var, t_var] if col is not None] # allows 'region_var' to be None
 
         ## Retain LEV variables if they exist
         columns += [col for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX'] if col in df.columns] # 'LEV_CSB', 'LEV_CSD', 'LEV_PAD', 'LEV_YF',       'LEV_MEAN', 'LEV_MIN', 'LEV_MAX'
@@ -631,7 +631,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
             self.truncationLimits=(min, max)
         else:
             attrs = self.get_public_attrs()
-            lsd = LSD(pd.DataFrame.query(self, "(Area_km2 >= @min) and (Area_km2 < @max)", inplace=inplace, **kwargs), **attrs) # false    
+            lsd = LSD(pd.DataFrame.query(self, "(Area_km2 >= @min) and (Area_km2 < @max)", inplace=inplace, **kwargs), **attrs) # false # TODO: can rewrie this without calling a new LSD._init_: just slice the rows of the LSD based on index...
             lsd.isTruncated=True
             lsd.truncationLimits=(min, max)           
             return lsd         
@@ -1804,6 +1804,9 @@ if __name__=='__main__':
     ## I/O
     tb_dir = '/mnt/g/Ch4/area_tables'
 
+    ## Common
+    temperature_metric = 'jja'
+
     ## BAWLD domain
     dataset = 'HL'
     roi_region = 'BAWLD'
@@ -1875,20 +1878,6 @@ if __name__=='__main__':
     # LSD(lsd.query("Region=='YF_3Y_lakes-and-ponds' or Region=='Yukon Flats Basin'"), name='compare').plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=False)
 
     ####################################
-    ## Climate Analysis
-    ####################################
-    print('Loading BAWLD and climate data...')
-    # df_clim = pd.read_csv(hl_join_clim_pth) # Index(['Unnamed: 0', 'BAWLDCell_', 'Hylak_id', 'Shp_Area', 'geometry','index_right', 'id', 'area', 'perimeter', 'lat', 'lon', 'djf', 'mam', 'jja', 'son', 'ann'],
-    df_clim = pd.read_csv(bawld_join_clim_pth)
-    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
-    df_clim = df_clim.merge(gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
-
-    ## Take cell-area-weighted average of climate
-    print(f'Mean JJA temperature across {roi_region} domain: {np.average(df_clim.jja, weights=df_clim.Shp_Area)}')
-    months = ['ann','djf','mam','jja','son']
-    print(pd.DataFrame(np.average(df_clim[months], weights=df_clim.Shp_Area, axis=0), index=months))
-
-    ####################################
     ## LEV Analysis
     ####################################
 
@@ -1903,13 +1892,36 @@ if __name__=='__main__':
     ## LEV estimate: Load UAVSAR/GSW overlay stats
     print('Load HL with joined occurrence...')
     # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values # outdated version
-    lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip') # read smaller csv gzip version of data.
+    lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', low_memory=False) # read smaller csv gzip version of data.
     lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap) # use same extreme regions for est as for extrap
     lsd_hl_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL')
 
     # ## Plot LEV CDF by lake area (no extrap) and report mean LEV fraction
     # lsd_hl_lev.plot_lev_cdf_by_lake_area()
     # lsd_hl_lev.plot_lev_cdf_by_lake_area(normalized=False)
+
+    ####################################
+    ## Climate Analysis: join in temperature
+    ####################################
+    print('Loading BAWLD and climate data...')
+    # df_clim = pd.read_csv(hl_join_clim_pth) # Index(['Unnamed: 0', 'BAWLDCell_', 'Hylak_id', 'Shp_Area', 'geometry','index_right', 'id', 'area', 'perimeter', 'lat', 'lon', 'djf', 'mam', 'jja', 'son', 'ann'],
+    df_clim = pd.read_csv(bawld_join_clim_pth)
+    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio')
+    df_clim = df_clim.merge(gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
+
+    ## Next, load HL with nearest BAWLD:
+    df_hl_nearest_bawld = pyogrio.read_dataframe(hl_nearest_bawld_pth, read_geometry=False) # Ignore the 0-5 etc. joined Oc columns because they are per grid cell
+    df_hl_nearest_bawld = df_hl_nearest_bawld.groupby('Hylak_id').first().reset_index() # take only first lake (for cases where lake is equidistant from multiple cells)
+    lsd_hl_lev_m = lsd_hl_lev.merge(df_hl_nearest_bawld[['Hylak_id', 'BAWLD_Cell']], how='left', left_on='idx_HL', right_on='Hylak_id').drop(columns='Hylak_id') # Need to create new var because output of merge is not LSD # '0-5', '5-50', '50-95', '95-100', 'Class_sum', 'BAWLD_Long', 'BAWLD_Lat', 
+
+    ## Use BAWLD Cell to join in temp (e.g. "double-join")
+    temperatures = lsd_hl_lev_m[['idx_HL', 'BAWLD_Cell']].merge(df_clim, how='left', left_on='BAWLD_Cell', right_on='Cell_ID').drop(columns=['Cell_ID', 'Shp_Area']) # some rows don't merge, I think bc I think idx_unamed is nto for HL... just use as example
+    lsd_hl_lev['Temp_C'] = temperatures[temperature_metric]
+    
+    ## Compute cell-area-weighted average of climate as FYI
+    # print(f'Mean JJA temperature across {roi_region} domain: {np.average(df_clim.jja, weights=df_clim.Shp_Area)}')
+    # months = ['ann','djf','mam','jja','son']
+    # print(pd.DataFrame(np.average(df_clim[months], weights=df_clim.Shp_Area, axis=0), index=months))
 
     ####################################
     ## Map Analysis
@@ -1921,12 +1933,10 @@ if __name__=='__main__':
     # # lsd_hl_lev.to_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
 
     # ## Join df with LEV to df with nearest BAWLD (quicker than in Arcgis)
-    # df_hl_nearest_bawld = pyogrio.read_dataframe(hl_nearest_bawld_pth, read_geometry=False) # Ignore the 0-5 etc. joined Oc columns because they are per grid cell
-    # df_hl_nearest_bawld = df_hl_nearest_bawld.groupby('Hylak_id').first().reset_index() # take only first lake (for cases where lake is equidistant from multiple cells)
-    # lsd_hl_lev_nearest_bawld = lsd_hl_lev.merge(df_hl_nearest_bawld[['Hylak_id', 'BAWLD_Cell']], how='left', left_on='idx_HL', right_on='Hylak_id') # '0-5', '5-50', '50-95', '95-100', 'Class_sum', 'BAWLD_Long', 'BAWLD_Lat', 
-
+    # if 'df_hl_nearest_bawld' not in locals():
+    #     raise ValueError("Nead to load df_hl_nearest_bawld ")
     # ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
-    # df_bawld_sum_lev = lsd_hl_lev_nearest_bawld.groupby('BAWLD_Cell').sum(numeric_only=True) # Could add Occ
+    # df_bawld_sum_lev = lsd_hl_lev.groupby('BAWLD_Cell').sum(numeric_only=True) # Could add Occ
 
     # ## Rescale back to LEV percent (lf lake and of grid cell) as well
     # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
@@ -2036,9 +2046,8 @@ if __name__=='__main__':
     # ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=False, normalized=False)
     # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
 
-    ## Test flux prediction from observed lakes
+    ## Flux prediction from observed and extrap lakes
     model = loadBAWLD_CH4()
-    lsd_hl_trunc['Temp_C'] = 9.82 # required for prediction, using mean JJA for now.
     lsd_hl_trunc.predictFlux(model, includeExtrap=True)
 
     ## Plot combined extrap LSD/LEV
@@ -2166,11 +2175,9 @@ if __name__=='__main__':
     lsd_hl_trunc_log10bins.extrapolate(binned_ref_log10bins, binned_lev_log10bins)  
 
     ## Predict flux on extrapolated part
-    lsd_hl_trunc_log10bins['Temp_C'] = 9.82 # required for prediction, using mean JJA for now.
     lsd_hl_trunc_log10bins.predictFlux(model, includeExtrap=True)
 
     ## Predict flux on upper part
-    lsd_hl_lev['Temp_C'] = 9.82 # required for prediction, using mean JJA for now.
     lsd_hl_lev.predictFlux(model, includeExtrap=False)
 
     ## bin upper with log10 bins
