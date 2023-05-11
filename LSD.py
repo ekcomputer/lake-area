@@ -1180,7 +1180,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
         ## Add error bars
         # if None:
-        if error_bars == True and self.extrapLSD.hasCI_lsd:
+        if error_bars == True:
             assert self.extrapLSD.hasCI_lsd, "error_bars is set, but extrapolated LSD has no CI (self.extrapLSD.hasCI_lsd is False)"
             
             ## as area plot: extrapolated flux
@@ -1773,7 +1773,7 @@ def runTests():
     lsd_hl_trunc.predictFlux(model, includeExtrap=False)
 
     ## Test flux prediction from extrapolated lakes
-    lsd_hl_trunc.extrapLSD.Temp_C = np.average(lsd_hl_trunc.Temp_C, weights=lsd_hl_trunc.Area_km2) # Use lake-area-weighted average temp as temp for extrapolated lakes, since we don't know where they are located
+    lsd_hl_trunc.extrapLSD.Temp_C = 9.8 # Placeholder # np.average(lsd_hl_trunc.Temp_C, weights=lsd_hl_trunc.Area_km2) # Use lake-area-weighted average temp as temp for extrapolated lakes, since we don't know where they are located
     lsd_hl_trunc.extrapLSD.predictFlux(model)
 
     ## Test combined prediction
@@ -1916,8 +1916,9 @@ if __name__=='__main__':
 
     ## Use BAWLD Cell to join in temp (e.g. "double-join")
     temperatures = lsd_hl_lev_m[['idx_HL', 'BAWLD_Cell']].merge(df_clim, how='left', left_on='BAWLD_Cell', right_on='Cell_ID').drop(columns=['Cell_ID', 'Shp_Area']) # some rows don't merge, I think bc I think idx_unamed is nto for HL... just use as example
+    temperatures.fillna(temperatures.mean(), inplace=True) # Fill any missing data with mean
     lsd_hl_lev['Temp_C'] = temperatures[temperature_metric]
-    
+
     ## Compute cell-area-weighted average of climate as FYI
     # print(f'Mean JJA temperature across {roi_region} domain: {np.average(df_clim.jja, weights=df_clim.Shp_Area)}')
     # months = ['ann','djf','mam','jja','son']
@@ -2070,7 +2071,7 @@ if __name__=='__main__':
     ax2.set_ylim([ymin, ymax/lsd_hl_trunc._total_flux_Tg_yr['mean']])
     ax2.set_ylabel('Cumulative emissions fraction')
     plt.tight_layout()
-    [ax2.get_figure().savefig('/mnt/d/pic/BAWLD_areas_v4'+ext, transparent=True, dpi=300) for ext in ['.png','.pdf']]
+    [ax2.get_figure().savefig('/mnt/d/pic/BAWLD_areas_v5'+ext, transparent=True, dpi=300) for ext in ['.png','.pdf']]
 
     # ## Plot combined extrap LSD/Flux
     # norm = True # False
@@ -2090,7 +2091,7 @@ if __name__=='__main__':
     ax.set_ylabel('') #'Cumulative aquatic vegetation area (million $km^2$)')
     ax2.set_ylabel('') #'Cumulative aquatic vegetation area fraction')
     plt.tight_layout()
-    [ax.get_figure().savefig('/mnt/d/pic/BAWLD_areas_inset_v4', transparent=True, dpi=300) for ext in ['.png','.pdf']]
+    [ax.get_figure().savefig('/mnt/d/pic/BAWLD_areas_inset_v5', transparent=True, dpi=300) for ext in ['.png','.pdf']]
     sns.set_theme('notebook', font='Ariel')
     sns.set_style('ticks')
 
@@ -2293,6 +2294,8 @@ if __name__=='__main__':
 * Go back and add branches for no CI to the various methods. Make sure it still has a second index for 'stat' with constant val 'mean'
 * Make predictFlux() calls consistent bw LSD and BinnedLSD, whether they return a value or add an attribute.
 * Thorough testing of all function options
+* Search for "TODO"
+* Can use deepcopy instead of re-initiating with LSD...
 
 NOTES:
 * Every time a create an LSD() object in a function from an existing LSD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
