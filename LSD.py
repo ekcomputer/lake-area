@@ -470,6 +470,9 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         if 'est_g_day' in df.columns:
             g_var = 'est_g_day'
         else: g_var = None
+        if 'Temp_C' in df.columns:
+            t_var = 'Temp_C'
+        else: t_var = None
 
         ## Choose which columns to keep (based on function arguments, or existing vars with default names that have become arguments)
         columns = [col for col in [idx_var, area_var, region_var, name_var, geometry_var, mg_var, g_var, lev_var] if col is not None] # allows 'region_var' to be None
@@ -871,7 +874,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
         assert 'Temp_C' in self.columns, "LSD needs a Temp_C attribute in order to predict flux."
         if includeExtrap==True:
             assert hasattr(self, 'extrapLSD'), "includeExtrap was set to true, but no self.extrapLSD found."
-            self.extrapLSD.Temp_C = np.average(self.Temp_C, weights=self.Area_km2) # copy over temperature variable, regardless of whether it exists.
+            self.extrapLSD.Temp_C = np.average(self.Temp_C, weights=self.Area_km2) # Use lake-area-weighted average temp as temp for extrapolated lakes, since we don't know where they are located
             self.extrapLSD.predictFlux(model)
             binned_total_flux_Tg_yr = self.extrapLSD._total_flux_Tg_yr
         else:
@@ -1571,7 +1574,7 @@ class BinnedLSD():
             list of model coefficients
         returns: ax
         '''
-        assert hasattr(self, 'temp'), "Binned LSD needs a temp attribute in order to predict flux."
+        assert hasattr(self, 'Temp_C'), "Binned LSD needs a Temp_C attribute in order to predict flux."
         assert self.isNormalized == False, "Binned LSD is normalized so values will be unitless for area."
         means = self.binnedAreas.loc[:, 'mean']
         geom_mean_areas = np.array(list(map(interval_geometric_mean, means.index)))
@@ -1709,13 +1712,6 @@ def runTests():
     binned_manual = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, bins=[0.001, 0.1, 0.5], compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
     binned_manual.plot()
 
-    ## Load climate
-    bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    df_clim = pd.read_csv(bawld_join_clim_pth)
-    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )   
-    df_clim = df_clim.merge(gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
-    
     ## Test binnedLSD with fluxes
     model = loadBAWLD_CH4()
     lsd_cir['Temp_C'] = 10 # placeholder, required for prediction 
@@ -1761,13 +1757,23 @@ def runTests():
     ## Flux Tests
     ####################################
 
+    ## Load climate
+    bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    df_clim = pd.read_csv(bawld_join_clim_pth)
+    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )   
+    df_clim = df_clim.merge(gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
+    
     ## Test flux prediction from observed lakes
     model = loadBAWLD_CH4()
-    lsd_hl_trunc['Temp_C'] = 10 # placeholder until I load from file, required for prediction 
+    # lsd_hl_trunc['Temp_C'] = 10 # placeholder until I load from file, required for prediction 
+    temp = lsd_hl_trunc.merge(df_clim, how='left', left_on='idx_unamed', right_on='Cell_ID') # some rows don't merge, I think bc I think idx_unamed is nto for HL... just use as example
+    temperature_metric = 'jja'
+    lsd_hl_trunc['Temp_C'] = temp[temperature_metric]
     lsd_hl_trunc.predictFlux(model, includeExtrap=False)
 
     ## Test flux prediction from extrapolated lakes
-    lsd_hl_trunc.extrapLSD.Temp_C = np.average(lsd_hl_trunc.Temp_C, weights=lsd_hl_trunc.Area_km2)
+    lsd_hl_trunc.extrapLSD.Temp_C = np.average(lsd_hl_trunc.Temp_C, weights=lsd_hl_trunc.Area_km2) # Use lake-area-weighted average temp as temp for extrapolated lakes, since we don't know where they are located
     lsd_hl_trunc.extrapLSD.predictFlux(model)
 
     ## Test combined prediction
@@ -1879,7 +1885,7 @@ if __name__=='__main__':
 
     ## Take cell-area-weighted average of climate
     print(f'Mean JJA temperature across {roi_region} domain: {np.average(df_clim.jja, weights=df_clim.Shp_Area)}')
-    months = ['djf','mam','jja','son']
+    months = ['ann','djf','mam','jja','son']
     print(pd.DataFrame(np.average(df_clim[months], weights=df_clim.Shp_Area, axis=0), index=months))
 
     ####################################
