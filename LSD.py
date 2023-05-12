@@ -1294,7 +1294,7 @@ class LSD(pd.core.frame.DataFrame): # inherit from df? pd.DataFrame #
 
 class BinnedLSD():
     '''This class represents lakes as area bins with summed areas.'''
-    def __init__(self, lsd=None, btm=None, top=None, nbins=None, bins=None, normalize=True, compute_ci_lsd=False, compute_ci_lev=False, compute_ci_flux=False, binned_areas=None, extreme_regions_lsd=None, extreme_regions_lev=None):
+    def __init__(self, lsd=None, btm=None, top=None, nbins=None, bins=None, normalize=True, compute_ci_lsd=False, compute_ci_lev=False, compute_ci_lev_existing=False, compute_ci_flux=False, binned_areas=None, extreme_regions_lsd=None, extreme_regions_lev=None):
         '''
         Bins will have left end closed and right end open.
         When creating this class to extrapolate a LSD, ensure that lsd is top-truncated to ~1km to reduce variability in bin sums. This chosen top limit will be used as the upper limit to the index region (used for normalization) and will be applied to the target LSD used for extrapolation.
@@ -1312,19 +1312,21 @@ class BinnedLSD():
             Number of bins to use for np.geomspace (not counting the top bin that goes to np.inf when 'lsd' arg is given). Can use either nbins or  bins.
         bins : array-like
             Alternative to specifiying number of bins: give actual bin edges. Top edge of infinity will be added.
-        normalize : Boolean
+        normalize : Boolean (True)
             If True (default), normalized each bin by index region
-        compute_ci_lsd : Boolean
+        compute_ci_lsd : Boolean (False)
             Compute confidence interval for lsd by breaking down by region. Function will always bin LSD (at least without CI)
-        compute_ci_lev : Boolean
+        compute_ci_lev : Boolean (False)
             Compute confidence interval for lev by breaking down by region. Function will always bin LEV (at least without CI)
-        compute_ci_flux : Boolean
+        compute_ci_lev_existing : Boolean (False)
+            Compute confidence interval for lev by using existing columns LEV_MIN and LEV_MAX. Useful for binning observed (not extrapolated) lakes data.
+        compute_ci_flux : Boolean (False)
             Compute confidence interval for flux by multiplying by ci_lsd CI. Function will always bin LEV (at least without CI)
-        binnedAreas : pandas.DataFrame
+        binnedAreas : pandas.DataFrame (None)
             Used for LSD.extrapolate(). Has structure similar to what is returned by self.binnedAreas if called with lsd argument. Format: multi-index with two columns, first giving bins, and second giving normalized lake area sum statistic (mean, upper, lower).
-        extreme_regions_lsd : array-like
+        extreme_regions_lsd : array-like (None)
             List of region names to use for min/max area
-        extreme_regions_lev : array-like
+        extreme_regions_lev : array-like (None)
             List of region names to use for min/max LEV
         '''
         ## Assertions
@@ -1416,6 +1418,10 @@ class BinnedLSD():
                     pass
                 # if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
                 #     self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True) 
+                elif compute_ci_lev_existing:
+                    assert compute_ci_lev is False, "If selecting 'compute_ci_lev_existing', make sure 'compute_ci_lev' is False."
+                    assert np.all(np.isin(['LEV_MIN', 'LEV_MAX'], lsd.columns)), "If selecting 'compute_ci_lev_existing', both 'LEV_MIN' and 'LEV_MAX' need to be present in lsd columns."
+                    group_means_lev_low, group_means_lev_high = [lsd.groupby(['size_bin'])[stat].mean(numeric_only=True) for stat in ['LEV_MIN', 'LEV_MAX']]
                 else:
                     group_means_lev_low, group_means_lev_high = None, None        
                     self.hasCI_lev = False
@@ -2120,46 +2126,46 @@ if __name__=='__main__':
     ## Downing Analysis
     ####################################
 
-    ## Remake plot for LSD
-    fig, ax = plt.subplots()
-    lsd_hl_trunc.plot_extrap_lsd(ax=ax, label='Lake area', error_bars=True, normalized=True, color='grey', plotLegend=False)
-    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
-    # ax2=ax.twinx()
-    ax.set_ylabel('Cumulative area (normalized)')
-    # ax.set_xlabel('')
-    # ax2.set_ylabel('Cumulative area (normalized)')
-
-    ## Compare to Downing, re-using code snippet from BinnedLSD and plot over first plot
-    btm = 0.001
-    top = 100000
-    nbins = 8
-    bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6) # bins computed from nbins and edges
-    area_bins = pd.IntervalIndex.from_breaks(bin_edges, closed='left')
-    # X = np.array(list(map(interval_geometric_mean, area_bins))) # take geom mean of each interval to get X-val
-    X = bin_edges[1:] # plot against right bin edge
-    d06 = [692600, 602100, 523400, 455100, 392362, 329816, 257856, 607650, 378119]
-    group_sums = pd.Series(d06, index=area_bins, name='Area_km2') # from Downing 2006 paper
-    binnedAreas = confidence_interval_from_extreme_regions(group_sums, None, None, name='Area_km2') # # Why are lower/upper non NaN?? Ignore.
-
-    ## Put Downing number into my BinnedLSD data structure, just to verify plot
-    lsd_d06 = BinnedLSD(btm=btm, top=top, nbins=nbins, binned_areas=binnedAreas, compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedAreas args
-    # lsd_d06_canon = BinnedLSD(btm=bin_edges[4], top=bin_edges[-2], nbins=4, binned_areas=confidence_interval_from_extreme_regions(group_sums[4:-1], None, None, name='Area_km2'), compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedAreas args
-    # lsd_d06_extrap = BinnedLSD(btm=bin_edges[0], top=bin_edges[4], nbins=4, binned_areas=confidence_interval_from_extreme_regions(group_sums[:4], None, None, name='Area_km2'), compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedAreas args
-    lsd_d06.plot(ax=ax, show_rightmost=False, as_lineplot=True, as_cumulative=True) # plot as binnedLSD, skipping top bin with Caspian Sea
-    
+    # ## Remake plot for LSD
     # fig, ax = plt.subplots()
-    # ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
-    d06_canonical = d06[4:]
-    d06_extrap = d06[:4]
-    ax.plot(X[:-1], np.cumsum(d06[:-1])/np.sum(d06[:-1]), color='orange', marker='x',linestyle='dashed') # This time, exclude top bin to better compare with BAWLD domain
-    ax.plot(X[4:-1], (np.cumsum(d06_canonical[:-1])+np.sum(d06_extrap))/(np.sum(d06_canonical[:-1]) + np.sum(d06_extrap)), color='orange') # Plot canonical
-    # ax.plot(X[:4], np.cumsum(d06_extrap)/np.sum(d06[:-1]), color='orange', linestyle='dashed') # Plot extrap
-    fig.tight_layout()
-    ax.set_yscale('linear')
-    # ax.set_xscale('log')
-    # ax.set_xticks(X)
+    # lsd_hl_trunc.plot_extrap_lsd(ax=ax, label='Lake area', error_bars=True, normalized=True, color='grey', plotLegend=False)
+    # # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    # # ax2=ax.twinx()
+    # ax.set_ylabel('Cumulative area (normalized)')
+    # # ax.set_xlabel('')
+    # # ax2.set_ylabel('Cumulative area (normalized)')
 
-    # print(f'Area in two smallest bins: {np.sum(d06[:2])/1e6}\nArea in three largest: {np.sum(d06[-3:])/1e6}')
+    # ## Compare to Downing, re-using code snippet from BinnedLSD and plot over first plot
+    # btm = 0.001
+    # top = 100000
+    # nbins = 8
+    # bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6) # bins computed from nbins and edges
+    # area_bins = pd.IntervalIndex.from_breaks(bin_edges, closed='left')
+    # # X = np.array(list(map(interval_geometric_mean, area_bins))) # take geom mean of each interval to get X-val
+    # X = bin_edges[1:] # plot against right bin edge
+    # d06 = [692600, 602100, 523400, 455100, 392362, 329816, 257856, 607650, 378119]
+    # group_sums = pd.Series(d06, index=area_bins, name='Area_km2') # from Downing 2006 paper
+    # binnedAreas = confidence_interval_from_extreme_regions(group_sums, None, None, name='Area_km2') # # Why are lower/upper non NaN?? Ignore.
+
+    # ## Put Downing number into my BinnedLSD data structure, just to verify plot
+    # lsd_d06 = BinnedLSD(btm=btm, top=top, nbins=nbins, binned_areas=binnedAreas, compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedAreas args
+    # # lsd_d06_canon = BinnedLSD(btm=bin_edges[4], top=bin_edges[-2], nbins=4, binned_areas=confidence_interval_from_extreme_regions(group_sums[4:-1], None, None, name='Area_km2'), compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedAreas args
+    # # lsd_d06_extrap = BinnedLSD(btm=bin_edges[0], top=bin_edges[4], nbins=4, binned_areas=confidence_interval_from_extreme_regions(group_sums[:4], None, None, name='Area_km2'), compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedAreas args
+    # lsd_d06.plot(ax=ax, show_rightmost=False, as_lineplot=True, as_cumulative=True) # plot as binnedLSD, skipping top bin with Caspian Sea
+    
+    # # fig, ax = plt.subplots()
+    # # ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
+    # d06_canonical = d06[4:]
+    # d06_extrap = d06[:4]
+    # ax.plot(X[:-1], np.cumsum(d06[:-1])/np.sum(d06[:-1]), color='orange', marker='x',linestyle='dashed') # This time, exclude top bin to better compare with BAWLD domain
+    # ax.plot(X[4:-1], (np.cumsum(d06_canonical[:-1])+np.sum(d06_extrap))/(np.sum(d06_canonical[:-1]) + np.sum(d06_extrap)), color='orange') # Plot canonical
+    # # ax.plot(X[:4], np.cumsum(d06_extrap)/np.sum(d06[:-1]), color='orange', linestyle='dashed') # Plot extrap
+    # fig.tight_layout()
+    # ax.set_yscale('linear')
+    # # ax.set_xscale('log')
+    # # ax.set_xticks(X)
+
+    # # print(f'Area in two smallest bins: {np.sum(d06[:2])/1e6}\nArea in three largest: {np.sum(d06[-3:])/1e6}')
 
     ###########################
     ## Create Table
@@ -2183,7 +2189,7 @@ if __name__=='__main__':
 
     ## bin upper with log10 bins
     log_bins_upper = [0.5, 1, 10, 100, 1000, 10000, 100000]
-    lsd_hl_lev_log10bins = BinnedLSD(lsd_hl_lev, bins=log_bins_upper, compute_ci_lsd=True, compute_ci_lev=True, normalize=False, extreme_regions_lsd=['HL', 'HL'], extreme_regions_lev=['HL', 'HL']) # now, bin upper values for Table estimate, use regions as placeholder to get dummy CI
+    lsd_hl_lev_log10bins = BinnedLSD(lsd_hl_lev, bins=log_bins_upper, compute_ci_lsd=False, compute_ci_lev=False, compute_ci_lev_existing=True, normalize=False) # now, bin upper values for Table estimate, use regions as placeholder to get dummy CI
 
     ## Make table: can ignore CI if nan or same as mean
     tb_area = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedAreas, lsd_hl_lev_log10bins.binnedAreas))
