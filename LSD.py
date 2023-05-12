@@ -2192,23 +2192,45 @@ if __name__=='__main__':
     lsd_hl_lev_log10bins = BinnedLSD(lsd_hl_lev, bins=log_bins_upper, compute_ci_lsd=False, compute_ci_lev=False, compute_ci_lev_existing=True, normalize=False) # now, bin upper values for Table estimate, use regions as placeholder to get dummy CI
 
     ## Make table: can ignore CI if nan or same as mean
-    tb_area = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedAreas, lsd_hl_lev_log10bins.binnedAreas))
-    tb_lev = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedLEV, lsd_hl_lev_log10bins.binnedLEV)) * tb_area #.loc[:, 'mean']
-    tb_flux = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedG_day, lsd_hl_lev_log10bins.binnedG_day))
+    tb_area = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedAreas, lsd_hl_lev_log10bins.binnedAreas)) / 1e6
+    tb_lev = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedLEV, lsd_hl_lev_log10bins.binnedLEV)) * tb_area.loc[:, 'mean']
+    tb_flux = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedG_day, lsd_hl_lev_log10bins.binnedG_day)) * 365.25 / 1e12
     tb_comb = pd.concat((tb_area, tb_lev, tb_flux), axis=1)
-    tb_comb.columns = ['Area_km2', 'LEV_km2', 'G_day']
+    tb_comb.columns = ['Area_Mkm2', 'LEV_Mkm2', 'Tg_yr']
+
+    ## Custom grouping function (Thanks ChatGPT!)
+    def interval_group(interval, edges = [0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000]):
+        n= len(edges)
+        assert interval.left != interval.right
+        for i, edge in enumerate(edges[:-1]):
+            if (interval.left >= edge) and (interval.right <= edges[i+1]):
+                return pd.Interval(left=edge, right=edges[i+1])
+        return None # if interval doesn't fit between any two adjacent edges
+
+    ## Combine intervals
+    grouped_tb_mean, grouped_tb_lower, grouped_tb_upper = [tb_comb.loc[:,stat, :].groupby(by=interval_group).sum() for stat in ['mean', 'lower','upper']]
 
     ## Normalize
-    tb_comb_norm = tb_comb / tb_comb.loc[:,'mean',:].sum(axis=0)
+    def norm_table(table, mean_table):
+        return table / mean_table.sum(axis=0)
+    grouped_tb_mean_norm, grouped_tb_lower_norm, grouped_tb_upper_norm = map(norm_table, [grouped_tb_mean, grouped_tb_lower, grouped_tb_upper], [grouped_tb_mean]*3)
 
-    ## Save as csv
-    tb_comb.to_csv(os.path.join(tb_dir, 'Size_bin_table.csv'))
-    tb_comb_norm.to_csv(os.path.join(tb_dir, 'Size_bin_table_norm.csv'))
+    ## Save to Excel sheets
+    ## Create a Pandas Excel writer using XlsxWriter as the engine.
+    sheets = ['Mean','Min','Max']
+    with pd.ExcelWriter(os.path.join(tb_dir, 'Size_bin_table.xlsx')) as writer:
+        [df.to_excel(writer, sheet_name=sheets[i]) for i, df in enumerate([grouped_tb_mean, grouped_tb_lower, grouped_tb_upper])]
+
+    with pd.ExcelWriter(os.path.join(tb_dir, 'Size_bin_table_norm.xlsx')) as writer:
+        [df.to_excel(writer, sheet_name=sheets[i]) for i, df in enumerate([grouped_tb_mean_norm, grouped_tb_lower_norm, grouped_tb_upper_norm])]
 
     ## Print totals
-    sums = tb_comb.loc[:,'mean',:].sum(axis=0)
+    sums = grouped_tb_mean.sum(axis=0)
     sums
-    print(f"Total flus: {sums['G_day'] * 365.25 / 1e12}")
+    print(f"Total area: {sums['Area_Mkm2']:0.3} Mkm2")
+    print(f"Total LEV: {sums['LEV_Mkm2']:0.3} Mkm2")
+    print(f"Total flux: {sums['Tg_yr']:0.3} Tg/yr")
+
     ## print number of ref lakes:
     # len(lsd_hl_trunc)
     # lsd_hl_trunc.refBinnedLSD.binnedCounts.sum()
