@@ -2174,7 +2174,15 @@ if __name__=='__main__':
     
     ## Extrapolate with log10 bins
     tmin, tmax = (0.0001,5) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
-    log_bins_lower = [tmin, 0.001, 0.01, 0.1, emax]
+    log_meta_bins_lower = [tmin, 0.001, 0.01, 0.1, emax]
+    def meta_geomspace(meta_bins, n):
+        '''Creates a list of numbers within regions defined by meta_bins that follow a geometric space with n entries within each region.'''
+        inner_list = []
+        for i, edge in enumerate(meta_bins[:-1]):
+            inner_list.extend(np.geomspace(edge, meta_bins[i+1], n))
+        return sorted(list(set(inner_list)))
+
+    log_bins_lower = meta_geomspace(log_meta_bins_lower, 25)
     emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
     binned_ref_log10bins = BinnedLSD(lsd.truncate(tmin, tmax), bins=log_bins_lower, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # reference distrib (try 5, 0.5 as second args)
     binned_lev_log10bins = BinnedLSD(lsd_lev_cat, bins=log_bins_lower, compute_ci_lev=True, extreme_regions_lev=extreme_regions_lev_for_extrap) # 0.000125 is native
@@ -2200,6 +2208,7 @@ if __name__=='__main__':
 
     ## Custom grouping function (Thanks ChatGPT!)
     def interval_group(interval, edges = [0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000]):
+        ''' Custom grouping function that aggregates pd.Interval indexes based on edges given by edges.'''
         n= len(edges)
         assert interval.left != interval.right
         for i, edge in enumerate(edges[:-1]):
@@ -2248,8 +2257,8 @@ if __name__=='__main__':
 
     ## filter out small size bins and compute area-weighted emissions # TODO: run with the actual veg methane estimate I'll be using # TODO: double check why my values are so much lower than BAWLD means, even when I compare my non-inv mean flux to 0.1-1 km2 BAWLD size bin
     non_inv_lks = tb_comb.loc[(tb_comb.index.get_level_values('size_bin')[0:9], 'mean'), :] # non-inventoried lakes
-    non_inv_lks_mean_flux =  non_inv_lks.G_day.sum() / non_inv_lks.Area_km2.sum() / 1e6 * 1000 # area-weighted mean flux in mg/m2/day
-    all_lks_mean_flux =  tb_comb.G_day.sum() / tb_comb.Area_km2.sum() / 1e6 * 1000
+    non_inv_lks_mean_flux =  non_inv_lks.Tg_yr.sum() / 365.25 * 1e15 / (non_inv_lks.Area_Mkm2.sum() * 1e6 * 1e6) # area-weighted mean flux in mg/m2/day
+    all_lks_mean_flux =  tb_comb.Tg_yr.sum() / 365.25 * 1e15 / (tb_comb.Area_Mkm2.sum() * 1e6 * 1e6)
     emissions_factor_ni_lks = non_inv_lks_mean_flux / all_lks_mean_flux # emissions factor (ratio) for non-inventoried lakes (compare to 3.1 for wl, from bald marsh:lake emissions ratio)
     
     ## load bawld veg
