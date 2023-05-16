@@ -1993,13 +1993,34 @@ if __name__=='__main__':
     print(f'RMSE: {mean_squared_error(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV, squared=False):0.2%}')
 
     ## Plot validation of LEV
-    # plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
+    print(f'RMSE: {mean_squared_error(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV, squared=False):0.2%}')
     fig, ax = plt.subplots()
     ax.plot([0, 0.6], [0, 0.6], ls="--", c=".3") # Add the one-to-one line # ax.get_xlim(), ax.get_ylim()
     sns.regplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax)
-    # sns.scatterplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax, hue=a_lev_measured.Lake_area)
-    ax.set_xlabel('Predicted LEV (%)')
-    ax.set_ylabel('Measured LEV (%)')
+    # sns.scatterplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax, hue=a_lev_measured.Lake_area) # doesn't work!
+    # ax.scatter(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, c=a_lev_measured.Lake_area, cmap='Purples_r') # Adds color by area
+    ax.set_xlabel('Predicted lake aquatic vegetation fraction')
+    ax.set_ylabel('Measured lake aquatic vegetation fraction')
+    ax.set_xlim([0, 0.5])
+    ax.set_ylim([0, 0.8])
+    [ax.get_figure().savefig('/mnt/d/pic/A_LEV_validation', transparent=False, dpi=300) for ext in ['.png','.pdf']]
+ 
+    ## Compare RMSD of model to RMSD of observed UAVSAR holdout subset compared to average (Karianne's check)
+    print(f"RMSD of observed values from mean: {np.sqrt(1 /a_lev_measured.shape[0] * np.sum((a_lev_measured.A_LEV - a_lev_measured.A_LEV.mean())**2)):0.2%}")
+        
+    ## Other comparisons
+    np.sqrt(1 /lsd_hl_lev.shape[0] * np.sum((lsd_hl_lev.LEV_MEAN - lsd_hl_lev.LEV_MEAN.mean())**2)) # Compare RMSD for all predicted in HL (not sure what this comparison adds...)
+    np.sqrt(1 /lev_holdout.shape[0] * np.sum((lev_holdout.LEV_MEAN - lev_holdout.LEV_MEAN.mean())**2)) # Compare RMSD for predicted in holdout (not sure what this comparison adds...)
+    np.sqrt(1 /lsd_lev_cat.shape[0] * np.sum((lsd_lev_cat.LEV_MEAN - lsd_lev_cat.LEV_MEAN.mean())**2)) # Compare RMSD for all observed in UAVSAR (not sure what this comparison adds...)
+    # plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
+    fig, ax = plt.subplots()
+
+    ax.plot([0, 0.6], [0, 0.6], ls="--", c=".3") # Add the one-to-one line # ax.get_xlim(), ax.get_ylim()
+    sns.regplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax)
+    # sns.scatterplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax, hue=a_lev_measured.Lake_area) # doesn't work!
+    # ax.scatter(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, c=a_lev_measured.Lake_area, cmap='Purples_r') # Adds color by area
+    ax.set_xlabel('Predicted lake aquatic vegetation fraction')
+    ax.set_ylabel('Measured lake aquatic vegetation fraction')
     ax.set_xlim([0, 0.5])
     ax.set_ylim([0, 0.8])
     [ax.get_figure().savefig('/mnt/d/pic/A_LEV_validation', transparent=False, dpi=300) for ext in ['.png','.pdf']]
@@ -2246,12 +2267,15 @@ if __name__=='__main__':
     ## Save to Excel sheets
     ## Create a Pandas Excel writer using XlsxWriter as the engine.
     sheets = ['Mean','Min','Max']
-    with pd.ExcelWriter(os.path.join(tb_dir, 'Size_bin_table.xlsx')) as writer:
+    tbl_pth = os.path.join(tb_dir, 'Size_bin_table.xlsx')
+    with pd.ExcelWriter(tbl_pth) as writer:
         [df.to_excel(writer, sheet_name=sheets[i]) for i, df in enumerate([grouped_tb_mean, grouped_tb_lower, grouped_tb_upper])]
-
-    with pd.ExcelWriter(os.path.join(tb_dir, 'Size_bin_table_norm.xlsx')) as writer:
+        print(f'Table written: {tbl_pth}')
+    tbl_pth = os.path.join(tb_dir, 'Size_bin_table_norm.xlsx')
+    with pd.ExcelWriter(tbl_pth) as writer:
         [df.to_excel(writer, sheet_name=sheets[i]) for i, df in enumerate([grouped_tb_mean_norm, grouped_tb_lower_norm, grouped_tb_upper_norm])]
-
+        print(f'Table written: {tbl_pth}')
+    
     ## Print totals
     sums = grouped_tb_mean.sum(axis=0)
     sums
