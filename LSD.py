@@ -1979,22 +1979,41 @@ if __name__=='__main__':
     ####################################
 
     ## Load measured holdout LEV dataset
-    # a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
-    # a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
-    # print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
+    a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
+    a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
+    print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
 
     ## Compare to holdout dataset
-    # val_lakes_idx = [368946, 365442, 362977,362911,362697,362623,362193,361869,359283] # by Hylak_ID
+    val_lakes_idx = a_lev_measured.Hylak_id # use indexes from holdout dataset to query lakes for which I've predicted LEV from entire HL dataset
     # lev_holdout = lsd_hl_lev[np.isin(lsd_hl_lev.idx_HL, val_lakes_idx)]
-    # a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
-    # print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
-    # print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
-    # print(f'RMSE: {mean_squared_error(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV, squared=False)}')
+    lev_holdout = lsd_hl_lev.set_index('idx_HL').loc[val_lakes_idx, :]
+    a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
+    print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
+    print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
+    print(f'RMSE: {mean_squared_error(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV, squared=False):0.2%}')
+
+    ## Plot validation of LEV
     # plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
-    # plt.xlabel('Predicted LEV (%)')
-    # plt.ylabel('Measured LEV (%)')
+    fig, ax = plt.subplots()
+    ax.plot([0, 0.6], [0, 0.6], ls="--", c=".3") # Add the one-to-one line # ax.get_xlim(), ax.get_ylim()
+    sns.regplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax)
+    # sns.scatterplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax, hue=a_lev_measured.Lake_area)
+    ax.set_xlabel('Predicted LEV (%)')
+    ax.set_ylabel('Measured LEV (%)')
+    ax.set_xlim([0, 0.5])
+    ax.set_ylim([0, 0.8])
+    [ax.get_figure().savefig('/mnt/d/pic/A_LEV_validation', transparent=False, dpi=300) for ext in ['.png','.pdf']]
+ 
+    ## Compare RMSD of model to RMSD of observed UAVSAR holdout subset compared to average (Karianne's check)
+    print(f"RMSD of observed values from mean: {np.sqrt(1 /a_lev_measured.shape[0] * np.sum((a_lev_measured.A_LEV - a_lev_measured.A_LEV.mean())**2)):0.2%}")
+        
+    ## Other comparisons
+    np.sqrt(1 /lsd_hl_lev.shape[0] * np.sum((lsd_hl_lev.LEV_MEAN - lsd_hl_lev.LEV_MEAN.mean())**2)) # Compare RMSD for all predicted in HL (not sure what this comparison adds...)
+    np.sqrt(1 /lev_holdout.shape[0] * np.sum((lev_holdout.LEV_MEAN - lev_holdout.LEV_MEAN.mean())**2)) # Compare RMSD for predicted in holdout (not sure what this comparison adds...)
+    np.sqrt(1 /lsd_lev_cat.shape[0] * np.sum((lsd_lev_cat.LEV_MEAN - lsd_lev_cat.LEV_MEAN.mean())**2)) # Compare RMSD for all observed in UAVSAR (not sure what this comparison adds...)
 
     ## Load WBD
+
     if roi_region == 'WBD_BAWLD':
         print('Load WBD...')
         lsd_wbd = LSD.from_shapefile('/mnt/g/Other/Feng-High-res-inland-surface-water-tundra-boreal-NA/edk_out/fixed_geoms/WBD.shp', area_var='Area', name='WBD', idx_var='OBJECTID')
