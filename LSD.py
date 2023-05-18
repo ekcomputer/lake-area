@@ -1989,25 +1989,25 @@ if __name__=='__main__':
 
     ## Join to BAWLD 
     gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
-    gdf_bawld_sum_lev = df_bawld_sum_lev.merge(gdf_bawld, how='left', right_on='Cell_ID', left_index=True) # [['Cell_ID', 'Shp_Area']]
+    gdf_bawld_sum_lev = df_bawld_sum_lev.merge(gdf_bawld, how='outer', right_on='Cell_ID', left_index=True) # [['Cell_ID', 'Shp_Area']]
     ## Could also join % Occ to lsd_hl_lev
 
     ## Rescale to LEV percent (of grid cell)
     for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
-        gdf_bawld_sum_lev[(col+ '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col+ '_km2'] / gdf_bawld_sum_lev['Shp_Area'] # add cell LEV fraction
+        gdf_bawld_sum_lev[(col+ '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col+ '_km2'] / (gdf_bawld_sum_lev['Shp_Area']/1e6) # add cell LEV fraction (note BAWLD units are m2)
     
     ## Mask out high Glacier or barren grid cells
     gdf_bawld_sum_lev.loc[(gdf_bawld_sum_lev.GLA + gdf_bawld_sum_lev.ROC )> 75,
              ['LEV_MEAN_km2', 'LEV_MIN_km2', 'LEV_MAX_km2', 'LEV_MEAN_frac', 'LEV_MIN_frac', 'LEV_MAX_frac', 'LEV_MEAN_grid_frac', 'LEV_MIN_grid_frac', 'LEV_MAX_grid_frac']] = 0
 
     ## and write out
-    gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file('/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v3.shp', engine='pyogrio')
+    gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file('/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v4.shp', engine='pyogrio')
     
     ## Stats from BAWLD LEV
     s=gdf_bawld_sum_lev.sum()
-    print(f"BAWLD domain is {s.LEV_MEAN_km2/s.Shp_Area:0.4%} [{s.LEV_MIN_km2/s.Shp_Area:0.4%}-{s.LEV_MAX_km2/s.Shp_Area:0.4%}] lake vegetation.")
-    print(f"BAWLD domain is {s.WET/s.Shp_Area:0.4%} [{s.WET_L/s.Shp_Area:0.4%}-{s.WET_H/s.Shp_Area:0.4%}] wetlands.")
-    print(f"BAWLD domain: {s.WET/1e6:0.3} [{s.WET_L/1e6:0.3}-{s.WET_H/1e6:0.3}] Mkm2  wetlands.")
+    print(f"BAWLD domain is {s.LEV_MEAN_km2/(s.Shp_Area/1e6):0.4%} [{s.LEV_MIN_km2/(s.Shp_Area/1e6):0.4%}-{s.LEV_MAX_km2/(s.Shp_Area/1e6):0.4%}] lake vegetation.")
+    print(f"BAWLD domain is {np.average(gdf_bawld_sum_lev.WET, weights=gdf_bawld_sum_lev.Shp_Area):0.4} [{np.average(gdf_bawld_sum_lev.WET_L, weights=gdf_bawld_sum_lev.Shp_Area):0.4}-{np.average(gdf_bawld_sum_lev.WET_H, weights=gdf_bawld_sum_lev.Shp_Area):0.4}%] wetlands.")
+    print(f"BAWLD domain: {np.dot(gdf_bawld_sum_lev.WET/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3} [{np.dot(gdf_bawld_sum_lev.WET_L/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}-{np.dot(gdf_bawld_sum_lev.WET_H/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}] Mkm2  wetlands.")
     print(f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] Mkm2 lake vegetation.")
 
     # What percentage of HL is 0-50 Oc bin?
