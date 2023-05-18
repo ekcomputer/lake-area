@@ -1380,7 +1380,7 @@ class BinnedLSD():
             ## # Boolean to determine branch for LEV
             hasLEV = 'LEV_MEAN' in lsd.columns
             hasFlux = 'est_g_day' in lsd.columns
-            hasDC = 'd_counting_per' in lsd.columns
+            hasDC = 'd_counting_frac' in lsd.columns
             # hasLEV_CI = np.all([attr in lsd.columns for attr in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']])
 
             if not hasLEV:
@@ -1468,7 +1468,7 @@ class BinnedLSD():
             
             ## bin double counting
             if hasDC:
-                dc = lsd.groupby(['size_bin']).d_counting.mean(numeric_only=True)  
+                dc = lsd.groupby(['size_bin']).d_counting_frac.mean(numeric_only=True)  
                 binnedDC = confidence_interval_from_extreme_regions(dc, None, None, name='dc')
                 self.binnedDC = binnedDC
             else:
@@ -1837,6 +1837,7 @@ if __name__=='__main__':
 
     ## Common
     temperature_metric = 'jja'
+    v = 10 # Version number for file naming
 
     ## BAWLD domain
     dataset = 'HL'
@@ -2001,7 +2002,7 @@ if __name__=='__main__':
              ['LEV_MEAN_km2', 'LEV_MIN_km2', 'LEV_MAX_km2', 'LEV_MEAN_frac', 'LEV_MIN_frac', 'LEV_MAX_frac', 'LEV_MEAN_grid_frac', 'LEV_MIN_grid_frac', 'LEV_MAX_grid_frac']] = 0
 
     ## and write out
-    gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file('/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v4.shp', engine='pyogrio')
+    gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file(f'/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v{v}.shp', engine='pyogrio')
     
     ## Stats from BAWLD LEV
     s=gdf_bawld_sum_lev.sum()
@@ -2044,7 +2045,7 @@ if __name__=='__main__':
     ax.set_ylabel('Measured lake aquatic vegetation fraction')
     ax.set_xlim([0, 0.8])
     ax.set_ylim([0, 0.8])
-    [ax.get_figure().savefig('/mnt/d/pic/A_LEV_validation_v1', transparent=False, dpi=300) for ext in ['.png','.pdf']]
+    [ax.get_figure().savefig(f'/mnt/d/pic/A_LEV_validation_v{v}', transparent=False, dpi=300) for ext in ['.png','.pdf']]
  
     ## Compare RMSD of model to RMSD of observed UAVSAR holdout subset compared to average (Karianne's check)
     print(f"RMSD of observed values from mean: {np.sqrt(1 /a_lev_measured.shape[0] * np.sum((a_lev_measured.A_LEV - a_lev_measured.A_LEV.mean())**2)):0.2%}")
@@ -2158,7 +2159,7 @@ if __name__=='__main__':
     ax2.set_ylim([ymin, ymax/lsd_hl_trunc._total_flux_Tg_yr['mean']])
     ax2.set_ylabel('Cumulative emissions fraction')
     plt.tight_layout()
-    [ax2.get_figure().savefig('/mnt/d/pic/BAWLD_areas_v5'+ext, transparent=True, dpi=300) for ext in ['.png','.pdf']]
+    [ax2.get_figure().savefig(f'/mnt/d/pic/BAWLD_areas_v{v}'+ext, transparent=True, dpi=300) for ext in ['.png','.pdf']]
 
     # ## Plot combined extrap LSD/Flux
     # norm = True # False
@@ -2178,7 +2179,7 @@ if __name__=='__main__':
     ax.set_ylabel('') #'Cumulative aquatic vegetation area (million $km^2$)')
     ax2.set_ylabel('') #'Cumulative aquatic vegetation area fraction')
     plt.tight_layout()
-    [ax.get_figure().savefig('/mnt/d/pic/BAWLD_areas_inset_v5', transparent=True, dpi=300) for ext in ['.png','.pdf']]
+    [ax.get_figure().savefig(f'/mnt/d/pic/BAWLD_areas_inset_v{v}', transparent=True, dpi=300) for ext in ['.png','.pdf']]
     sns.set_theme('notebook', font='Ariel')
     sns.set_style('ticks')
 
@@ -2274,7 +2275,7 @@ if __name__=='__main__':
     lsd_hl_trunc_log10bins.predictFlux(model, includeExtrap=True)
 
     ## Compute double-counting
-    lsd_hl_lev['d_counting_per'] = (lsd_hl_lev['0-5'] + lsd_hl_lev['5-50']) /100
+    lsd_hl_lev['d_counting_frac'] = (lsd_hl_lev['0-5'] + lsd_hl_lev['5-50']) /100
 
     ## Predict flux on upper part
     lsd_hl_lev.predictFlux(model, includeExtrap=False)
@@ -2294,7 +2295,7 @@ if __name__=='__main__':
     ## Report double counting
     # dummy = lsd_hl_lev[~np.isnan(lsd_hl_lev.d_counting)]
     dummy = lsd_hl_lev.fillna(0) # assuming missing lakes have 0 LEV
-    print(f"Double counting of inventoried lakes: {np.average(dummy.d_counting, weights = dummy.Area_km2):0.3}%")
+    print(f"Double counting of inventoried lakes: {np.average(dummy.d_counting_frac, weights = dummy.Area_km2):0.3}%")
 
     ## Custom grouping function (Thanks ChatGPT!)
     def interval_group(interval, edges = [0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000]):
@@ -2317,11 +2318,11 @@ if __name__=='__main__':
     ## Save to Excel sheets
     ## Create a Pandas Excel writer using XlsxWriter as the engine.
     sheets = ['Mean','Min','Max']
-    tbl_pth = os.path.join(tb_dir, 'Size_bin_table.xlsx')
+    tbl_pth = os.path.join(tb_dir, f'Size_bin_table_v{v}.xlsx')
     with pd.ExcelWriter(tbl_pth) as writer:
         [df.to_excel(writer, sheet_name=sheets[i]) for i, df in enumerate([grouped_tb_mean, grouped_tb_lower, grouped_tb_upper])]
         print(f'Table written: {tbl_pth}')
-    tbl_pth = os.path.join(tb_dir, 'Size_bin_table_norm.xlsx')
+    tbl_pth = os.path.join(tb_dir, f'Size_bin_table_norm_v{v}.xlsx')
     with pd.ExcelWriter(tbl_pth) as writer:
         [df.to_excel(writer, sheet_name=sheets[i]) for i, df in enumerate([grouped_tb_mean_norm, grouped_tb_lower_norm, grouped_tb_upper_norm])]
         print(f'Table written: {tbl_pth}')
@@ -2402,7 +2403,7 @@ if __name__=='__main__':
     # ax2.set_ylim([ymin, ymax/lsd_wbd_trunc.sumAreas()*1e6*1.28]) # hot fix
     # ax2.set_ylabel('Cumulative area fraction')
     # ax.get_figure().tight_layout()
-    # [ax.get_figure().savefig('/mnt/d/pic/WBD_compare_v2'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
+    # [ax.get_figure().savefig(f'/mnt/d/pic/WBD_compare_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
  
     pass
 ################
