@@ -1999,7 +1999,7 @@ if __name__=='__main__':
     # ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
     # df_bawld_sum_lev = lsd_hl_lev.groupby('BAWLD_Cell').sum(numeric_only=True) # Could add Occ
 
-    # ## Rescale back to LEV percent (of lake) as well
+    # ## Rescale back to LEV fraction (of lake) as well
     # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
     #     df_bawld_sum_lev[(col+ '_km2').replace('_km2', '_frac')] = df_bawld_sum_lev[col+ '_km2'] / df_bawld_sum_lev['Area_km2'] # add absolute area units
     #     df_bawld_sum_lev.drop(columns=col, inplace=True) # remove summed means, which are meaningless
@@ -2010,7 +2010,7 @@ if __name__=='__main__':
     # gdf_bawld_sum_lev = df_bawld_sum_lev.merge(gdf_bawld, how='outer', right_on='Cell_ID', left_index=True) # [['Cell_ID', 'Shp_Area']]
     # ## Could also join % Occ to lsd_hl_lev
 
-    # ## Rescale to LEV percent (of grid cell)
+    # ## Rescale to LEV fraction (of grid cell)
     # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
     #     gdf_bawld_sum_lev[(col+ '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col+ '_km2'] / (gdf_bawld_sum_lev['Shp_Area']/1e6) # add cell LEV fraction (note BAWLD units are m2)
     
@@ -2023,15 +2023,15 @@ if __name__=='__main__':
     
     # ## Stats from BAWLD LEV
     # s=gdf_bawld_sum_lev.sum()
-    # print(f"BAWLD domain is {s.LEV_MEAN_km2/(s.Shp_Area/1e6):0.4%} [{s.LEV_MIN_km2/(s.Shp_Area/1e6):0.4%}-{s.LEV_MAX_km2/(s.Shp_Area/1e6):0.4%}] lake vegetation.")
-    # print(f"BAWLD domain is {np.average(gdf_bawld_sum_lev.WET, weights=gdf_bawld_sum_lev.Shp_Area):0.4} [{np.average(gdf_bawld_sum_lev.WET_L, weights=gdf_bawld_sum_lev.Shp_Area):0.4}-{np.average(gdf_bawld_sum_lev.WET_H, weights=gdf_bawld_sum_lev.Shp_Area):0.4}%] wetlands.")
+    # print(f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] Mkm2 lake vegetation (excluding non-inventoried lakes).")
+    # print(f"BAWLD domain is {s.LEV_MEAN_km2/(s.Shp_Area/1e6):0.4%} [{s.LEV_MIN_km2/(s.Shp_Area/1e6):0.4%}-{s.LEV_MAX_km2/(s.Shp_Area/1e6):0.4%}] lake vegetation (excluding non-inventoried lakes).")
     # print(f"BAWLD domain: {np.dot(gdf_bawld_sum_lev.WET/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3} [{np.dot(gdf_bawld_sum_lev.WET_L/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}-{np.dot(gdf_bawld_sum_lev.WET_H/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}] Mkm2  wetlands.")
-    # print(f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] Mkm2 lake vegetation.")
+    # print(f"BAWLD domain is {np.average(gdf_bawld_sum_lev.WET, weights=gdf_bawld_sum_lev.Shp_Area):0.4} [{np.average(gdf_bawld_sum_lev.WET_L, weights=gdf_bawld_sum_lev.Shp_Area):0.4}-{np.average(gdf_bawld_sum_lev.WET_H, weights=gdf_bawld_sum_lev.Shp_Area):0.4}%] wetlands.")
 
-    # What percentage of HL is 0-50 Oc bin?
-    # print('Load HL...')
-    # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None) # Need to load version with joined in Oc stats per lake
-    # use df_hl_nearest_bawld
+    # ## What percentage of HL is 0-50 Oc bin?
+    # # print('Load HL...')
+    # # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None) # Need to load version with joined in Oc stats per lake
+    # # use df_hl_nearest_bawld
 
     ####################################
     ## Holdout Analysis
