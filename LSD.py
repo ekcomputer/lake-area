@@ -1969,47 +1969,47 @@ if __name__=='__main__':
     ## Map Analysis
     ####################################
 
-    ## Rescale to km2
-    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
-        lsd_hl_lev[col+'_km2'] = lsd_hl_lev[col] * lsd_hl_lev['Area_km2'] # add absolute area units
-    # lsd_hl_lev.to_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
+    # ## Rescale to km2
+    # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+    #     lsd_hl_lev[col+'_km2'] = lsd_hl_lev[col] * lsd_hl_lev['Area_km2'] # add absolute area units
+    # # lsd_hl_lev.to_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
 
-    ## Join df with LEV to df with nearest BAWLD (quicker than in Arcgis)
-    if 'df_hl_nearest_bawld' not in locals():
-        raise ValueError("Nead to load df_hl_nearest_bawld ")
-    lsd_hl_lev = lsd_hl_lev.merge(df_hl_nearest_bawld[['Hylak_id', 'BAWLD_Cell']], left_on='idx_HL', right_on='Hylak_id', how='left')
+    # ## Join df with LEV to df with nearest BAWLD (quicker than in Arcgis)
+    # if 'df_hl_nearest_bawld' not in locals():
+    #     raise ValueError("Nead to load df_hl_nearest_bawld ")
+    # lsd_hl_lev = lsd_hl_lev.merge(df_hl_nearest_bawld[['Hylak_id', 'BAWLD_Cell']], left_on='idx_HL', right_on='Hylak_id', how='left')
     
-    ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
-    df_bawld_sum_lev = lsd_hl_lev.groupby('BAWLD_Cell').sum(numeric_only=True) # Could add Occ
+    # ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
+    # df_bawld_sum_lev = lsd_hl_lev.groupby('BAWLD_Cell').sum(numeric_only=True) # Could add Occ
 
-    ## Rescale back to LEV percent (of lake) as well
-    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
-        df_bawld_sum_lev[(col+ '_km2').replace('_km2', '_frac')] = df_bawld_sum_lev[col+ '_km2'] / df_bawld_sum_lev['Area_km2'] # add absolute area units
-        df_bawld_sum_lev.drop(columns=col, inplace=True) # remove summed means, which are meaningless
-    df_bawld_sum_lev.drop(columns=['idx_HL', 'Hylak_id', 'Temp_C'], inplace=True) # remove meaningless sums
+    # ## Rescale back to LEV percent (of lake) as well
+    # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+    #     df_bawld_sum_lev[(col+ '_km2').replace('_km2', '_frac')] = df_bawld_sum_lev[col+ '_km2'] / df_bawld_sum_lev['Area_km2'] # add absolute area units
+    #     df_bawld_sum_lev.drop(columns=col, inplace=True) # remove summed means, which are meaningless
+    # df_bawld_sum_lev.drop(columns=['idx_HL', 'Hylak_id', 'Temp_C'], inplace=True) # remove meaningless sums
 
-    ## Join to BAWLD 
-    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
-    gdf_bawld_sum_lev = df_bawld_sum_lev.merge(gdf_bawld, how='outer', right_on='Cell_ID', left_index=True) # [['Cell_ID', 'Shp_Area']]
-    ## Could also join % Occ to lsd_hl_lev
+    # ## Join to BAWLD 
+    # gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
+    # gdf_bawld_sum_lev = df_bawld_sum_lev.merge(gdf_bawld, how='outer', right_on='Cell_ID', left_index=True) # [['Cell_ID', 'Shp_Area']]
+    # ## Could also join % Occ to lsd_hl_lev
 
-    ## Rescale to LEV percent (of grid cell)
-    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
-        gdf_bawld_sum_lev[(col+ '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col+ '_km2'] / (gdf_bawld_sum_lev['Shp_Area']/1e6) # add cell LEV fraction (note BAWLD units are m2)
+    # ## Rescale to LEV percent (of grid cell)
+    # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+    #     gdf_bawld_sum_lev[(col+ '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col+ '_km2'] / (gdf_bawld_sum_lev['Shp_Area']/1e6) # add cell LEV fraction (note BAWLD units are m2)
     
-    ## Mask out high Glacier or barren grid cells
-    gdf_bawld_sum_lev.loc[(gdf_bawld_sum_lev.GLA + gdf_bawld_sum_lev.ROC )> 75,
-             ['LEV_MEAN_km2', 'LEV_MIN_km2', 'LEV_MAX_km2', 'LEV_MEAN_frac', 'LEV_MIN_frac', 'LEV_MAX_frac', 'LEV_MEAN_grid_frac', 'LEV_MIN_grid_frac', 'LEV_MAX_grid_frac']] = 0
+    # ## Mask out high Glacier or barren grid cells
+    # gdf_bawld_sum_lev.loc[(gdf_bawld_sum_lev.GLA + gdf_bawld_sum_lev.ROC )> 75,
+    #          ['LEV_MEAN_km2', 'LEV_MIN_km2', 'LEV_MAX_km2', 'LEV_MEAN_frac', 'LEV_MIN_frac', 'LEV_MAX_frac', 'LEV_MEAN_grid_frac', 'LEV_MIN_grid_frac', 'LEV_MAX_grid_frac']] = 0
 
-    ## and write out
-    gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file(f'/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v{v}.shp', engine='pyogrio')
+    # ## and write out
+    # gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file(f'/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v{v}.shp', engine='pyogrio')
     
-    ## Stats from BAWLD LEV
-    s=gdf_bawld_sum_lev.sum()
-    print(f"BAWLD domain is {s.LEV_MEAN_km2/(s.Shp_Area/1e6):0.4%} [{s.LEV_MIN_km2/(s.Shp_Area/1e6):0.4%}-{s.LEV_MAX_km2/(s.Shp_Area/1e6):0.4%}] lake vegetation.")
-    print(f"BAWLD domain is {np.average(gdf_bawld_sum_lev.WET, weights=gdf_bawld_sum_lev.Shp_Area):0.4} [{np.average(gdf_bawld_sum_lev.WET_L, weights=gdf_bawld_sum_lev.Shp_Area):0.4}-{np.average(gdf_bawld_sum_lev.WET_H, weights=gdf_bawld_sum_lev.Shp_Area):0.4}%] wetlands.")
-    print(f"BAWLD domain: {np.dot(gdf_bawld_sum_lev.WET/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3} [{np.dot(gdf_bawld_sum_lev.WET_L/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}-{np.dot(gdf_bawld_sum_lev.WET_H/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}] Mkm2  wetlands.")
-    print(f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] Mkm2 lake vegetation.")
+    # ## Stats from BAWLD LEV
+    # s=gdf_bawld_sum_lev.sum()
+    # print(f"BAWLD domain is {s.LEV_MEAN_km2/(s.Shp_Area/1e6):0.4%} [{s.LEV_MIN_km2/(s.Shp_Area/1e6):0.4%}-{s.LEV_MAX_km2/(s.Shp_Area/1e6):0.4%}] lake vegetation.")
+    # print(f"BAWLD domain is {np.average(gdf_bawld_sum_lev.WET, weights=gdf_bawld_sum_lev.Shp_Area):0.4} [{np.average(gdf_bawld_sum_lev.WET_L, weights=gdf_bawld_sum_lev.Shp_Area):0.4}-{np.average(gdf_bawld_sum_lev.WET_H, weights=gdf_bawld_sum_lev.Shp_Area):0.4}%] wetlands.")
+    # print(f"BAWLD domain: {np.dot(gdf_bawld_sum_lev.WET/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3} [{np.dot(gdf_bawld_sum_lev.WET_L/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}-{np.dot(gdf_bawld_sum_lev.WET_H/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}] Mkm2  wetlands.")
+    # print(f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] Mkm2 lake vegetation.")
 
     # What percentage of HL is 0-50 Oc bin?
     # print('Load HL...')
@@ -2056,16 +2056,6 @@ if __name__=='__main__':
     np.sqrt(1 /lsd_lev_cat.shape[0] * np.sum((lsd_lev_cat.LEV_MEAN - lsd_lev_cat.LEV_MEAN.mean())**2)) # Compare RMSD for all observed in UAVSAR (not sure what this comparison adds...)
     # plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
     fig, ax = plt.subplots()
-
-    ax.plot([0, 0.6], [0, 0.6], ls="--", c=".3") # Add the one-to-one line # ax.get_xlim(), ax.get_ylim()
-    sns.regplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax)
-    # sns.scatterplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax, hue=a_lev_measured.Lake_area) # doesn't work!
-    # ax.scatter(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, c=a_lev_measured.Lake_area, cmap='Purples_r') # Adds color by area
-    ax.set_xlabel('Predicted lake aquatic vegetation fraction')
-    ax.set_ylabel('Measured lake aquatic vegetation fraction')
-    ax.set_xlim([0, 0.5])
-    ax.set_ylim([0, 0.8])
-    [ax.get_figure().savefig('/mnt/d/pic/A_LEV_validation', transparent=False, dpi=300) for ext in ['.png','.pdf']]
  
     ## Compare RMSD of model to RMSD of observed UAVSAR holdout subset compared to average (Karianne's check)
     print(f"RMSD of observed values from mean: {np.sqrt(1 /a_lev_measured.shape[0] * np.sum((a_lev_measured.A_LEV - a_lev_measured.A_LEV.mean())**2)):0.2%}")
