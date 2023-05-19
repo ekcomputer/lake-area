@@ -303,7 +303,7 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev
         df_lev['LEV_' + names[i]] = np.nansum(result, axis=1)
 
         ## If all bins are nan, set LEV to nan, rather than 0 as output by np.nansum
-        # df_lev.loc[np.isnan(result).sum(axis=1) == nbins, 'LEV_' + names[i]] = np.nan
+        df_lev.loc[np.isnan(result).sum(axis=1) == nbins, 'LEV_' + names[i]] = np.nan
 
         # ## matrix version
         # C = (df_tmp.fillna(0) /  df.Class_sum.values[:, None]).values
@@ -1854,7 +1854,7 @@ if __name__=='__main__':
 
     ## Common
     temperature_metric = 'jja'
-    v = 11 # Version number for file naming
+    v = 12 # Version number for file naming
 
     ## BAWLD domain
     dataset = 'HL'
@@ -2038,21 +2038,27 @@ if __name__=='__main__':
     ####################################
 
     ## Load measured holdout LEV dataset
-    a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio')
-    a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
-    print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
-
-    ## Compare to holdout dataset
-    val_lakes_idx = a_lev_measured.Hylak_id # use indexes from holdout dataset to query lakes for which I've predicted LEV from entire HL dataset
+    a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio').set_index('Hylak_id')
+ 
+    ## Obtain holdout dataset
+    val_lakes_idx = a_lev_measured.index # use indexes from holdout dataset to query lakes for which I've predicted LEV from entire HL dataset
     # lev_holdout = lsd_hl_lev[np.isin(lsd_hl_lev.idx_HL, val_lakes_idx)]
     lev_holdout = lsd_hl_lev.set_index('idx_HL').loc[val_lakes_idx, :]
+
+    ## Filter out NaN's on both based on presence in lev_holdout
+    nan_index = lev_holdout[lev_holdout['LEV_MEAN'].isna()].index
+    [df.drop(index=nan_index, inplace=True) for df in [a_lev_measured, lev_holdout]]
+    
+    ## Take area-weighted mean LEV
     a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
+    a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
+
+    print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
     print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
     print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
     print(f'RMSE: {mean_squared_error(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV, squared=False):0.2%}')
 
     ## Plot validation of LEV
-    print(f'RMSE: {mean_squared_error(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV, squared=False):0.2%}')
     fig, ax = plt.subplots()
     ax.plot([0, 0.8], [0, 0.8], ls="--", c=".3") # Add the one-to-one line # ax.get_xlim(), ax.get_ylim()
     sns.regplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax)
