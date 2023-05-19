@@ -252,7 +252,7 @@ def loadBAWLD_CH4():
 
     return model
 
-def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev=None) -> True:
+def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev=None, use_zero_oc=False) -> True:
     """
     Uses Bayes' law and reference Lake Emergent Vegetation (LEV) distribution to estimate the LEV in a given df, based on water Occurrence.
 
@@ -266,6 +266,9 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev
     
     extreme_regions_lev : array-like
         List of two region names to use for min/max LEV. Note, here region names must match entries in 'names,' so must be acronyms (e.g. CSD), unlike in BinnedLSD.
+    
+    use_zero_oc : Boolean (False)
+        Whether to include zero occurrence bin in estimator. Setting to False (default) decreases sensitivity to misalignment between vector lakes and occurrence values because a complete shift will produce NaN due to only the zero bin overlaping with a lake 
     Returns
     -------
     lev : pd.DataFrame with same index as df and a column for each reference LEV distribution with name from names. Units are unitless (fraction)
@@ -278,15 +281,29 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev
     # Multiply the dataframes element-wise based on common columns
     cols = ['LEV_' + name for name in names]
     df_lev = pd.DataFrame(columns = cols) # will have same length as df, which can become a LSD
+
+    ## Branch
+    if use_zero_oc is False:
+        nbins = 100
+    else:
+        nbins = 101
+
+    ## Loop
     for i, ref_df in enumerate(ref_dfs):
         ''' df is in units of km2, ref_df is in units of px'''
-        common_cols = df.columns.intersection(ref_df.columns.drop('Class_sum'))
-        assert len(common_cols) == 101, f"{len(common_cols)} common columns found bw datasets. 101 desired."
+        if use_zero_oc is False:
+            common_cols = df.columns.intersection(ref_df.columns.drop(['Class_sum', 'Class_0']))
+            if i == 0: df['Class_sum'] = df[common_cols].sum(axis=1) # update to exclude the 0 bin and only perform for first loop iteration
+        else:
+            common_cols = df.columns.intersection(ref_df.columns.drop('Class_sum'))
+        assert len(common_cols) == nbins, f"{len(common_cols)} common columns found bw datasets. {nbins} desired."
         df_tmp = df[common_cols].reindex(columns=common_cols) # change order and only keep common (hist class) columns [repeats unnecessesarily ev time...]
-        Class_sum = ref_df['Class_sum'] # used for update
         ref_df = ref_df[common_cols].reindex(columns=common_cols) # change order permanently (note: these orders are actually not numerical- no matter, as long as consistent bw two dfs)
         result = df_tmp /  df.Class_sum.values[:, None] * ref_df.loc['LEV', :] / ref_df.loc['CLASS_sum', :] # Mult Oc fraction of each oc bin by LEV fraction of each Oc bin.Broadcast ref_df over number of lakes
         df_lev['LEV_' + names[i]] = np.nansum(result, axis=1)
+
+        ## If all bins are nan, set LEV to nan, rather than 0 as output by np.nansum
+        # df_lev.loc[np.isnan(result).sum(axis=1) == nbins, 'LEV_' + names[i]] = np.nan
 
         # ## matrix version
         # C = (df_tmp.fillna(0) /  df.Class_sum.values[:, None]).values
@@ -1837,7 +1854,7 @@ if __name__=='__main__':
 
     ## Common
     temperature_metric = 'jja'
-    v = 10 # Version number for file naming
+    v = 11 # Version number for file naming
 
     ## BAWLD domain
     dataset = 'HL'
