@@ -67,6 +67,11 @@ def ECDFByValue(values, values_for_sum=None, reverse=True):
     values_for_sum : (optional) an associated value to use for summing, for case of summing fluxes by area.
 
     """
+    if values_for_sum is None:
+        nanmask = ~np.isnan(values)
+    else:
+        nanmask = ~np.logical_or(np.isnan(values), np.isnan(values_for_sum)) # Values to keep, based on nan in values and values_for_sum
+    values = values[nanmask]
     X = np.sort(values)
     if reverse:
         X = X[-1::-1] # highest comes first bc I reversed order
@@ -76,6 +81,8 @@ def ECDFByValue(values, values_for_sum=None, reverse=True):
     else:
         if isinstance(values_for_sum, pd.Series): # convert to pandas, since X is now pandas DF
             values_for_sum = values_for_sum.values
+        values_for_sum = values_for_sum[nanmask]
+        assert len(values_for_sum) == len(values), f"Values ({len(values)}) must be same length as values_for_sum ({len(values_for_sum)})"
         sorted_indices = np.argsort(values)
         if reverse:
             values = values[-1::-1]
