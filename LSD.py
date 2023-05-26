@@ -259,7 +259,7 @@ def loadBAWLD_CH4():
 
     return model
 
-def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev=None, use_zero_oc=False) -> True:
+def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev=None, use_zero_oc=False, use_low_oc=True) -> True:
     """
     Uses Bayes' law and reference Lake Emergent Vegetation (LEV) distribution to estimate the LEV in a given df, based on water Occurrence.
 
@@ -276,6 +276,9 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev
     
     use_zero_oc : Boolean (False)
         Whether to include zero occurrence bin in estimator. Setting to False (default) decreases sensitivity to misalignment between vector lakes and occurrence values because a complete shift will produce NaN due to only the zero bin overlaping with a lake 
+    
+    use_low_oc : Boolean (True)
+        Whether to include <50 % occurrence bin in estimator, which might be desirable to compute LEV only over lake zones that aren't double-counted with wetlands. Setting to True (default) uses the bins.
     Returns
     -------
     lev : pd.DataFrame with same index as df and a column for each reference LEV distribution with name from names. Units are unitless (fraction)
@@ -290,19 +293,22 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev
     df_lev = pd.DataFrame(columns = cols) # will have same length as df, which can become a LSD
 
     ## Branch
+    nbins = 101 # init
     if use_zero_oc is False:
-        nbins = 100
-    else:
-        nbins = 101
+        nbins -= 1
+    if use_low_oc is False:
+        nbins -= 50
 
     ## Loop
     for i, ref_df in enumerate(ref_dfs):
         ''' df is in units of km2, ref_df is in units of px'''
+        common_cols = df.columns.intersection(ref_df.columns.drop('Class_sum')) # init
         if use_zero_oc is False:
-            common_cols = df.columns.intersection(ref_df.columns.drop(['Class_sum', 'Class_0']))
-            if i == 0: df['Class_sum'] = df[common_cols].sum(axis=1) # update to exclude the 0 bin and only perform for first loop iteration
-        else:
-            common_cols = df.columns.intersection(ref_df.columns.drop('Class_sum'))
+            common_cols = common_cols.drop(['Class_0'])
+        if use_low_oc is False:
+            common_cols = common_cols.drop([f'Class_{n}' for n in range(1, 51)])
+        if i == 0: df['Class_sum'] = df[common_cols].sum(axis=1) # update to exclude the 0 bin and only perform for first loop iteration
+            
         assert len(common_cols) == nbins, f"{len(common_cols)} common columns found bw datasets. {nbins} desired."
         df_tmp = df[common_cols].reindex(columns=common_cols) # change order and only keep common (hist class) columns [repeats unnecessesarily ev time...]
         ref_df = ref_df[common_cols].reindex(columns=common_cols) # change order permanently (note: these orders are actually not numerical- no matter, as long as consistent bw two dfs)
@@ -1862,6 +1868,7 @@ if __name__=='__main__':
     ## Common
     temperature_metric = 'jja'
     v = 12 # Version number for file naming
+    use_low_oc = True # If false, use to compare to mutually-exclusive double-counted areas with Oc < 50%
 
     ## BAWLD domain
     dataset = 'HL'
@@ -1949,7 +1956,7 @@ if __name__=='__main__':
     print('Load HL with joined occurrence...')
     # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values # outdated version
     lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', low_memory=False) # read smaller csv gzip version of data.
-    lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap) # use same extreme regions for est as for extrap
+    lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap, use_low_oc=use_low_oc) # use same extreme regions for est as for extrap
 
     ## Set high arctic lakes LEV to 0 (no GSW present above 78 degN)
     lev.loc[lev.Pour_lat >=78, ['LEV_MEAN', 'LEV_MIN','LEV_MAX']] = 0 # LEV_MEAN
@@ -2044,56 +2051,56 @@ if __name__=='__main__':
     ## Holdout Analysis
     ####################################
 
-    ## Load measured holdout LEV dataset
-    a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio').set_index('Hylak_id')
+    # ## Load measured holdout LEV dataset
+    # a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio').set_index('Hylak_id')
  
-    ## Obtain holdout dataset
-    val_lakes_idx = a_lev_measured.index # use indexes from holdout dataset to query lakes for which I've predicted LEV from entire HL dataset
-    # lev_holdout = lsd_hl_lev[np.isin(lsd_hl_lev.idx_HL, val_lakes_idx)]
-    lev_holdout = lsd_hl_lev.set_index('idx_HL').loc[val_lakes_idx, :]
+    # ## Obtain holdout dataset
+    # val_lakes_idx = a_lev_measured.index # use indexes from holdout dataset to query lakes for which I've predicted LEV from entire HL dataset
+    # # lev_holdout = lsd_hl_lev[np.isin(lsd_hl_lev.idx_HL, val_lakes_idx)]
+    # lev_holdout = lsd_hl_lev.set_index('idx_HL').loc[val_lakes_idx, :]
 
-    ## Filter out NaN's on both based on presence in lev_holdout
-    nan_index = lev_holdout[lev_holdout['LEV_MEAN'].isna()].index
-    [df.drop(index=nan_index, inplace=True) for df in [a_lev_measured, lev_holdout]]
+    # ## Filter out NaN's on both based on presence in lev_holdout
+    # nan_index = lev_holdout[lev_holdout['LEV_MEAN'].isna()].index
+    # [df.drop(index=nan_index, inplace=True) for df in [a_lev_measured, lev_holdout]]
     
-    ## Take area-weighted mean LEV
-    a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
-    a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
+    # ## Take area-weighted mean LEV
+    # a_lev_pred = np.average(lev_holdout[['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']], axis=0, weights=lev_holdout.Area_km2)
+    # a_lev = np.average(a_lev_measured.A_LEV, weights=a_lev_measured.Lake_area)
 
-    print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
-    print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
-    print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
-    print(f'RMSE: {mean_squared_error(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV, squared=False):0.2%}')
+    # print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
+    # print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
+    # print(f'Correlation: {np.corrcoef(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)[0,1]:0.2%}')
+    # print(f'RMSE: {mean_squared_error(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV, squared=False):0.2%}')
 
-    ## Plot validation of LEV
-    fig, ax = plt.subplots()
-    ax.plot([0, 0.8], [0, 0.8], ls="--", c=".3") # Add the one-to-one line # ax.get_xlim(), ax.get_ylim()
-    sns.regplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax)
-    # sns.scatterplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax, hue=a_lev_measured.Lake_area) # doesn't work!
-    # ax.scatter(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, c=a_lev_measured.Lake_area, cmap='Purples_r') # Adds color by area
-    ax.set_xlabel('Predicted lake aquatic vegetation fraction')
-    ax.set_ylabel('Measured lake aquatic vegetation fraction')
-    ax.set_xlim([0, 0.8])
-    ax.set_ylim([0, 0.8])
-    [ax.get_figure().savefig(f'/mnt/d/pic/A_LEV_validation_v{v}', transparent=False, dpi=300) for ext in ['.png','.pdf']]
+    # ## Plot validation of LEV
+    # fig, ax = plt.subplots()
+    # ax.plot([0, 0.8], [0, 0.8], ls="--", c=".3") # Add the one-to-one line # ax.get_xlim(), ax.get_ylim()
+    # sns.regplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax)
+    # # sns.scatterplot(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, ax=ax, hue=a_lev_measured.Lake_area) # doesn't work!
+    # # ax.scatter(x=lev_holdout.LEV_MEAN, y=a_lev_measured.A_LEV, c=a_lev_measured.Lake_area, cmap='Purples_r') # Adds color by area
+    # ax.set_xlabel('Predicted lake aquatic vegetation fraction')
+    # ax.set_ylabel('Measured lake aquatic vegetation fraction')
+    # ax.set_xlim([0, 0.8])
+    # ax.set_ylim([0, 0.8])
+    # [ax.get_figure().savefig(f'/mnt/d/pic/A_LEV_validation_v{v}', transparent=False, dpi=300) for ext in ['.png','.pdf']]
  
-    ## Compare RMSD of model to RMSD of observed UAVSAR holdout subset compared to average (Karianne's check)
-    print(f"RMSD of observed values from mean: {np.sqrt(1 /a_lev_measured.shape[0] * np.sum((a_lev_measured.A_LEV - a_lev_measured.A_LEV.mean())**2)):0.2%}")
+    # ## Compare RMSD of model to RMSD of observed UAVSAR holdout subset compared to average (Karianne's check)
+    # print(f"RMSD of observed values from mean: {np.sqrt(1 /a_lev_measured.shape[0] * np.sum((a_lev_measured.A_LEV - a_lev_measured.A_LEV.mean())**2)):0.2%}")
         
-    ## Other comparisons
-    np.sqrt(1 /lsd_hl_lev.shape[0] * np.sum((lsd_hl_lev.LEV_MEAN - lsd_hl_lev.LEV_MEAN.mean())**2)) # Compare RMSD for all predicted in HL (not sure what this comparison adds...)
-    np.sqrt(1 /lev_holdout.shape[0] * np.sum((lev_holdout.LEV_MEAN - lev_holdout.LEV_MEAN.mean())**2)) # Compare RMSD for predicted in holdout (not sure what this comparison adds...)
-    np.sqrt(1 /lsd_lev_cat.shape[0] * np.sum((lsd_lev_cat.LEV_MEAN - lsd_lev_cat.LEV_MEAN.mean())**2)) # Compare RMSD for all observed in UAVSAR (not sure what this comparison adds...)
-    # plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
-    fig, ax = plt.subplots()
+    # ## Other comparisons
+    # np.sqrt(1 /lsd_hl_lev.shape[0] * np.sum((lsd_hl_lev.LEV_MEAN - lsd_hl_lev.LEV_MEAN.mean())**2)) # Compare RMSD for all predicted in HL (not sure what this comparison adds...)
+    # np.sqrt(1 /lev_holdout.shape[0] * np.sum((lev_holdout.LEV_MEAN - lev_holdout.LEV_MEAN.mean())**2)) # Compare RMSD for predicted in holdout (not sure what this comparison adds...)
+    # np.sqrt(1 /lsd_lev_cat.shape[0] * np.sum((lsd_lev_cat.LEV_MEAN - lsd_lev_cat.LEV_MEAN.mean())**2)) # Compare RMSD for all observed in UAVSAR (not sure what this comparison adds...)
+    # # plt.scatter(lev_holdout.LEV_MEAN, a_lev_measured.A_LEV)
+    # fig, ax = plt.subplots()
  
-    ## Compare RMSD of model to RMSD of observed UAVSAR holdout subset compared to average (Karianne's check)
-    print(f"RMSD of observed values from mean: {np.sqrt(1 /a_lev_measured.shape[0] * np.sum((a_lev_measured.A_LEV - a_lev_measured.A_LEV.mean())**2)):0.2%}")
+    # ## Compare RMSD of model to RMSD of observed UAVSAR holdout subset compared to average (Karianne's check)
+    # print(f"RMSD of observed values from mean: {np.sqrt(1 /a_lev_measured.shape[0] * np.sum((a_lev_measured.A_LEV - a_lev_measured.A_LEV.mean())**2)):0.2%}")
         
-    ## Other comparisons
-    np.sqrt(1 /lsd_hl_lev.shape[0] * np.sum((lsd_hl_lev.LEV_MEAN - lsd_hl_lev.LEV_MEAN.mean())**2)) # Compare RMSD for all predicted in HL (not sure what this comparison adds...)
-    np.sqrt(1 /lev_holdout.shape[0] * np.sum((lev_holdout.LEV_MEAN - lev_holdout.LEV_MEAN.mean())**2)) # Compare RMSD for predicted in holdout (not sure what this comparison adds...)
-    np.sqrt(1 /lsd_lev_cat.shape[0] * np.sum((lsd_lev_cat.LEV_MEAN - lsd_lev_cat.LEV_MEAN.mean())**2)) # Compare RMSD for all observed in UAVSAR (not sure what this comparison adds...)
+    # ## Other comparisons
+    # np.sqrt(1 /lsd_hl_lev.shape[0] * np.sum((lsd_hl_lev.LEV_MEAN - lsd_hl_lev.LEV_MEAN.mean())**2)) # Compare RMSD for all predicted in HL (not sure what this comparison adds...)
+    # np.sqrt(1 /lev_holdout.shape[0] * np.sum((lev_holdout.LEV_MEAN - lev_holdout.LEV_MEAN.mean())**2)) # Compare RMSD for predicted in holdout (not sure what this comparison adds...)
+    # np.sqrt(1 /lsd_lev_cat.shape[0] * np.sum((lsd_lev_cat.LEV_MEAN - lsd_lev_cat.LEV_MEAN.mean())**2)) # Compare RMSD for all observed in UAVSAR (not sure what this comparison adds...)
 
     ## Load WBD
 
@@ -2445,7 +2452,7 @@ if __name__=='__main__':
 * Make predictFlux() calls consistent bw LSD and BinnedLSD, whether they return a value or add an attribute.
 * Thorough testing of all function options
 * Search for "TODO"
-* Can use deepcopy instead of re-initiating with LSD...
+* Code in LEV flux calc from table-2-stats
 * Most awkward part of the LSD class is that I can't use any builtin pandas function without returning a DataFrame, so I have developed ways to re-initiate a LSD from a DataFrame to use when needed.
     *Possible solution: re-define LSD class to be a genric structre that has an LSD attribute that is simply a dataframe. Re-define operaters print/__repr__ and slicing operations so it still behaves like the base structure is a df.
 
