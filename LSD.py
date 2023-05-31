@@ -1449,7 +1449,7 @@ class BinnedLSD():
 
             ## Save values
             self.binnedAreas = ds
-            self.binnedCounts = group_counts
+            self.binnedCounts = confidence_interval_from_extreme_regions(group_counts, None, None, name='Count')
 
             ## bin LEVbinnedDCz
             if hasLEV:
@@ -1505,7 +1505,7 @@ class BinnedLSD():
                 self.binnedDC = None
 
             ## Check
-            if self.binnedCounts.values[0] == 0:
+            if group_counts.values[0] == 0:
                 warn('The first bin has count zero. Did you set the lowest bin edge < the lower truncation limit of the dataset?')   
                     
         else: # used for area extrapolation
@@ -2316,8 +2316,9 @@ if __name__=='__main__':
     tb_lev = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedLEV, lsd_hl_lev_log10bins.binnedLEV)) * tb_area.loc[:, 'mean']
     tb_flux = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedG_day, lsd_hl_lev_log10bins.binnedG_day)) * 365.25 / 1e12
     tb_d_counting = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedLEV, lsd_hl_lev_log10bins.binnedDC)) * tb_area.loc[:, 'mean']# double counting (NOTE: extrapolated values use LEV as placeholder, but should be ignored.)
-    tb_comb = pd.concat((tb_area, tb_lev, tb_flux, tb_d_counting), axis=1)
-    tb_comb.columns = ['Area_Mkm2', 'LEV_Mkm2', 'Tg_yr', 'DC_Mkm2']
+    tb_count = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedLEV*np.nan, lsd_hl_lev_log10bins.binnedCounts)) 
+    tb_comb = pd.concat((tb_area, tb_lev, tb_flux, tb_d_counting, tb_count), axis=1)
+    tb_comb.columns = ['Area_Mkm2', 'LEV_Mkm2', 'Tg_yr', 'DC_Mkm2', 'Count']
 
     ## Report double counting
     # dummy = lsd_hl_lev[~np.isnan(lsd_hl_lev.d_counting)]
@@ -2455,6 +2456,7 @@ if __name__=='__main__':
 * Code in LEV flux calc from table-2-stats
 * Most awkward part of the LSD class is that I can't use any builtin pandas function without returning a DataFrame, so I have developed ways to re-initiate a LSD from a DataFrame to use when needed.
     *Possible solution: re-define LSD class to be a genric structre that has an LSD attribute that is simply a dataframe. Re-define operaters print/__repr__ and slicing operations so it still behaves like the base structure is a df.
+* Add binnedLSD.truncate() method that removes bins
 
 
 NOTES:
