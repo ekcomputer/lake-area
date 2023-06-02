@@ -2000,57 +2000,6 @@ if __name__=='__main__':
     # print(pd.DataFrame(np.average(df_clim[months], weights=df_clim.Shp_Area, axis=0), index=months))
 
     ####################################
-    ## Map Analysis
-    ####################################
-
-    # ## Rescale to km2
-    # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
-    #     lsd_hl_lev[col+'_km2'] = lsd_hl_lev[col] * lsd_hl_lev['Area_km2'] # add absolute area units
-    # # lsd_hl_lev.to_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
-
-    # ## Join df with LEV to df with nearest BAWLD (quicker than in Arcgis)
-    # if 'df_hl_nearest_bawld' not in locals():
-    #     raise ValueError("Nead to load df_hl_nearest_bawld ")
-    # lsd_hl_lev = lsd_hl_lev.merge(df_hl_nearest_bawld[['Hylak_id', 'BAWLD_Cell']], left_on='idx_HL', right_on='Hylak_id', how='left')
-    
-    # ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
-    # df_bawld_sum_lev = lsd_hl_lev.groupby('BAWLD_Cell').sum(numeric_only=True) # Could add Occ
-
-    # ## Rescale back to LEV fraction (of lake) as well
-    # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
-    #     df_bawld_sum_lev[(col+ '_km2').replace('_km2', '_frac')] = df_bawld_sum_lev[col+ '_km2'] / df_bawld_sum_lev['Area_km2'] # add absolute area units
-    #     df_bawld_sum_lev.drop(columns=col, inplace=True) # remove summed means, which are meaningless
-    # df_bawld_sum_lev.drop(columns=['idx_HL', 'Hylak_id', 'Temp_C'], inplace=True) # remove meaningless sums
-
-    # ## Join to BAWLD 
-    # gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
-    # gdf_bawld_sum_lev = df_bawld_sum_lev.merge(gdf_bawld, how='outer', right_on='Cell_ID', left_index=True) # [['Cell_ID', 'Shp_Area']]
-    # ## Could also join % Occ to lsd_hl_lev
-
-    # ## Rescale to LEV fraction (of grid cell)
-    # for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
-    #     gdf_bawld_sum_lev[(col+ '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col+ '_km2'] / (gdf_bawld_sum_lev['Shp_Area']/1e6) # add cell LEV fraction (note BAWLD units are m2)
-    
-    # ## Mask out high Glacier or barren grid cells
-    # gdf_bawld_sum_lev.loc[(gdf_bawld_sum_lev.GLA + gdf_bawld_sum_lev.ROC )> 75,
-    #          ['LEV_MEAN_km2', 'LEV_MIN_km2', 'LEV_MAX_km2', 'LEV_MEAN_frac', 'LEV_MIN_frac', 'LEV_MAX_frac', 'LEV_MEAN_grid_frac', 'LEV_MIN_grid_frac', 'LEV_MAX_grid_frac']] = 0
-
-    # ## and write out
-    # gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file(f'/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v{v}.shp', engine='pyogrio')
-    
-    # ## Stats from BAWLD LEV
-    # s=gdf_bawld_sum_lev.sum()
-    # print(f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] Mkm2 lake vegetation (excluding non-inventoried lakes).")
-    # print(f"BAWLD domain is {s.LEV_MEAN_km2/(s.Shp_Area/1e6):0.4%} [{s.LEV_MIN_km2/(s.Shp_Area/1e6):0.4%}-{s.LEV_MAX_km2/(s.Shp_Area/1e6):0.4%}] lake vegetation (excluding non-inventoried lakes).")
-    # print(f"BAWLD domain: {np.dot(gdf_bawld_sum_lev.WET/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3} [{np.dot(gdf_bawld_sum_lev.WET_L/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}-{np.dot(gdf_bawld_sum_lev.WET_H/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}] Mkm2  wetlands.")
-    # print(f"BAWLD domain is {np.average(gdf_bawld_sum_lev.WET, weights=gdf_bawld_sum_lev.Shp_Area):0.4} [{np.average(gdf_bawld_sum_lev.WET_L, weights=gdf_bawld_sum_lev.Shp_Area):0.4}-{np.average(gdf_bawld_sum_lev.WET_H, weights=gdf_bawld_sum_lev.Shp_Area):0.4}%] wetlands.")
-
-    # ## What percentage of HL is 0-50 Oc bin?
-    # # print('Load HL...')
-    # # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None) # Need to load version with joined in Oc stats per lake
-    # # use df_hl_nearest_bawld
-
-    ####################################
     ## Holdout Analysis
     ####################################
 
@@ -2369,6 +2318,62 @@ if __name__=='__main__':
     # lsd_hl_trunc.refBinnedLSD.binnedCounts.sum()
     # lsd_hl_trunc.extrapLSD.sumAreas()
 
+    ####################################
+    ## Map Analysis
+    ####################################
+
+    ## Rescale to km2
+    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+        lsd_hl_lev[col+'_km2'] = lsd_hl_lev[col] * lsd_hl_lev['Area_km2'] # add absolute area units
+    # lsd_hl_lev.to_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
+
+    ## Rescale double-counting and Oc stats to km2 for data archival purposes
+    for col in ['0-5', '5-50', '50-95', '95-100', ]:
+        lsd_hl_lev['Oc_' + col.replace('-','_')+'_km2'] = lsd_hl_lev[col] / 100 * lsd_hl_lev['Area_km2'] # add absolute area units
+    lsd_hl_lev['d_counting_km2'] = lsd_hl_lev.d_counting_frac * lsd_hl_lev['Area_km2']
+    
+    ## Join df with LEV to df with nearest BAWLD (quicker than in Arcgis)
+    if 'df_hl_nearest_bawld' not in locals():
+        raise ValueError("Nead to load df_hl_nearest_bawld ")
+    lsd_hl_lev = lsd_hl_lev.merge(df_hl_nearest_bawld[['Hylak_id', 'BAWLD_Cell']], left_on='idx_HL', right_on='Hylak_id', how='left')
+    
+    ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
+    df_bawld_sum_lev = lsd_hl_lev.groupby('BAWLD_Cell').sum(numeric_only=True) # Could add Occ
+
+    ## Rescale back to LEV fraction (of lake) as well
+    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+        df_bawld_sum_lev[(col+ '_km2').replace('_km2', '_frac')] = df_bawld_sum_lev[col+ '_km2'] / df_bawld_sum_lev['Area_km2'] # add absolute area units
+        df_bawld_sum_lev.drop(columns=col, inplace=True) # remove summed means, which are meaningless
+    df_bawld_sum_lev.drop(columns=['idx_HL', 'Hylak_id', 'Temp_C'], inplace=True) # remove meaningless sums
+
+    ## Join to BAWLD 
+    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )
+    gdf_bawld_sum_lev = df_bawld_sum_lev.merge(gdf_bawld, how='outer', right_on='Cell_ID', left_index=True) # [['Cell_ID', 'Shp_Area']]
+    ## Could also join % Occ to lsd_hl_lev
+
+    ## Rescale to LEV fraction (of grid cell)
+    for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
+        gdf_bawld_sum_lev[(col+ '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col+ '_km2'] / (gdf_bawld_sum_lev['Shp_Area']/1e6) # add cell LEV fraction (note BAWLD units are m2)
+    
+    ## Mask out high Glacier or barren grid cells
+    gdf_bawld_sum_lev.loc[(gdf_bawld_sum_lev.GLA + gdf_bawld_sum_lev.ROC )> 75,
+             ['LEV_MEAN_km2', 'LEV_MIN_km2', 'LEV_MAX_km2', 'LEV_MEAN_frac', 'LEV_MIN_frac', 'LEV_MAX_frac', 'LEV_MEAN_grid_frac', 'LEV_MIN_grid_frac', 'LEV_MAX_grid_frac']] = 0
+
+    ## and write out
+    gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file(bawld_hl_output, engine='pyogrio')
+    
+    ## Stats from BAWLD LEV
+    s=gdf_bawld_sum_lev.sum()
+    print(f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] Mkm2 lake vegetation (excluding non-inventoried lakes).")
+    print(f"BAWLD domain is {s.LEV_MEAN_km2/(s.Shp_Area/1e6):0.4%} [{s.LEV_MIN_km2/(s.Shp_Area/1e6):0.4%}-{s.LEV_MAX_km2/(s.Shp_Area/1e6):0.4%}] lake vegetation (excluding non-inventoried lakes).")
+    print(f"BAWLD domain: {np.dot(gdf_bawld_sum_lev.WET/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3} [{np.dot(gdf_bawld_sum_lev.WET_L/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}-{np.dot(gdf_bawld_sum_lev.WET_H/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}] Mkm2  wetlands.")
+    print(f"BAWLD domain is {np.average(gdf_bawld_sum_lev.WET, weights=gdf_bawld_sum_lev.Shp_Area):0.4} [{np.average(gdf_bawld_sum_lev.WET_L, weights=gdf_bawld_sum_lev.Shp_Area):0.4}-{np.average(gdf_bawld_sum_lev.WET_H, weights=gdf_bawld_sum_lev.Shp_Area):0.4}%] wetlands.")
+
+    ## What percentage of HL is 0-50 Oc bin?
+    # print('Load HL...')
+    # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None) # Need to load version with joined in Oc stats per lake
+    # use df_hl_nearest_bawld
+
     ###########################
     ## Compare emissions from small lakes if they are considered lakes vs wl
     # 33 marsh studies.
@@ -2458,11 +2463,12 @@ if __name__=='__main__':
     lsd_hl_lev_save = lsd_hl_lev.drop(columns='Temp_C').merge(temperatures[['idx_HL', 'djf','mam','jja','son','ann']], on='idx_HL').rename(columns=temps_dict)  
     lsd_hl_lev_save.to_csv(os.path.join(output_dir, 'HydroLAKES_emissions.csv.gz'))
 
-    ## Version of BAWLD_HL for archive
+    ## Version of BAWLD_HL for archive (continue from Map Analysis section)
     assert 'gdf_bawld_sum_lev' in locals(), "Need to run Map Analysis segment first"
 
     ## Rename columns and rm redundant ones
-    columns_save = ['Cell_ID', 'Long', 'Lat', 'Area_Pct', 'Shp_Area', 'Area_km2', '0-5', '5-50', '50-95', '95-100', 'd_counting_frac',
+    columns_save = ['Cell_ID', 'Long', 'Lat', 'Area_Pct', 'Shp_Area', 'Area_km2', 
+        'Oc_0_5_km2', 'Oc_5_50_km2', 'Oc_50_95_km2', 'Oc_95_100_km2', 'd_counting_km2',
        'est_mg_m2_day', 'est_g_day', 'LEV_MEAN_km2', 'LEV_MIN_km2',
        'LEV_MAX_km2', 'LEV_MEAN_frac', 'LEV_MIN_frac', 'LEV_MAX_frac',
        'LEV_MEAN_grid_frac',
@@ -2475,7 +2481,7 @@ if __name__=='__main__':
     # lav_dict.update(oc_dict)
     gdf_bawld_sum_lev_save = gdf_bawld_sum_lev[columns_save].rename(columns=lav_dict)
     gpd.GeoDataFrame(gdf_bawld_sum_lev_save).to_file(os.path.join(output_dir, 'BAWLD_V1_LAV_V1.shp'), engine='pyogrio')
-    gdf_bawld_sum_lev_save.to_csv(os.path.join(output_dir, 'BAWLD_V1_LAV_V1.csv.gz'))
+    gdf_bawld_sum_lev_save.drop(columns='geometry').to_csv(os.path.join(output_dir, 'BAWLD_V1_LAV_V1.csv.gz'))
 
 
     pass
