@@ -2478,12 +2478,14 @@ if __name__=='__main__':
     lav_dict = {k: v for k, v in zip(columns_save_lav, values)} # lake aquatic veg
     lav_dict.update({'Area_km2': 'Lake_area_km2'})
     
-    # lav_dict.update(oc_dict)
+    ## Write out as csv (full column names) and shapefile
     gdf_bawld_sum_lev_save = gdf_bawld_sum_lev[columns_save].rename(columns=lav_dict)
     gpd.GeoDataFrame(gdf_bawld_sum_lev_save).to_file(os.path.join(output_dir, 'BAWLD_V1_LAV_V1.shp'), engine='pyogrio')
     gdf_bawld_sum_lev_save.drop(columns='geometry').to_csv(os.path.join(output_dir, 'BAWLD_V1_LAV_V1.csv.gz'))
 
-
+    ## Save extrapolations table
+    tb_comb.to_csv(os.path.join(output_dir, 'HydroLAKES_extrapolated_to_correct.csv')) 
+    ## Then, rm erroneous -9.22E+18 entries in 'Count' and update columns
     pass
 ################
 
