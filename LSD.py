@@ -1864,6 +1864,7 @@ if __name__=='__main__':
 
     ## I/O
     tb_dir = '/mnt/g/Ch4/area_tables'
+    output_dir = '/mnt/g/Ch4/output' # dir for output data, used for archive
 
     ## Common
     temperature_metric = 'jja'
@@ -1875,10 +1876,12 @@ if __name__=='__main__':
     roi_region = 'BAWLD'
     gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
     gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
+    df_HL_jn_full_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz' # above, but with all ocurrence values, not binned
     hl_area_var='Shp_Area'
     hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
     bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
     hl_nearest_bawld_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp' # HL shapefile with ID of nearest BAWLD cell (still uses V3)
+    bawld_hl_output = f'/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v{v}.shp'
 
     ## BAWLD-NAHL domain
     # dataset = 'HL'
@@ -1955,7 +1958,7 @@ if __name__=='__main__':
     ## LEV estimate: Load UAVSAR/GSW overlay stats
     print('Load HL with joined occurrence...')
     # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values # outdated version
-    lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', low_memory=False) # read smaller csv gzip version of data.
+    lsd_hl_oc = pd.read_csv(df_HL_jn_full_pth, compression='gzip', low_memory=False) # read smaller csv gzip version of data.
     lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap, use_low_oc=use_low_oc) # use same extreme regions for est as for extrap
 
     ## Set high arctic lakes LEV to 0 (no GSW present above 78 degN)
@@ -2432,7 +2435,49 @@ if __name__=='__main__':
     # ax2.set_ylabel('Cumulative area fraction')
     # ax.get_figure().tight_layout()
     # [ax.get_figure().savefig(f'/mnt/d/pic/WBD_compare_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
- 
+
+    ####################################
+    ## Write out datasets for archive
+    ####################################
+
+    ## Add all temperatures to HL_lev dataset
+    keys = ['djf','mam','jja','son','ann']
+    values = ['Temp_' + key for key in keys]
+    temps_dict = {k: v for k, v in zip(keys, values)}
+    keys_oc = ['0-5', '5-50', '50-95', '95-100']
+    values_oc = ['Oc_' + key.replace('-', '_') for key in keys_oc]  
+    oc_dict = {k: v for k, v in zip(keys_oc, values_oc)} 
+    temps_dict.update(oc_dict)
+    keys = ['LEV_MAX', 'LEV_MEAN', 'LEV_MIN']
+    values = [key.replace('LEV', 'LAV') for key in keys]
+    lav_dict = {k: v for k, v in zip(keys, values)} # lake aquatic veg
+    temps_dict.update(lav_dict)
+    temps_dict.update({'idx_HL':'Hylak_id'})
+
+    ## Write out
+    lsd_hl_lev_save = lsd_hl_lev.drop(columns='Temp_C').merge(temperatures[['idx_HL', 'djf','mam','jja','son','ann']], on='idx_HL').rename(columns=temps_dict)  
+    lsd_hl_lev_save.to_csv(os.path.join(output_dir, 'HydroLAKES_emissions.csv.gz'))
+
+    ## Version of BAWLD_HL for archive
+    assert 'gdf_bawld_sum_lev' in locals(), "Need to run Map Analysis segment first"
+
+    ## Rename columns and rm redundant ones
+    columns_save = ['Cell_ID', 'Long', 'Lat', 'Area_Pct', 'Shp_Area', 'Area_km2', '0-5', '5-50', '50-95', '95-100', 'd_counting_frac',
+       'est_mg_m2_day', 'est_g_day', 'LEV_MEAN_km2', 'LEV_MIN_km2',
+       'LEV_MAX_km2', 'LEV_MEAN_frac', 'LEV_MIN_frac', 'LEV_MAX_frac',
+       'LEV_MEAN_grid_frac',
+       'LEV_MIN_grid_frac', 'LEV_MAX_grid_frac', 'geometry']
+    columns_save_lav = [s for s in columns_save if 'LEV' in s]
+    values = list(map(lambda s: s.replace('LEV','LAV'), columns_save_lav))
+    lav_dict = {k: v for k, v in zip(columns_save_lav, values)} # lake aquatic veg
+    lav_dict.update({'Area_km2': 'Lake_area_km2'})
+    
+    # lav_dict.update(oc_dict)
+    gdf_bawld_sum_lev_save = gdf_bawld_sum_lev[columns_save].rename(columns=lav_dict)
+    gpd.GeoDataFrame(gdf_bawld_sum_lev_save).to_file(os.path.join(output_dir, 'BAWLD_V1_LAV_V1.shp'), engine='pyogrio')
+    gdf_bawld_sum_lev_save.to_csv(os.path.join(output_dir, 'BAWLD_V1_LAV_V1.csv.gz'))
+
+
     pass
 ################
 
