@@ -2510,6 +2510,7 @@ if __name__=='__main__':
 * Most awkward part of the LSD class is that I can't use any builtin pandas function without returning a DataFrame, so I have developed ways to re-initiate a LSD from a DataFrame to use when needed.
     *Possible solution: re-define LSD class to be a genric structre that has an LSD attribute that is simply a dataframe. Re-define operaters print/__repr__ and slicing operations so it still behaves like the base structure is a df.
 * Add binnedLSD.truncate() method that removes bins
+* Truncate CSV decimals when writing out data files
 
 
 NOTES:
