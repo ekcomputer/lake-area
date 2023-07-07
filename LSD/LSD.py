@@ -1,11 +1,3 @@
-#!/home/ekyzivat/mambaforge/envs/geospatial/bin/python
-# # Lake-size distribution (LSD) scale comparison.
-# 
-# Goal: to load lake maps from the same region at two scale (HR and LR) and predict the small water body coverage (defined as area < 0.001 or 0.01 km2) from the LR dataset and physiographic region (with uncertainty).
-# 
-# Steps:
-# 1. plot both LSD as survivor functions in log-log space (see functions from TGRS paper)
-
 ## Imports
 from warnings import warn
 import argparse
