@@ -5,3 +5,4 @@ LEV_zonal_EE_batch copy.ipynb
 *copy.ipynb
 debug*
 *.pyc
+.DS_Store

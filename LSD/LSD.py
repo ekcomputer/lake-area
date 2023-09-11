@@ -15,7 +15,7 @@ import matplotlib
 import matplotlib.mlab as mlab
 import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
-from labellines import labelLine, labelLines
+from labellines import labelLines
 import seaborn as sns
 import scipy.ndimage as ndi 
 from sklearn.metrics import mean_squared_error
@@ -224,7 +224,7 @@ def interval_geometric_mean(interval):
 
 def loadBAWLD_CH4():
     ## Load
-    df = pd.read_csv('/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/archive/BAWLD_CH4_Aquatic.csv', 
+    df = pd.read_csv('/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/archive/BAWLD_CH4_Aquatic.csv', 
         encoding = "ISO-8859-1", dtype={'CH4.E.FLUX ':'float'}, na_values='-')
     len0 = len(df)
 
@@ -375,16 +375,16 @@ def loadUAVSAR(ref_names = ['CSB', 'CSD', 'PAD', 'YF']):
     ## Load LEV/LSD from UAVSAR
     print('Loading UAVSAR and Pekel overlay...')
     default_ref_names = ['CSB', 'CSD', 'PAD', 'YF']
-    pths_shp = ['/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
-        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
-        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
-        '/mnt/f/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp']
+    pths_shp = ['/Volumes/thebe/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
+        '/Volumes/thebe/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
+        '/Volumes/thebe/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
+        '/Volumes/thebe/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp']
     
     pths_csv = [ # CSV
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_train_zHist_Oc_LEV_s.csv' # Note YF is split into train/holdout XX vs XX %
+        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_train_zHist_Oc_LEV_s.csv' # Note YF is split into train/holdout XX vs XX %
         ]
     values = [{ 'pths_shp': pths_shp[i], 'pths_csv': pths_csv[i] } for i in range(len(pths_shp))]
     pths_dict = {k: v for k, v in zip(default_ref_names, values)}
@@ -1672,13 +1672,13 @@ def runTests():
     '''Practicing loading and functions/methods with/without various arguments.
     Can pause and examine classes to inspect attributes.'''
     # ## Testing from shapefile
-    # lsd_from_shp = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
-    # lsd_from_shp = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area')
-    # lsd_from_shp = LSD.from_shapefile('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None, _areaConversionFactor=1e6)
+    # lsd_from_shp = LSD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
+    # lsd_from_shp = LSD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area')
+    # lsd_from_shp = LSD.from_shapefile('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None, _areaConversionFactor=1e6)
     # print('\tPassed load from shapefile.')
     
     ## Testing from gdf
-    # gdf = pyogrio.read_dataframe('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
+    # gdf = pyogrio.read_dataframe('/Volumes/thebe/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
     # lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4')
     # regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
     # lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
@@ -1686,7 +1686,7 @@ def runTests():
     
     # ## Loading from dir
     # exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
-    # lsd_from_dir = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/y*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=exclude)
+    # lsd_from_dir = LSD.from_paths('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/y*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=exclude)
 
     # ## Test concat
     # lsd_concat = LSD.concat((lsd_from_shp, lsd_from_gdf))
@@ -1705,9 +1705,9 @@ def runTests():
     # print('\tPassed area_fraction.')
 
     ## Load with proper parameters
-    # lsd_hl = LSD.from_shapefile('/mnt/f/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
+    # lsd_hl = LSD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
     regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+    lsd_cir = LSD.from_shapefile('/Volumes/thebe/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
     ## Test binned PDF
     # plotEPDFByValue(lsd_cir.Area_km2)
@@ -1721,8 +1721,8 @@ def runTests():
 
     ## Test LEV estimate: Load UAVSAR/GSW overlay stats
     print('Load HL with joined occurrence...')
-    # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
-    lsd_hl_oc = pd.read_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', nrows=10000) # read smaller csv gzip version of data.
+    # lsd_hl_oc = pyogrio.read_dataframe('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
+    lsd_hl_oc = pd.read_csv('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', nrows=10000) # read smaller csv gzip version of data.
 
     extreme_regions_lev_for_extrap = ['CSD','PAD']
     lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap) # use same regions for extrap as for estimate
@@ -1811,8 +1811,8 @@ def runTests():
     ####################################
 
     ## Load climate
-    bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+    gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
     df_clim = pd.read_csv(bawld_join_clim_pth)
     gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio' )   
     df_clim = df_clim.merge(gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
@@ -1855,8 +1855,8 @@ if __name__=='__main__':
         exit()
 
     ## I/O
-    tb_dir = '/mnt/g/Ch4/area_tables'
-    output_dir = '/mnt/g/Ch4/output' # dir for output data, used for archive
+    tb_dir = '/Volumes/thebe/Ch4/area_tables'
+    output_dir = '/Volumes/thebe/Ch4/output' # dir for output data, used for archive
 
     ## Common
     temperature_metric = 'jja'
@@ -1866,31 +1866,31 @@ if __name__=='__main__':
     ## BAWLD domain
     dataset = 'HL'
     roi_region = 'BAWLD'
-    gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
-    df_HL_jn_full_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz' # above, but with all ocurrence values, not binned
+    gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp' # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
+    df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz' # above, but with all ocurrence values, not binned
     hl_area_var='Shp_Area'
-    hl_join_clim_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
-    bawld_join_clim_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
-    hl_nearest_bawld_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp' # HL shapefile with ID of nearest BAWLD cell (still uses V3)
-    bawld_hl_output = f'/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v{v}.shp'
+    hl_join_clim_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
+    bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+    hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp' # HL shapefile with ID of nearest BAWLD cell (still uses V3)
+    bawld_hl_output = f'/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v{v}.shp'
 
     ## BAWLD-NAHL domain
     # dataset = 'HL'
     # roi_region = 'WBD_BAWLD'
-    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    # gdf_HL_jn_pth = '/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
+    # gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
     # hl_area_var='Shp_Area'
 
     ## BAWLD domain (Sheng lakes)
     # dataset = 'Sheng'
     # roi_region = 'BAWLD'
-    # gdf_bawld_pth = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    # gdf_Sheng_pth = '/mnt/g/Other/Sheng-Arctic-lakes/edk_out/clips/UCLA_ArcticLakes15_BAWLD.shp' # HL clipped to BAWLD
+    # gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    # gdf_Sheng_pth = '/Volumes/thebe/Other/Sheng-Arctic-lakes/edk_out/clips/UCLA_ArcticLakes15_BAWLD.shp' # HL clipped to BAWLD
     # sheng_area_var='area'
 
     ## dynamic vars
-    # analysis_dir = os.path.join('/mnt/g/Ch4/Area_extrapolations','v'+str(version))
+    # analysis_dir = os.path.join('/Volumes/thebe/Ch4/Area_extrapolations','v'+str(version))
     # area_extrap_pth = os.path.join(analysis_dir, dataset+'_sub'+roi_region+'_extrap.csv')
     # os.makedirs(analysis_dir, exist_ok=True)
 
@@ -1900,7 +1900,7 @@ if __name__=='__main__':
                'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River',
                'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North',
                'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    lsd_cir = LSD.from_shapefile('/mnt/g/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp',
+    lsd_cir = LSD.from_shapefile('/Volumes/thebe/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp',
                 area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
     ## Loading PeRL LSD
@@ -1908,10 +1908,10 @@ if __name__=='__main__':
                     'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707',
                     'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx',
                     'bar00120080730_qb_nplaea.shp']
-    lsd_perl = LSD.from_paths('/mnt/f/PeRL/PeRL_waterbodymaps/waterbodies/*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=perl_exclude)
+    lsd_perl = LSD.from_paths('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=perl_exclude)
 
     ## Loading from Mullen
-    lsd_mullen = LSD.from_paths('/mnt/g/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/*_3Y_lakes-and-ponds.zip', _areaConversionFactor=1000000, name='Mullen', computeArea=True) # '/mnt/g/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/[A-Z][A-Z]_08*.zip'
+    lsd_mullen = LSD.from_paths('/Volumes/thebe/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/*_3Y_lakes-and-ponds.zip', _areaConversionFactor=1000000, name='Mullen', computeArea=True) # '/Volumes/thebe/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/[A-Z][A-Z]_08*.zip'
 
     ## Combine PeRL and CIR and Mullen
     lsd = LSD.concat((lsd_cir, lsd_perl, lsd_mullen), broadcast_name=True, ignore_index=True)
@@ -1949,7 +1949,7 @@ if __name__=='__main__':
 
     ## LEV estimate: Load UAVSAR/GSW overlay stats
     print('Load HL with joined occurrence...')
-    # lsd_hl_oc = pyogrio.read_dataframe('/mnt/g/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values # outdated version
+    # lsd_hl_oc = pyogrio.read_dataframe('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values # outdated version
     lsd_hl_oc = pd.read_csv(df_HL_jn_full_pth, compression='gzip', low_memory=False) # read smaller csv gzip version of data.
     lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap, use_low_oc=use_low_oc) # use same extreme regions for est as for extrap
 
@@ -1996,7 +1996,7 @@ if __name__=='__main__':
     ####################################
 
     # ## Load measured holdout LEV dataset
-    # a_lev_measured = gpd.read_file('/mnt/g/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio').set_index('Hylak_id')
+    # a_lev_measured = gpd.read_file('/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/YF_train_holdout/zonal_hist_w_UAVSAR/YFLATS_190914_mosaic_rcls_brn_zHist_UAV_holdout_LEV.shp', engine='pyogrio').set_index('Hylak_id')
  
     # ## Obtain holdout dataset
     # val_lakes_idx = a_lev_measured.index # use indexes from holdout dataset to query lakes for which I've predicted LEV from entire HL dataset
@@ -2050,7 +2050,7 @@ if __name__=='__main__':
 
     if roi_region == 'WBD_BAWLD':
         print('Load WBD...')
-        lsd_wbd = LSD.from_shapefile('/mnt/g/Other/Feng-High-res-inland-surface-water-tundra-boreal-NA/edk_out/fixed_geoms/WBD.shp', area_var='Area', name='WBD', idx_var='OBJECTID')
+        lsd_wbd = LSD.from_shapefile('/Volumes/thebe/Other/Feng-High-res-inland-surface-water-tundra-boreal-NA/edk_out/fixed_geoms/WBD.shp', area_var='Area', name='WBD', idx_var='OBJECTID')
         lsd_wbd.truncate(0.001, inplace=True)
 
     ## Plot WBD
@@ -2317,7 +2317,7 @@ if __name__=='__main__':
     ## Rescale to km2
     for col in ['LEV_MEAN', 'LEV_MIN','LEV_MAX']:
         lsd_hl_lev[col+'_km2'] = lsd_hl_lev[col] * lsd_hl_lev['Area_km2'] # add absolute area units
-    # lsd_hl_lev.to_csv('/mnt/g/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
+    # lsd_hl_lev.to_csv('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
 
     ## Rescale double-counting and Oc stats to km2 for data archival purposes
     for col in ['0-5', '5-50', '50-95', '95-100', ]:
@@ -2383,7 +2383,7 @@ if __name__=='__main__':
     emissions_factor_ni_lks = non_inv_lks_mean_flux / all_lks_mean_flux # emissions factor (ratio) for non-inventoried lakes (compare to 3.1 for wl, from bald marsh:lake emissions ratio)
     
     ## load bawld veg
-    df_terr = pd.read_csv('/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/BAWLD_CH4_Terrestrial.csv', 
+    df_terr = pd.read_csv('/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/BAWLD_CH4_Terrestrial.csv', 
     encoding = "ISO-8859-1", dtype={'CH4.E.FLUX ':'float'}, na_values='-')
     df_terr.query('Class == "Marshes"')['CH4Av'].median()
 
