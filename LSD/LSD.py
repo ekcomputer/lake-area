@@ -2110,7 +2110,7 @@ if __name__ == '__main__':
     # above, but with all ocurrence values, not binned
     df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz' # main data source
     hl_area_var = 'Shp_Area'
-    hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_MERA5_stl1.csv.gz'
+    hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v1.csv.gz'
     bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
     # HL shapefile with ID of nearest BAWLD cell (still uses V3)
     hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
@@ -2216,25 +2216,25 @@ if __name__ == '__main__':
     ## Climate Analysis: join in temperature
     ####################################
     print('Loading BAWLD and climate data...')
-    # df_clim = pd.read_csv(hl_join_clim_pth) # Index(['Unnamed: 0', 'BAWLDCell_', 'Hylak_id', 'Shp_Area', 'geometry','index_right', 'id', 'area', 'perimeter', 'lat', 'lon', 'djf', 'mam', 'jja', 'son', 'ann'],
-    df_clim = pd.read_csv(bawld_join_clim_pth)
-    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio')
-    df_clim = df_clim.merge(
-        gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
+    df_clim = pd.read_csv(hl_join_clim_pth, compression='gzip') # Index(['Unnamed: 0', 'BAWLDCell_', 'Hylak_id', 'Shp_Area', 'geometry','index_right', 'id', 'area', 'perimeter', 'lat', 'lon', 'djf', 'mam', 'jja', 'son', 'ann'],
+    # df_clim = pd.read_csv(bawld_join_clim_pth)
+    # gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio')
+    # df_clim = df_clim.merge(
+    #     gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
 
     ## Next, load HL with nearest BAWLD:
-    # Ignore the 0-5 etc. joined Oc columns because they are per grid cell
+    # The 0-5 etc. columns refer to HL polygon, not BAWLD cell.
     df_hl_nearest_bawld = pyogrio.read_dataframe(
         hl_nearest_bawld_pth, read_geometry=False)
     # take only first lake (for cases where lake is equidistant from multiple cells)
     df_hl_nearest_bawld = df_hl_nearest_bawld.groupby(
         'Hylak_id').first().reset_index()
-    lsd_hl_lev_m = lsd_hl_lev.merge(df_hl_nearest_bawld[['Hylak_id', 'BAWLD_Cell', '0-5', '5-50', '50-95', '95-100']], how='left', left_on='idx_HL', right_on='Hylak_id').drop(
-        columns='Hylak_id')  # Need to create new var because output of merge is not LSD # '0-5', '5-50', '50-95', '95-100', 'Class_sum', 'BAWLD_Long', 'BAWLD_Lat',
-
-    ## Use BAWLD Cell to join in temp (e.g. "double-join") # HERE merge using xarray from ERA5?
-    temperatures = lsd_hl_lev_m[['idx_HL', 'BAWLD_Cell']].merge(df_clim, how='left', left_on='BAWLD_Cell', right_on='Cell_ID').drop(
-        columns=['Cell_ID', 'Shp_Area'])  # some rows don't merge, I think bc I think idx_unamed is nto for HL... just use as example
+    # Need to create new var because output of merge is not LSD
+    lsd_hl_lev_m = lsd_hl_lev.merge(df_hl_nearest_bawld[[
+                                  'Hylak_id', 'BAWLD_Cell', '0-5', '5-50', '50-95', '95-100']], left_on='idx_HL', right_on='Hylak_id', how='left')
+    
+    ## Join in ERA5 temperatures from previously-computed lookup table
+    temperatures = lsd_hl_lev_m[['idx_HL', 'BAWLD_Cell']].merge(df_clim, how='left', left_on='idx_HL', right_on='Hylak_id')
     # Fill any missing data with mean
     temperatures.fillna(temperatures.mean(), inplace=True)
     lsd_hl_lev['Temp_K'] = temperatures[temperature_metric]
@@ -2283,7 +2283,7 @@ if __name__ == '__main__':
     # ax.set_ylabel('Measured lake aquatic vegetation fraction')
     # ax.set_xlim([0, 0.8])
     # ax.set_ylim([0, 0.8])
-    # [ax.get_figure().savefig(f'/mnt/d/pic/A_LEV_validation_v{v}', transparent=False, dpi=300) for ext in ['.png','.pdf']]
+    # [ax.get_figure().savefig(f'/Volumes/thebe/pic/A_LEV_validation_v{v}', transparent=False, dpi=300) for ext in ['.png','.pdf']]
 
     # ## Compare RMSD of model to RMSD of observed UAVSAR holdout subset compared to average (Karianne's check)
     # print(f"RMSD of observed values from mean: {np.sqrt(1 /a_lev_measured.shape[0] * np.sum((a_lev_measured.A_LEV - a_lev_measured.A_LEV.mean())**2)):0.2%}")
@@ -2399,7 +2399,7 @@ if __name__ == '__main__':
     ax2.set_ylabel('Cumulative emissions fraction')
     plt.tight_layout()
     [ax2.get_figure().savefig(
-        f'/mnt/d/pic/BAWLD_areas_v{v}' + ext, transparent=True, dpi=300) for ext in ['.png', '.pdf']]
+        f'/Volumes/thebe/pic/BAWLD_areas_v{v}' + ext, transparent=True, dpi=300) for ext in ['.png', '.pdf']]
 
     # ## Plot combined extrap LSD/Flux
     # norm = True # False
@@ -2421,7 +2421,7 @@ if __name__ == '__main__':
     ax2.set_ylabel('')  # 'Cumulative aquatic vegetation area fraction')
     plt.tight_layout()
     [ax.get_figure().savefig(
-        f'/mnt/d/pic/BAWLD_areas_inset_v{v}', transparent=True, dpi=300) for ext in ['.png', '.pdf']]
+        f'/Volumes/thebe/pic/BAWLD_areas_inset_v{v}', transparent=True, dpi=300) for ext in ['.png', '.pdf']]
     sns.set_theme('notebook', font='Ariel')
     sns.set_style('ticks')
 
@@ -2623,12 +2623,6 @@ if __name__ == '__main__':
     lsd_hl_lev['d_counting_km2'] = lsd_hl_lev.d_counting_frac * \
         lsd_hl_lev['Area_km2']
 
-    ## Join df with LEV to df with nearest BAWLD (quicker than in Arcgis)
-    if 'df_hl_nearest_bawld' not in locals():
-        raise ValueError("Nead to load df_hl_nearest_bawld ")
-    lsd_hl_lev = lsd_hl_lev.merge(df_hl_nearest_bawld[[
-                                  'Hylak_id', 'BAWLD_Cell']], left_on='idx_HL', right_on='Hylak_id', how='left')
-
     ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
     df_bawld_sum_lev = lsd_hl_lev.groupby('BAWLD_Cell').sum(
         numeric_only=True)  # Could add Occ
@@ -2748,29 +2742,29 @@ if __name__ == '__main__':
     # ax2.set_ylim([ymin, ymax/lsd_wbd_trunc.sumAreas()*1e6*1.28]) # hot fix
     # ax2.set_ylabel('Cumulative area fraction')
     # ax.get_figure().tight_layout()
-    # [ax.get_figure().savefig(f'/mnt/d/pic/WBD_compare_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
+    # [ax.get_figure().savefig(f'/Volumes/thebe/pic/WBD_compare_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
 
     ####################################
     ## Write out datasets for archive
     ####################################
 
     ## Add all temperatures to HL_lev dataset
-    keys = ['djf', 'mam', 'jja', 'son', 'ann']
+    keys = [temperature_metric]
     values = ['Temp_' + key for key in keys]
-    temps_dict = {k: v for k, v in zip(keys, values)}
+    rename_dict = {k: v for k, v in zip(keys, values)}
     keys_oc = ['0-5', '5-50', '50-95', '95-100']
     values_oc = ['Oc_' + key.replace('-', '_') for key in keys_oc]
     oc_dict = {k: v for k, v in zip(keys_oc, values_oc)}
-    temps_dict.update(oc_dict)
+    rename_dict.update(oc_dict)
     keys = ['LEV_MAX', 'LEV_MEAN', 'LEV_MIN']
     values = [key.replace('LEV', 'LAV') for key in keys]
     lav_dict = {k: v for k, v in zip(keys, values)}  # lake aquatic veg
-    temps_dict.update(lav_dict)
-    temps_dict.update({'idx_HL': 'Hylak_id'})
+    rename_dict.update(lav_dict)
+    rename_dict.update({'idx_HL': 'Hylak_id'})
 
     ## Write out
     lsd_hl_lev_save = lsd_hl_lev.drop(columns='Temp_K').merge(temperatures[[
-        'idx_HL', 'djf', 'mam', 'jja', 'son', 'ann']], on='idx_HL').rename(columns=temps_dict)
+        'idx_HL', temperature_metric]], on='idx_HL').rename(columns=rename_dict)
     lsd_hl_lev_save.to_csv(os.path.join(
         output_dir, 'HydroLAKES_emissions.csv.gz'))
 
