@@ -34,6 +34,11 @@ mpl.rcParams['pdf.fonttype'] = 42
 # ## Functions and classes
 # ### Plotting functions
 
+## Common
+temperature_metric = 'ERA5_stl1'
+v = 20  # Version number for file naming
+use_low_oc = True  # If false, use to compare to mutually-exclusive double-counted areas with Oc < 50%
+
 
 def findNearest(arr, val):
     ''' Function to find index of value nearest to target value'''
@@ -246,7 +251,7 @@ def interval_geometric_mean(interval):
 
 def loadBAWLD_CH4():
     ## Load
-    df = pd.read_csv('/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/archive/BAWLD_CH4_Aquatic.csv',
+    df = pd.read_csv('/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/BAWLD_CH4_Aquatic_ERA5.csv',
                      encoding="ISO-8859-1", dtype={'CH4.E.FLUX ': 'float'}, na_values='-')
     len0 = len(df)
 
@@ -256,8 +261,9 @@ def loadBAWLD_CH4():
     df['CH4.DE.FLUX'] = df['CH4.D.FLUX'] + df['CH4.E.FLUX']
 
     ## Filter and pre-process
-    df.query("SEASON == 'Icefree' ", inplace=True)  # and `D.METHOD` == 'CH'
-    df.dropna(subset=['SA', 'CH4.DE.FLUX', 'TEMP'], inplace=True)
+    # df.query("SEASON == 'Icefree' ", inplace=True)  # and `D.METHOD` == 'CH'
+    df.dropna(subset=['SA', 'CH4.DE.FLUX', temperature_metric], inplace=True) # 'TEMP'
+
 
     ## if I want transformed y as its own var
     # df['CH4.DE.FLUX.LOG'] = np.log10(df['CH4.DE.FLUX']+1)
@@ -269,7 +275,7 @@ def loadBAWLD_CH4():
 
     ## Linear models (regression)
     # 'Seasonal.Diff.Flux' 'CH4.D.FLUX'
-    formula = "np.log10(Q('CH4.DE.FLUX')+0.01) ~ np.log10(SA) + TEMP"
+    formula = f"np.log10(Q('CH4.DE.FLUX')+0.01) ~ np.log10(SA) + {temperature_metric}"
     model = ols(formula=formula, data=df).fit()
 
     return model
@@ -546,8 +552,8 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             g_var = 'est_g_day'
         else:
             g_var = None
-        if 'Temp_C' in df.columns:
-            t_var = 'Temp_C'
+        if 'Temp_K' in df.columns:
+            t_var = 'Temp_K'
         else:
             t_var = None
 
@@ -916,6 +922,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         self.extrapLSD.extreme_regions_lsd = ref_BinnedLSD.extreme_regions_lsd
         if hasattr(ref_BinnedLEV, 'extreme_regions_lev'):
             self.extrapLSD.extreme_regions_lev = ref_BinnedLEV.extreme_regions_lev
+        
         ## Save reference binned LSD (which has any remaining attrs)
         self.refBinnedLSD = ref_BinnedLSD
         return
@@ -1001,13 +1008,13 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             list of model coefficients
         returns: ax
         '''
-        assert 'Temp_C' in self.columns, "LSD needs a Temp_C attribute in order to predict flux."
+        assert 'Temp_K' in self.columns, "LSD needs a Temp_K attribute in order to predict flux."
         if includeExtrap == True:
             assert hasattr(
                 self, 'extrapLSD'), "includeExtrap was set to true, but no self.extrapLSD found."
             # Use lake-area-weighted average temp as temp for extrapolated lakes, since we don't know where they are located
-            self.extrapLSD.Temp_C = np.average(
-                self.Temp_C, weights=self.Area_km2)
+            self.extrapLSD.Temp_K = np.average(
+                self.Temp_K, weights=self.Area_km2)
             self.extrapLSD.predictFlux(model)
             binned_total_flux_Tg_yr = self.extrapLSD._total_flux_Tg_yr
         else:
@@ -1017,7 +1024,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         self['est_mg_m2_day'] = 10**(model.params.Intercept +
                                      model.params['np.log10(SA)'] *
                                      np.log10(self.Area_km2)
-                                     + model.params['TEMP'] * self.Temp_C) - 0.01  # jja, ann, son, mam
+                                     + model.params[temperature_metric] * self.Temp_K) - 0.01  # jja, ann, son, mam
 
         ## Flux (flux rate, gCH4/day)
         self['est_g_day'] = self.est_mg_m2_day * self.Area_km2 * \
@@ -1834,7 +1841,7 @@ class BinnedLSD():
         returns: ax
         '''
         assert hasattr(
-            self, 'Temp_C'), "Binned LSD needs a Temp_C attribute in order to predict flux."
+            self, 'Temp_K'), "Binned LSD needs a Temp_K attribute in order to predict flux."
         assert self.isNormalized == False, "Binned LSD is normalized so values will be unitless for area."
         means = self.binnedAreas.loc[:, 'mean']
         geom_mean_areas = np.array(
@@ -1844,7 +1851,7 @@ class BinnedLSD():
         est_mg_m2_day = 10**(model.params.Intercept +
                              model.params['np.log10(SA)'] *
                              np.log10(geom_mean_areas)
-                             + model.params['TEMP'] * self.Temp_C) - 0.01  # jja, ann, son, mam # no uncertainty yet
+                             + model.params[temperature_metric] * self.Temp_K) - 0.01  # jja, ann, son, mam # no uncertainty yet
 
         ## Flux (flux rate, gCH4/day)
         est_g_day_mean, est_g_day_low, est_g_day_high = [est_mg_m2_day * self.binnedAreas.loc[:, stat] * 1e3 for stat in [
@@ -1994,7 +2001,7 @@ def runTests():
 
     ## Test binnedLSD with fluxes
     model = loadBAWLD_CH4()
-    lsd_cir['Temp_C'] = 10  # placeholder, required for prediction
+    lsd_cir['Temp_K'] = 10  # placeholder, required for prediction
     lsd_cir.predictFlux(model, includeExtrap=False)
     binned = BinnedLSD(lsd_cir.truncate(0.0001, 1), 0.0001, 0.5, compute_ci_lsd=True, compute_ci_flux=True,
                        extreme_regions_lsd=extreme_regions_lsd)  # compute_ci_lsd=False will disable plotting CI.
@@ -2048,17 +2055,17 @@ def runTests():
 
     ## Test flux prediction from observed lakes
     model = loadBAWLD_CH4()
-    # lsd_hl_trunc['Temp_C'] = 10 # placeholder until I load from file, required for prediction
+    # lsd_hl_trunc['Temp_K'] = 10 # placeholder until I load from file, required for prediction
     # some rows don't merge, I think bc I think idx_unamed is nto for HL... just use as example
     temp = lsd_hl_trunc.merge(
         df_clim, how='left', left_on='idx_unamed', right_on='Cell_ID')
     temperature_metric = 'jja'
-    lsd_hl_trunc['Temp_C'] = temp[temperature_metric]
+    lsd_hl_trunc['Temp_K'] = temp[temperature_metric]
     lsd_hl_trunc.predictFlux(model, includeExtrap=False)
 
     ## Test flux prediction from extrapolated lakes
-    # Placeholder # np.average(lsd_hl_trunc.Temp_C, weights=lsd_hl_trunc.Area_km2) # Use lake-area-weighted average temp as temp for extrapolated lakes, since we don't know where they are located
-    lsd_hl_trunc.extrapLSD.Temp_C = 9.8
+    # Placeholder # np.average(lsd_hl_trunc.Temp_K, weights=lsd_hl_trunc.Area_km2) # Use lake-area-weighted average temp as temp for extrapolated lakes, since we don't know where they are located
+    lsd_hl_trunc.extrapLSD.Temp_K = 9.8 + 273.15
     lsd_hl_trunc.extrapLSD.predictFlux(model)
 
     ## Test combined prediction
@@ -2094,21 +2101,16 @@ if __name__ == '__main__':
     # dir for output data, used for archive
     output_dir = '/Volumes/thebe/Ch4/output'
 
-    ## Common
-    temperature_metric = 'jja'
-    v = 12  # Version number for file naming
-    use_low_oc = True  # If false, use to compare to mutually-exclusive double-counted areas with Oc < 50%
-
     ## BAWLD domain
     dataset = 'HL'
     roi_region = 'BAWLD'
     gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
     # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
-    gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp'
+    # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp'
     # above, but with all ocurrence values, not binned
-    df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz'
+    df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz' # main data source
     hl_area_var = 'Shp_Area'
-    hl_join_clim_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/joined_climate/run00/HL_clim_full.csv'
+    hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_MERA5_stl1.csv.gz'
     bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
     # HL shapefile with ID of nearest BAWLD cell (still uses V3)
     hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
@@ -2230,12 +2232,12 @@ if __name__ == '__main__':
     lsd_hl_lev_m = lsd_hl_lev.merge(df_hl_nearest_bawld[['Hylak_id', 'BAWLD_Cell', '0-5', '5-50', '50-95', '95-100']], how='left', left_on='idx_HL', right_on='Hylak_id').drop(
         columns='Hylak_id')  # Need to create new var because output of merge is not LSD # '0-5', '5-50', '50-95', '95-100', 'Class_sum', 'BAWLD_Long', 'BAWLD_Lat',
 
-    ## Use BAWLD Cell to join in temp (e.g. "double-join")
+    ## Use BAWLD Cell to join in temp (e.g. "double-join") # HERE merge using xarray from ERA5?
     temperatures = lsd_hl_lev_m[['idx_HL', 'BAWLD_Cell']].merge(df_clim, how='left', left_on='BAWLD_Cell', right_on='Cell_ID').drop(
         columns=['Cell_ID', 'Shp_Area'])  # some rows don't merge, I think bc I think idx_unamed is nto for HL... just use as example
     # Fill any missing data with mean
     temperatures.fillna(temperatures.mean(), inplace=True)
-    lsd_hl_lev['Temp_C'] = temperatures[temperature_metric]
+    lsd_hl_lev['Temp_K'] = temperatures[temperature_metric]
 
     ## Add binned occurrence values
     for var in ['0-5', '5-50', '50-95', '95-100']:
@@ -2639,7 +2641,7 @@ if __name__ == '__main__':
         df_bawld_sum_lev.drop(columns=col, inplace=True)
     # remove meaningless sums
     df_bawld_sum_lev.drop(
-        columns=['idx_HL', 'Hylak_id', 'Temp_C'], inplace=True)
+        columns=['idx_HL', 'Hylak_id', 'Temp_K'], inplace=True)
 
     ## Join to BAWLD
     gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio')
@@ -2767,7 +2769,7 @@ if __name__ == '__main__':
     temps_dict.update({'idx_HL': 'Hylak_id'})
 
     ## Write out
-    lsd_hl_lev_save = lsd_hl_lev.drop(columns='Temp_C').merge(temperatures[[
+    lsd_hl_lev_save = lsd_hl_lev.drop(columns='Temp_K').merge(temperatures[[
         'idx_HL', 'djf', 'mam', 'jja', 'son', 'ann']], on='idx_HL').rename(columns=temps_dict)
     lsd_hl_lev_save.to_csv(os.path.join(
         output_dir, 'HydroLAKES_emissions.csv.gz'))
