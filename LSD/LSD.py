@@ -917,6 +917,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         self.extrapLSD.bottomLim = ref_BinnedLSD.btmEdge
         self.extrapLSD.topLim = ref_BinnedLSD.topEdge
         self.extrapLSD.hasCI_lsd = ref_BinnedLSD.hasCI_lsd
+        self.extrapLSD.binnedDC = None
         if hasattr(ref_BinnedLEV, 'hasCI_lev'):
             self.extrapLSD.hasCI_lev = ref_BinnedLEV.hasCI_lev
         self.extrapLSD.extreme_regions_lsd = ref_BinnedLSD.extreme_regions_lsd
@@ -1686,7 +1687,7 @@ class BinnedLSD():
                     group_means_flux_low, group_means_flux_high = None, None
                     self.hasCI_flux = False
                 self.binnedMg_m2_day = confidence_interval_from_extreme_regions(
-                    group_means_flux, group_means_flux_low, group_means_flux_high, name='est_g_day')
+                    group_means_flux, group_means_flux_low, group_means_flux_high, name='est_mg_m2_day')
 
             # copy attribute from parent LSD (note 'size_bin' is added in earlier this method)
             for attr in ['isTruncated', 'truncationLimits', 'name', 'size_bin']:
@@ -1889,7 +1890,30 @@ class BinnedLSD():
             result = summed_lev
         return result
 
+def combineBinnedLSDs(lsds):
+    '''Combines two or more BinnedLSDs in the tuple lsds and returns a new BinnedLSD.'''
+    
+    # Step 1: Check compatibility
+    # (You'll need to implement this part based on the requirements of your specific application)
 
+    # Step 2: Concatenate binnedAreas and init BinnedLSD class
+    combined_binned_areas = pd.concat([lsd.binnedAreas.reset_index() for lsd in lsds]).set_index(['size_bin', 'stat'])
+    nbins = np.sum([lsd.nbins for lsd in lsds])
+    cmb_binned_lsd = BinnedLSD(binned_areas=combined_binned_areas, nbins = nbins, compute_ci_lsd=False,
+                                compute_ci_lev=False)
+    
+    ## Add in binned LEV, flux attributes
+    cmb_binned_lsd.binnedLEV = pd.concat([lsd.binnedLEV.reset_index() for lsd in lsds], axis=0).set_index(['size_bin', 'stat'])
+    cmb_binned_lsd.binnedG_day = pd.concat([lsd.binnedG_day.reset_index() for lsd in lsds], axis=0).set_index(['size_bin', 'stat'])
+    cmb_binned_lsd.binnedMg_m2_day = pd.concat([lsd.binnedMg_m2_day.reset_index() for lsd in lsds], axis=0).set_index(['size_bin', 'stat'])
+    cmb_binned_lsd.binnedDC = pd.concat([lsd.binnedDC.reset_index() for lsd in lsds], axis=0).set_index(['size_bin', 'stat'])
+    cmb_binned_lsd.binnedCounts = pd.concat([lsd.binnedCounts.reset_index() for lsd in lsds], axis=0).set_index(['size_bin', 'stat'])
+
+    # Step 3: Handle confidence intervals (if needed)
+    # (You'll need to implement this part based on your specific requirements)
+
+    return cmb_binned_lsd
+    
 def runTests():
     '''Practicing loading and functions/methods with/without various arguments.
     Can pause and examine classes to inspect attributes.'''
@@ -2497,23 +2521,13 @@ if __name__ == '__main__':
     ###########################
     ## Create Table
     ## Create extrap LSD with all bin edge lining up with powers of 10, for Table
+    ## All bins are from lsd_hl_trunc_log10bins, derived from lsd_hl_lev, the original data used to derive plot data
+    ## Bottom bins use different extrap bins than lsd_hl_trunc, which is used for plots
     ###########################
 
     ## Extrapolate with log10 bins
-    # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
-    tmin, tmax = (0.0001, 5)
-    log_meta_bins_lower = [tmin, 0.001, 0.01, 0.1, emax]
-
-    def meta_geomspace(meta_bins, n):
-        '''Creates a list of numbers within regions defined by meta_bins that follow a geometric space with n entries within each region.'''
-        inner_list = []
-        for i, edge in enumerate(meta_bins[:-1]):
-            inner_list.extend(np.geomspace(edge, meta_bins[i + 1], n))
-        return sorted(list(set(inner_list)))
-
-    log_bins_lower = meta_geomspace(log_meta_bins_lower, 25)
+    log_bins_lower = [tmin, 0.001, 0.01, 0.1, emax]
     # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-    emax = 0.5
     binned_ref_log10bins = BinnedLSD(lsd.truncate(tmin, tmax), bins=log_bins_lower, compute_ci_lsd=True,
                                      extreme_regions_lsd=extreme_regions_lsd)  # reference distrib (try 5, 0.5 as second args)
     binned_lev_log10bins = BinnedLSD(lsd_lev_cat, bins=log_bins_lower, compute_ci_lev=True,
@@ -2523,36 +2537,35 @@ if __name__ == '__main__':
     lsd_hl_trunc_log10bins.extrapolate(
         binned_ref_log10bins, binned_lev_log10bins)
 
-    ## Predict flux on extrapolated part
+    ## Predict flux on extrapolated part (re-computes for observed part)
     lsd_hl_trunc_log10bins.predictFlux(model, includeExtrap=True)
 
     ## Compute double-counting
-    lsd_hl_lev['d_counting_frac'] = (
-        lsd_hl_lev['0-5'] + lsd_hl_lev['5-50']) / 100
-
-    ## Predict flux on upper part
-    lsd_hl_lev.predictFlux(model, includeExtrap=False)
+    lsd_hl_trunc_log10bins['d_counting_frac'] = (
+        lsd_hl_trunc_log10bins['0-5'] + lsd_hl_trunc_log10bins['5-50']) / 100
 
     ## bin upper with log10 bins
     log_bins_upper = [0.5, 1, 10, 100, 1000, 10000, 100000]
     # now, bin upper values for Table estimate, use regions as placeholder to get dummy CI
-    lsd_hl_lev_log10bins = BinnedLSD(lsd_hl_lev, bins=log_bins_upper, compute_ci_lsd=False,
+    lsd_hl_trunc_log10bins_binned = BinnedLSD(lsd_hl_trunc_log10bins, bins=log_bins_upper, compute_ci_lsd=False,
                                      compute_ci_lev=False, compute_ci_lev_existing=True, normalize=False)
+    
+    ## Add placeholder attributes prior to combining in function
+    # Note:extrapolated values use LEV as placeholder, but should be ignored.
+    lsd_hl_trunc_log10bins.extrapLSD.binnedDC = lsd_hl_trunc_log10bins.extrapLSD.binnedLEV.rename('dc')
+    lsd_hl_trunc_log10bins.extrapLSD.binnedCounts = (lsd_hl_trunc_log10bins.extrapLSD.binnedLEV * np.nan).rename('Count')
 
+    ## Combine binnedLSDs using nifty function
+    lsd_binned_cmb = combineBinnedLSDs((lsd_hl_trunc_log10bins.extrapLSD, lsd_hl_trunc_log10bins_binned))   
+    
     ## Make table: can ignore CI if nan or same as mean
-    tb_area = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedAreas,
-                        lsd_hl_lev_log10bins.binnedAreas)) / 1e6
-    tb_lev = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedLEV,
-                       lsd_hl_lev_log10bins.binnedLEV)) * tb_area.loc[:, 'mean']
-    tb_flux = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedG_day,
-                        lsd_hl_lev_log10bins.binnedG_day)) * 365.25 / 1e12
-    # double counting (NOTE: extrapolated values use LEV as placeholder, but should be ignored.)
-    tb_d_counting = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedLEV,
-                              lsd_hl_lev_log10bins.binnedDC)) * tb_area.loc[:, 'mean']
-    tb_count = pd.concat((lsd_hl_trunc_log10bins.extrapLSD.binnedLEV *
-                         np.nan, lsd_hl_lev_log10bins.binnedCounts))
     tb_comb = pd.concat(
-        (tb_area, tb_lev, tb_flux, tb_d_counting, tb_count), axis=1)
+        (lsd_binned_cmb.binnedAreas/ 1e6, lsd_binned_cmb.binnedLEV, lsd_binned_cmb.binnedG_day * 365.25 / 1e12, lsd_binned_cmb.binnedDC, lsd_binned_cmb.binnedCounts), axis=1)
+
+    ## Change units
+    mean_rows = tb_comb.loc[:, 'mean', :]
+    tb_comb['dc'] = tb_comb['dc'] * mean_rows.Area_km2
+    tb_comb['LEV_frac'] = tb_comb['LEV_frac'] * mean_rows.Area_km2
     tb_comb.columns = ['Area_Mkm2', 'LEV_Mkm2', 'Tg_yr', 'DC_Mkm2', 'Count']
 
     ## Report double counting
@@ -2561,21 +2574,8 @@ if __name__ == '__main__':
     print(
         f"Double counting of inventoried lakes: {np.average(dummy.d_counting_frac, weights = dummy.Area_km2):0.3}%")
 
-    ## Custom grouping function (Thanks ChatGPT!)
-    def interval_group(interval, edges=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000]):
-        ''' Custom grouping function that aggregates pd.Interval indexes based on edges given by edges.'''
-        n = len(edges)
-        assert interval.left != interval.right
-        for i, edge in enumerate(edges[:-1]):
-            if (interval.left >= edge) and (interval.right <= edges[i + 1]):
-                return pd.Interval(left=edge, right=edges[i + 1])
-        return None  # if interval doesn't fit between any two adjacent edges
-
-    ## Combine intervals
-    grouped_tb_mean, grouped_tb_lower, grouped_tb_upper = [tb_comb.loc[:, stat, :].groupby(
-        by=interval_group).sum() for stat in ['mean', 'lower', 'upper']]
-
     ## Normalize
+    grouped_tb_mean, grouped_tb_lower, grouped_tb_upper = [tb_comb.loc[:, stat, :] for stat in ['mean', 'lower', 'upper']]
     def norm_table(table, mean_table):
         return table / mean_table.sum(axis=0)
     grouped_tb_mean_norm, grouped_tb_lower_norm, grouped_tb_upper_norm = map(
