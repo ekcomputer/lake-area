@@ -156,6 +156,52 @@ def plotEPDFByValue(values, ax=None, bins=100, **kwargs):
     ax.set_xlabel('Lake area')
     return  # S
 
+def plotEmaxSens(lsd, extreme_regions_lsd, lsd_binned_ref, lsd_ref, tmin=0.0001, tmax=5, emax=0.1, y_scaler=1e6*1.11, ax=None):
+    '''
+    Shortcut to plot WBD comparison against HL LSD in WBD-NAHL domain. Prepares binned_ref based on tmin, tmax, emax and allows user to run in a loop.
+    
+    Parameters
+    ----------
+    extreme_regions_lsd
+    binned_ref_lsd (LSD)
+        Airborne HR data to use for extrapolation
+    lsd_ref (LSD)
+        LSD to use for ground truth (e.g. WBD)
+    tmin, tmax (floats) : (0.0001,30)
+        Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
+    emax (float) : 0.5
+        Upper extrapolation limit, defining the left bound of the index region (and right bound of the extrapolation region).
+    y_scaler (float) : 1e6*1.11
+        Ability to manually shift the normalized Y axis.
+    ax (<class 'matplotlib.axes._axes.Axes'>) : None
+        Optional axes to plot in
+    Returns
+    -------
+    ax (<class 'matplotlib.axes._axes.Axes'>)
+
+    '''
+    if not ax:
+        _, ax = plt.subplots()
+    # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
+    binned_ref = BinnedLSD(lsd_binned_ref.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True,
+                        extreme_regions_lsd=extreme_regions_lsd)  # reference distrib (try 5, 0.5 as second args)
+    # Beware chaining unless I return a new variable. # Try 0.1
+    lsd_trunc = lsd.truncate(emax, np.inf)
+    lsd_trunc.extrapolate(binned_ref) # no binned_lev included for now
+
+    ax = lsd_ref.truncate(0.001, 10000).plot_lsd(all=False, reverse=False, normalized=False, color='r', ax=ax)
+    lsd_trunc.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax, error_bars=True)
+    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})') # 'roi_region' must be a global var for this to work
+    ax.set_title(f'Extrapolation limit: {emax} $km^2$ | Total area: {lsd_trunc.truncate(0, 10000).sumAreas()/1e6:0.2} $Mkm^2$')
+
+    ax2=ax.twinx() # Add normalized axis
+    ymin, ymax = ax.get_ylim()
+    ax2.set_ylim([ymin, ymax/lsd_trunc.sumAreas()*y_scaler]) # hot fix
+    ax2.set_ylabel('Cumulative area fraction')
+    ax.get_figure().tight_layout()
+    ax.legend(loc='upper left')
+
+    return ax
 
 def weightedStd(x, w):
     '''Computes standard deviation of values given as group means x, with weights w'''
@@ -2126,26 +2172,29 @@ if __name__ == '__main__':
     output_dir = '/Volumes/thebe/Ch4/output'
 
     ## BAWLD domain
-    dataset = 'HL'
-    roi_region = 'BAWLD'
-    gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
-    # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp'
-    # above, but with all ocurrence values, not binned
-    df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz' # main data source
-    hl_area_var = 'Shp_Area'
-    hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v1.csv.gz'
-    bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
-    # HL shapefile with ID of nearest BAWLD cell (still uses V3)
-    hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
-    bawld_hl_output = f'/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v{v}.shp'
+    # dataset = 'HL'
+    # roi_region = 'BAWLD'
+    # gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    # # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
+    # # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp'
+    # # above, but with all ocurrence values, not binned
+    # df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz' # main data source
+    # hl_area_var = 'Shp_Area'
+    # hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v1.csv.gz'
+    # bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+    # # HL shapefile with ID of nearest BAWLD cell (still uses V3)
+    # hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
+    # bawld_hl_output = f'/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v{v}.shp'
 
     ## BAWLD-NAHL domain
-    # dataset = 'HL'
-    # roi_region = 'WBD_BAWLD'
-    # gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' # HL clipped to BAWLD and WBD
-    # hl_area_var='Shp_Area'
+    dataset = 'HL'
+    roi_region = 'WBD_BAWLD'
+    gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full_jnBAWLD_roiNAHL.csv.gz' # main data source # HL clipped to BAWLD and WBD
+    # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' 
+    hl_area_var='Shp_Area'
+    hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v1.csv.gz'
+    hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
 
     ## BAWLD domain (Sheng lakes)
     # dataset = 'Sheng'
@@ -2230,7 +2279,7 @@ if __name__ == '__main__':
                                  'LEV_MIN', 'LEV_MAX']] = 0  # LEV_MEAN
 
     ## Turn into a LSD
-    lsd_hl_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL')
+    lsd_hl_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL') # main dataset for analysis
 
     # ## Plot LEV CDF by lake area (no extrap) and report mean LEV fraction
     # lsd_hl_lev.plot_lev_cdf_by_lake_area()
@@ -2703,24 +2752,35 @@ if __name__ == '__main__':
     ####################################
 
     # ## Compare HL extrapolation to WBD:
-    # # lsd_hl_trunc.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
     # assert roi_region == 'WBD_BAWLD', f"Carefull, you are comparing to WBD, but roi_region is {roi_region}."
-    # ax = lsd_wbd.truncate(0.001, 10000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
-    # lsd_hl_trunc.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax, error_bars=False)
-    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})')
+    # ax = plotEmaxSens(lsd_hl_lev, extreme_regions_lsd, lsd, lsd_wbd, tmin=0.0001, tmax=5, emax=0.5, y_scaler=1e6*1.11)
+    # [ax.get_figure().savefig(f'/Volumes/thebe/pic/WBD_HL_compare_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
+
+    # ## Sensitivity test for emax
+    # emax_vals = [0.1, 0.5, 1, 3]
+    # fig, axes = plt.subplots(2,2, sharex=True, sharey=True)
+    # sns.set_context('poster')
+    # sns.set_style('ticks')
+    # for i, emax in enumerate(emax_vals):
+    #     plotEmaxSens(lsd_hl_lev, extreme_regions_lsd, lsd, lsd_wbd, tmin=0.0001, tmax=5, emax=emax, y_scaler=1e6*1.12, ax=axes.flatten()[i])
+    # fig.set_tight_layout(tight=True)
+    # sns.set_theme('notebook', font='Ariel')
+    # sns.set_style('ticks')
+    # [fig.savefig(f'/Volumes/thebe/pic/WBD_HL_emax_sensitivity_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
 
     # ## Report vals (for WBD)
     # wbd_sum = lsd_wbd.truncate(0.001, 10000).Area_km2.sum()
-    # hl_extrap_sum = lsd_hl_trunc.truncate(0, 10000).sumAreas()
-    # print(f'{wbd_sum:,.0f} vs {hl_extrap_sum:,.0f} km2 ({((hl_extrap_sum - wbd_sum) / hl_extrap_sum):.1%}) difference between observed datasets WBD and HL in {roi_region}.')
-    # print(f'Area fraction < 0.01 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.01):,.2%}')
-    # print(f'Area fraction < 0.1 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.1):,.2%}')
+    # hl_extrap_sum = lsd_hl_trunc.truncate(0, 10000).sumAreas() # This uses lsd_hl_truncate used for prediction, earlier in the script.
+    # print(f'{wbd_sum:,.0f} vs {hl_extrap_sum:,.0f} km2 ({((hl_extrap_sum - wbd_sum) / hl_extrap_sum):.2%}) difference between observed datasets WBD and HL in {roi_region}.')
+    # print(f'WBD area fraction < 0.01 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.01):,.2%}')
+    # print(f'WBD area fraction < 0.1 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.1):,.2%}')
+    # print(f'WBD area fraction < 0.5 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.5):,.2%}')
 
     # ## Compare HL to WBD measured lakes in same domain:
     # # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
     # # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None) # reload, if needed # don't truncate this time
     # ax = lsd_wbd.truncate(0.1, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
-    # lsd_hl.truncate(0.1, 1000).plot_lsd(normalized=False, reverse=False, ax=ax, all=False) # need to have loaded proper lsd hl bawld
+    # lsd_hl_lev.truncate(0.1, 1000).plot_lsd(normalized=False, reverse=False, ax=ax, all=False) # need to have loaded proper lsd hl bawld
     # ax.set_title(f'[{roi_region}]')
     # ax.get_figure().tight_layout()
 
@@ -2742,7 +2802,7 @@ if __name__ == '__main__':
     # ax2.set_ylim([ymin, ymax/lsd_wbd_trunc.sumAreas()*1e6*1.28]) # hot fix
     # ax2.set_ylabel('Cumulative area fraction')
     # ax.get_figure().tight_layout()
-    # [ax.get_figure().savefig(f'/Volumes/thebe/pic/WBD_compare_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
+    # [ax.get_figure().savefig(f'/Volumes/thebe/pic/WBD_WBD_compare_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
 
     ####################################
     ## Write out datasets for archive
@@ -2766,7 +2826,7 @@ if __name__ == '__main__':
     lsd_hl_lev_save = lsd_hl_lev.drop(columns='Temp_K').merge(temperatures[[
         'idx_HL', temperature_metric]], on='idx_HL').rename(columns=rename_dict)
     lsd_hl_lev_save.to_csv(os.path.join(
-        output_dir, 'HydroLAKES_emissions.csv.gz'))
+        output_dir, 'HydroLAKES_emissions.csv'))
 
     ## Version of BAWLD_HL for archive (continue from Map Analysis section)
     assert 'gdf_bawld_sum_lev' in locals(), "Need to run Map Analysis segment first"
@@ -2790,7 +2850,7 @@ if __name__ == '__main__':
     gpd.GeoDataFrame(gdf_bawld_sum_lev_save).to_file(
         os.path.join(output_dir, 'BAWLD_V1_LAV_V1.shp'), engine='pyogrio')
     gdf_bawld_sum_lev_save.drop(columns='geometry').to_csv(
-        os.path.join(output_dir, 'BAWLD_V1_LAV_V1.csv.gz'))
+        os.path.join(output_dir, 'BAWLD_V1_LAV_V1.csv'))
 
     ## Save extrapolations table
     tb_comb.to_csv(os.path.join(
