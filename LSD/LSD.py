@@ -36,8 +36,9 @@ mpl.rcParams['pdf.fonttype'] = 42
 
 ## Common
 temperature_metric = 'ERA5_stl1'
-v = 20  # Version number for file naming
+v = 21  # Version number for file naming
 use_low_oc = True  # If false, use to compare to mutually-exclusive double-counted areas with Oc < 50%
+eb_scaling = 0.580 # Factor to multiply D flux and divide E flux to fill in missing pathway e.g. (1.2)
 
 
 def findNearest(arr, val):
@@ -302,8 +303,8 @@ def loadBAWLD_CH4():
     len0 = len(df)
 
     ## Add total open water flux column
-    df['CH4.E.FLUX'].fillna(df['CH4.D.FLUX'] * 1.2, inplace=True)
-    df['CH4.D.FLUX'].fillna(df['CH4.E.FLUX'] / 1.2, inplace=True)
+    df['CH4.E.FLUX'].fillna(df['CH4.D.FLUX'] * eb_scaling, inplace=True)
+    df['CH4.D.FLUX'].fillna(df['CH4.E.FLUX'] / eb_scaling, inplace=True)
     df['CH4.DE.FLUX'] = df['CH4.D.FLUX'] + df['CH4.E.FLUX']
 
     ## Filter and pre-process
@@ -2316,6 +2317,10 @@ if __name__ == '__main__':
     for var in ['0-5', '5-50', '50-95', '95-100']:
         lsd_hl_lev[var] = lsd_hl_lev_m[var]
 
+    ## Compute double-counting
+    lsd_hl_lev['d_counting_frac'] = (
+        lsd_hl_lev['0-5'] + lsd_hl_lev['5-50']) / 100
+    
     ## Compute cell-area-weighted average of climate as FYI
     # print(f'Mean JJA temperature across {roi_region} domain: {np.average(df_clim.jja, weights=df_clim.Shp_Area)}')
     # months = ['ann','djf','mam','jja','son']
@@ -2588,10 +2593,6 @@ if __name__ == '__main__':
 
     ## Predict flux on extrapolated part (re-computes for observed part)
     lsd_hl_trunc_log10bins.predictFlux(model, includeExtrap=True)
-
-    ## Compute double-counting
-    lsd_hl_trunc_log10bins['d_counting_frac'] = (
-        lsd_hl_trunc_log10bins['0-5'] + lsd_hl_trunc_log10bins['5-50']) / 100
 
     ## bin upper with log10 bins
     log_bins_upper = [0.5, 1, 10, 100, 1000, 10000, 100000]
