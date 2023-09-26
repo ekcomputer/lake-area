@@ -38,7 +38,7 @@ mpl.rcParams['pdf.fonttype'] = 42
 temperature_metric = 'ERA5_stl1'
 v = 21  # Version number for file naming
 use_low_oc = True  # If false, use to compare to mutually-exclusive double-counted areas with Oc < 50%
-eb_scaling = 0.580 # Factor to multiply D flux and divide E flux to fill in missing pathway e.g. (1.2)
+eb_scaling = 0.580 # No effect, because computed in prep_data.ipynb. Factor to multiply D flux and divide E flux to fill in missing pathway e.g. (1.2)
 
 
 def findNearest(arr, val):
@@ -2173,29 +2173,29 @@ if __name__ == '__main__':
     output_dir = '/Volumes/thebe/Ch4/output'
 
     ## BAWLD domain
-    # dataset = 'HL'
-    # roi_region = 'BAWLD'
-    # gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-    # # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
-    # # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp'
-    # # above, but with all ocurrence values, not binned
-    # df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz' # main data source
-    # hl_area_var = 'Shp_Area'
-    # hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v1.csv.gz'
-    # bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
-    # # HL shapefile with ID of nearest BAWLD cell (still uses V3)
-    # hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
-    # bawld_hl_output = f'/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v{v}.shp'
+    dataset = 'HL'
+    roi_region = 'BAWLD'
+    gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    # HL clipped to BAWLD # note V4 is not joined to BAWLD yet
+    # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned.shp'
+    # above, but with all ocurrence values, not binned
+    df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz' # main data source
+    hl_area_var = 'Shp_Area'
+    hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v1.csv.gz'
+    bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+    # HL shapefile with ID of nearest BAWLD cell (still uses V3)
+    hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
+    bawld_hl_output = f'/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/joined_lev/BAWLD_V1_LEV_v{v}.shp'
 
     ## BAWLD-NAHL domain
-    dataset = 'HL'
-    roi_region = 'WBD_BAWLD'
-    gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
-    df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full_jnBAWLD_roiNAHL.csv.gz' # main data source # HL clipped to BAWLD and WBD
-    # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' 
-    hl_area_var='Shp_Area'
-    hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v1.csv.gz'
-    hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
+    # dataset = 'HL'
+    # roi_region = 'WBD_BAWLD'
+    # gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1_clipped_to_WBD.shp'
+    # df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full_jnBAWLD_roiNAHL.csv.gz' # main data source # HL clipped to BAWLD and WBD
+    # # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' 
+    # hl_area_var='Shp_Area'
+    # hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v1.csv.gz'
+    # hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
 
     ## BAWLD domain (Sheng lakes)
     # dataset = 'Sheng'
@@ -2526,7 +2526,8 @@ if __name__ == '__main__':
     sns.scatterplot(lsd_hl_trunc, x='Area_km2', y='LEV_MEAN', ax=ax, alpha=0.1)
     ax.set_xscale('log')
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})')
-
+    [ax.get_figure().savefig(
+        f'/Volumes/thebe/pic/{roi_region}_area_vs_lev_v{v}', transparent=True, dpi=300) for ext in ['.png', '.pdf']]
     ####################################
     ## Downing Analysis
     ####################################
