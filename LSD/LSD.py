@@ -816,7 +816,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         No need to call A_0.001_ directly, because it may not exist.
         Will not include extrapolated areas in estimate, because bin edges may not align. Use extrapolated_area_fraction() instead.
 
-        TODO: add option to include extrapolation in estimate.
+        TODO: add option to include extrapolation in estimate, or to give units of km2.
         '''
         if self.isTruncated:
             if self.truncationLimits[1] is not np.inf:
