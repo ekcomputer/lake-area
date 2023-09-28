@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from labellines import labelLines
 import seaborn as sns
 import scipy.ndimage as ndi
+from scipy.stats import pearsonr
 from sklearn.metrics import mean_squared_error
 import pandas as pd
 import geopandas as gpd
@@ -36,7 +37,7 @@ mpl.rcParams['pdf.fonttype'] = 42
 
 ## Common
 temperature_metric = 'ERA5_stl1'
-v = 21  # Version number for file naming
+v = 22  # Version number for file naming
 use_low_oc = True  # If false, use to compare to mutually-exclusive double-counted areas with Oc < 50%
 eb_scaling = 0.580 # No effect, because computed in prep_data.ipynb. Factor to multiply D flux and divide E flux to fill in missing pathway e.g. (1.2)
 
@@ -494,11 +495,11 @@ def loadUAVSAR(ref_names=['CSB', 'CSD', 'PAD', 'YF']):
                 '/Volumes/thebe/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp']
 
     pths_csv = [  # CSV
-        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_LEV_s.csv',
-        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_LEV_s.csv',
+        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay_v2/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_train_LEV_s.csv',
+        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay_v2/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_train_LEV_s.csv',
+        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay_v2/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_train_LEV_s.csv',
         # Note YF is split into train/holdout XX vs XX %
-        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay/YFLATS_190914_mosaic_rcls_brn_train_zHist_Oc_LEV_s.csv'
+        '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay_v2/YFLATS_190914_mosaic_rcls_brn_zHist_Oc_train_LEV_s.csv'
     ]
     values = [{'pths_shp': pths_shp[i], 'pths_csv': pths_csv[i]}
               for i in range(len(pths_shp))]
@@ -2372,7 +2373,9 @@ if __name__ == '__main__':
 
     print(f'Measured A_LEV in holdout ds: {a_lev:0.2%}')
     print(f'Predicted A_LEV in holdout ds: {a_lev_pred[0]:0.2%} ({a_lev_pred[1]:0.2%}, {a_lev_pred[2]:0.2%})')
-    print(f'Correlation: {np.corrcoef(a_lev_measured.LEV_MEAN, a_lev_measured.em_fractio)[0,1]:0.2%}')
+    corr_coeff, p_value = pearsonr(a_lev_measured.LEV_MEAN, a_lev_measured.em_fractio)
+    print(f'Correlation: {corr_coeff:0.2%}')
+    print(f'P: {p_value:0.2%}')
     print(f'RMSE: {mean_squared_error(a_lev_measured.LEV_MEAN, a_lev_measured.em_fractio, squared=False):0.2%}')
     
     ## Compare RMSD of model to RMSD of observed UAVSAR holdout subset compared to average (Karianne's check)
@@ -2388,8 +2391,8 @@ if __name__ == '__main__':
 
     ax.set_xlabel('Predicted lake aquatic vegetation fraction')
     ax.set_ylabel('Measured lake aquatic vegetation fraction')
-    ax.set_xlim([0, 0.8])
-    ax.set_ylim([0, 0.8])
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
     [ax.get_figure().savefig(f'/Volumes/thebe/pic/A_LEV_validation_v{v}', transparent=False, dpi=300) for ext in ['.png','.pdf']]
 
     ## Load WBD
@@ -2894,6 +2897,7 @@ if __name__ == '__main__':
     *Possible solution: re-define LSD class to be a genric structre that has an LSD attribute that is simply a dataframe. Re-define operaters print/__repr__ and slicing operations so it still behaves like the base structure is a df.
 * Add binnedLSD.truncate() method that removes bins
 * Truncate CSV decimals when writing out data files
+* Add confusion matrix output steps (in LEV_GSW_overlay.ipynb) to main script.
 
 
 NOTES:
