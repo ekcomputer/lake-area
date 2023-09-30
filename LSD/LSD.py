@@ -37,7 +37,7 @@ mpl.rcParams['pdf.fonttype'] = 42
 
 ## Common
 temperature_metric = 'ERA5_stl1'
-v = 22  # Version number for file naming
+v = 23  # Version number for file naming
 use_low_oc = True  # If false, use to compare to mutually-exclusive double-counted areas with Oc < 50%
 eb_scaling = 0.580 # No effect, because computed in prep_data.ipynb. Factor to multiply D flux and divide E flux to fill in missing pathway e.g. (1.2)
 
@@ -1979,6 +1979,20 @@ def combineBinnedLSDs(lsds):
     # (You'll need to implement this part based on your specific requirements)
 
     return cmb_binned_lsd
+
+## Custom grouping function (Thanks ChatGPT!)
+def interval_group(interval, edges=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000, np.inf]):
+    ''' Custom grouping function that aggregates pd.Interval indexes based on edges given by edges. Combines bins in histograms.'''
+    n = len(edges)
+    assert interval.left != interval.right
+    for i, edge in enumerate(edges[:-1]):
+        if (interval.left >= edge) and (interval.right <= edges[i + 1]):
+            return pd.Interval(left=edge, right=edges[i + 1])
+    return None  # if interval doesn't fit between any two adjacent edges
+
+def norm_table(table, mean_table):
+    ''' Normalizes a table by the sum of another table.'''
+    return table / mean_table.sum(axis=0)
     
 def runTests():
     '''Practicing loading and functions/methods with/without various arguments.
@@ -2200,7 +2214,7 @@ if __name__ == '__main__':
     # above, but with all ocurrence values, not binned
     df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz' # main data source
     hl_area_var = 'Shp_Area'
-    hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v1.csv.gz'
+    hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v3.csv.gz'
     bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
     # HL shapefile with ID of nearest BAWLD cell (still uses V3)
     hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
@@ -2213,7 +2227,7 @@ if __name__ == '__main__':
     # df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full_jnBAWLD_roiNAHL.csv.gz' # main data source # HL clipped to BAWLD and WBD
     # # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' 
     # hl_area_var='Shp_Area'
-    # hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v1.csv.gz'
+    # hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v3.csv.gz'
     # hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
 
     ## BAWLD domain (Sheng lakes)
@@ -2639,10 +2653,11 @@ if __name__ == '__main__':
     print(
         f"Double counting of inventoried lakes: {np.average(dummy.d_counting_frac, weights = dummy.Area_km2):0.3}%")
 
+    ## Combine intervals
+    grouped_tb_mean, grouped_tb_lower, grouped_tb_upper = [tb_comb.loc[:, stat, :].groupby(
+        by=interval_group).sum() for stat in ['mean', 'lower', 'upper']]
+
     ## Normalize
-    grouped_tb_mean, grouped_tb_lower, grouped_tb_upper = [tb_comb.loc[:, stat, :] for stat in ['mean', 'lower', 'upper']]
-    def norm_table(table, mean_table):
-        return table / mean_table.sum(axis=0)
     grouped_tb_mean_norm, grouped_tb_lower_norm, grouped_tb_upper_norm = map(
         norm_table, [grouped_tb_mean, grouped_tb_lower, grouped_tb_upper], [grouped_tb_mean] * 3)
 
