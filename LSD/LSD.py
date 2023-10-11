@@ -1956,6 +1956,15 @@ class BinnedLSD():
             result = summed_lev
         return result
 
+    def to_df(self):
+        '''
+        Generates a pandas DataFrame by concatennating the binnedAreas, binnedLEV, binnedG_day, binnedMg_m2_day fields into a table.
+        Includes central and upper/lower estimates.
+        '''
+        table = pd.concat((self.binnedAreas, self.binnedLEV, self.binnedG_day, self.binnedMg_m2_day), axis=1)
+        table.rename(columns={'LEV_frac':'LAV_frac'}, inplace=True)
+        return table
+    
 def combineBinnedLSDs(lsds):
     '''Combines two or more BinnedLSDs in the tuple lsds and returns a new BinnedLSD.'''
     
@@ -2338,13 +2347,14 @@ if __name__ == '__main__':
         'Hylak_id').first().reset_index()
     # Need to create new var because output of merge is not LSD
     lsd_hl_lev_m = lsd_hl_lev.merge(df_hl_nearest_bawld[[
-                                  'Hylak_id', 'BAWLD_Cell', '0-5', '5-50', '50-95', '95-100']], left_on='idx_HL', right_on='Hylak_id', how='left')
+        'Hylak_id', 'BAWLD_Cell', '0-5', '5-50', '50-95', '95-100']], left_on='idx_HL', right_on='Hylak_id', how='left')
     
     ## Join in ERA5 temperatures from previously-computed lookup table
     temperatures = lsd_hl_lev_m[['idx_HL', 'BAWLD_Cell']].merge(df_clim, how='left', left_on='idx_HL', right_on='Hylak_id')
     # Fill any missing data with mean
     temperatures.fillna(temperatures.mean(), inplace=True)
     lsd_hl_lev['Temp_K'] = temperatures[temperature_metric]
+    lsd_hl_lev['BAWLD_Cell'] = temperatures['BAWLD_Cell'].astype('int')
 
     ## Add binned occurrence values
     for var in ['0-5', '5-50', '50-95', '95-100']:
@@ -2556,8 +2566,9 @@ if __name__ == '__main__':
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})')
     [ax.get_figure().savefig(
         f'/Volumes/thebe/pic/{roi_region}_area_vs_lev_v{v}', transparent=True, dpi=300) for ext in ['.png', '.pdf']]
+    
     ####################################
-    ## Downing Analysis
+    ## Global lake area analysis
     ####################################
 
     # ## Remake plot for LSD
@@ -2569,7 +2580,7 @@ if __name__ == '__main__':
     # # ax.set_xlabel('')
     # # ax2.set_ylabel('Cumulative area (normalized)')
 
-    # ## Compare to Downing, re-using code snippet from BinnedLSD and plot over first plot
+    # ## Compare to Downing 2016, re-using code snippet from BinnedLSD and plot over first plot
     # btm = 0.001
     # top = 100000
     # nbins = 8
@@ -2696,48 +2707,56 @@ if __name__ == '__main__':
             lsd_hl_lev['Area_km2']  # add absolute area units
     # lsd_hl_lev.to_csv('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
 
-    ## Rescale double-counting and Oc stats to km2 for data archival purposes
-    for col in ['0-5', '5-50', '50-95', '95-100', ]:
-        lsd_hl_lev['Oc_' + col.replace('-', '_') + '_km2'] = lsd_hl_lev[col] / \
-            100 * lsd_hl_lev['Area_km2']  # add absolute area units
+    ## Rescale double-counting to km2 for data archival purposes
     lsd_hl_lev['d_counting_km2'] = lsd_hl_lev.d_counting_frac * \
         lsd_hl_lev['Area_km2']
 
-    ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
-    df_bawld_sum_lev = lsd_hl_lev.groupby('BAWLD_Cell').sum(
-        numeric_only=True)  # Could add Occ
+    ## Prep weighted avgs
+    lsd_hl_lev.predictFlux(model, includeExtrap=False)
+    lsd_hl_lev['Temp_K_wght_sum'] = lsd_hl_lev.Temp_K * lsd_hl_lev.Area_km2
 
-    ## Rescale back to LEV fraction (of lake) as well
+    ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
+    df_bawld_sum_lev = lsd_hl_lev.groupby('BAWLD_Cell').sum(numeric_only=True)  # Could add Occ
+
+    ## Lake count
+    df_bawld_sum_lev['lake_count'] = lsd_hl_lev[['Area_km2', 'BAWLD_Cell']].groupby('BAWLD_Cell').count().astype('int')
+
+    ## Rescale back to LEV fraction (of lake) as well (equiv to lake area-weighted mean of LEV fraction within grid cell)
     for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
         df_bawld_sum_lev[(col + '_km2').replace('_km2', '_frac')] = df_bawld_sum_lev[col +
-                                                                                     '_km2'] / df_bawld_sum_lev['Area_km2']  # add absolute area units
+                '_km2'] / df_bawld_sum_lev['Area_km2']  # add absolute area units
         # remove summed means, which are meaningless
         df_bawld_sum_lev.drop(columns=col, inplace=True)
-    # remove meaningless sums
-    df_bawld_sum_lev.drop(
-        columns=['idx_HL', 'Hylak_id', 'Temp_K'], inplace=True)
+    
+    ## add averages of T and est_mg_m2_day
+    df_bawld_sum_lev['Temp_K'] = df_bawld_sum_lev['Temp_K_wght_sum'] / df_bawld_sum_lev.Area_km2
+    df_bawld_sum_lev['est_mg_m2_day'] = df_bawld_sum_lev['est_g_day'] / 1e3 / df_bawld_sum_lev.Area_km2
 
-    ## Join to BAWLD
+    ## remove meaningless sums
+    df_bawld_sum_lev.drop(
+        columns=['idx_HL', 'Temp_K_wght_sum', 'd_counting_frac', '0-5', '5-50', '50-95', '95-100'], inplace=True) # 'Hylak_id', 
+
+    ## Join to BAWLD in order to query cell areas
     gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio')
     gdf_bawld_sum_lev = df_bawld_sum_lev.merge(
         gdf_bawld, how='outer', right_on='Cell_ID', left_index=True)  # [['Cell_ID', 'Shp_Area']]
-    ## Could also join % Occ to lsd_hl_lev
 
-    ## Rescale to LEV fraction (of grid cell)
+    ## Rescale to LEV fraction and double counting fraction (of grid cell)
     for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
         gdf_bawld_sum_lev[(col + '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col + '_km2'] / (
             gdf_bawld_sum_lev['Shp_Area'] / 1e6)  # add cell LEV fraction (note BAWLD units are m2)
-
-    ## Mask out high Glacier or barren grid cells
+    gdf_bawld_sum_lev['d_counting_grid_frac'] = gdf_bawld_sum_lev['d_counting_km2'] / (gdf_bawld_sum_lev['Shp_Area'] / 1e6)
+    
+    ## Mask out high Glacier or barren grid cells with no lakes
     gdf_bawld_sum_lev.loc[(gdf_bawld_sum_lev.GLA + gdf_bawld_sum_lev.ROC) > 75,
                           ['LEV_MEAN_km2', 'LEV_MIN_km2', 'LEV_MAX_km2', 'LEV_MEAN_frac', 'LEV_MIN_frac', 'LEV_MAX_frac', 'LEV_MEAN_grid_frac', 'LEV_MIN_grid_frac', 'LEV_MAX_grid_frac']] = 0
 
-    ## and write out
-    gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file(
-        bawld_hl_output, engine='pyogrio')
+    ## and write out full geodataframe as shapefile with truncated field names
+    gdf_bawld_sum_lev['Shp_Area'] = gdf_bawld_sum_lev['Shp_Area'].astype('int') # convert area to int
+    gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file(bawld_hl_output, engine='pyogrio')
 
     ## Stats from BAWLD LEV
-    s = gdf_bawld_sum_lev.sum()
+    s = gdf_bawld_sum_lev.drop(columns=['geometry']).sum()
     print(
         f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] Mkm2 lake vegetation (excluding non-inventoried lakes).")
     print(
@@ -2762,21 +2781,21 @@ if __name__ == '__main__':
     # Flux ratio (Marsh:OW, method 1): 3.1
     ###########################
 
-    ## filter out small size bins and compute area-weighted emissions # TODO: run with the actual veg methane estimate I'll be using # TODO: double check why my values are so much lower than BAWLD means, even when I compare my non-inv mean flux to 0.1-1 km2 BAWLD size bin
-    non_inv_lks = tb_comb.loc[(tb_comb.index.get_level_values(
-        'size_bin')[0:9], 'mean'), :]  # non-inventoried lakes
-    non_inv_lks_mean_flux = non_inv_lks.Tg_yr.sum() / 365.25 * 1e15 / \
-        (non_inv_lks.Area_Mkm2.sum() * 1e6 *
-         1e6)  # area-weighted mean flux in mg/m2/day
-    all_lks_mean_flux = tb_comb.Tg_yr.sum() / 365.25 * 1e15 / \
-        (tb_comb.Area_Mkm2.sum() * 1e6 * 1e6)
-    # emissions factor (ratio) for non-inventoried lakes (compare to 3.1 for wl, from bald marsh:lake emissions ratio)
-    emissions_factor_ni_lks = non_inv_lks_mean_flux / all_lks_mean_flux
+    # ## filter out small size bins and compute area-weighted emissions # TODO: run with the actual veg methane estimate I'll be using # TODO: double check why my values are so much lower than BAWLD means, even when I compare my non-inv mean flux to 0.1-1 km2 BAWLD size bin
+    # non_inv_lks = tb_comb.loc[(tb_comb.index.get_level_values(
+    #     'size_bin')[0:9], 'mean'), :]  # non-inventoried lakes
+    # non_inv_lks_mean_flux = non_inv_lks.Tg_yr.sum() / 365.25 * 1e15 / \
+    #     (non_inv_lks.Area_Mkm2.sum() * 1e6 *
+    #      1e6)  # area-weighted mean flux in mg/m2/day
+    # all_lks_mean_flux = tb_comb.Tg_yr.sum() / 365.25 * 1e15 / \
+    #     (tb_comb.Area_Mkm2.sum() * 1e6 * 1e6)
+    # # emissions factor (ratio) for non-inventoried lakes (compare to 3.1 for wl, from bald marsh:lake emissions ratio)
+    # emissions_factor_ni_lks = non_inv_lks_mean_flux / all_lks_mean_flux
 
-    ## load bawld veg
-    df_terr = pd.read_csv('/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/BAWLD_CH4_Terrestrial.csv',
-                          encoding="ISO-8859-1", dtype={'CH4.E.FLUX ': 'float'}, na_values='-')
-    df_terr.query('Class == "Marshes"')['CH4Av'].median()
+    # ## load bawld veg
+    # df_terr = pd.read_csv('/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/BAWLD_CH4_Terrestrial.csv',
+    #                       encoding="ISO-8859-1", dtype={'CH4.E.FLUX ': 'float'}, na_values='-')
+    # df_terr.query('Class == "Marshes"')['CH4Av'].median()
 
     ####################################
     ## WBD comparison Analysis
@@ -2839,7 +2858,7 @@ if __name__ == '__main__':
     ## Write out datasets for archive
     ####################################
 
-    ## Add all temperatures to HL_lev dataset
+    ## Add temperatures to HL_lev dataset (don't use truncated, because data users can easily truncate by lake area)
     keys = [temperature_metric]
     values = ['Temp_' + key for key in keys]
     rename_dict = {k: v for k, v in zip(keys, values)}
@@ -2853,41 +2872,46 @@ if __name__ == '__main__':
     rename_dict.update(lav_dict)
     rename_dict.update({'idx_HL': 'Hylak_id'})
 
+    # Format data types
+    lsd_hl_lev_save = lsd_hl_lev.drop(columns=['Region', 'Temp_K_wght_sum', 'LEV_MAX_km2', 'LEV_MEAN_km2', 'LEV_MIN_km2', 'd_counting_km2']).rename(columns=rename_dict)
+    lsd_hl_lev_save['Hylak_id'] = lsd_hl_lev_save['Hylak_id'].astype('int')
+    float_columns = lsd_hl_lev_save.select_dtypes(include=['float']).columns.tolist() # Get a list of columns with float data type
+    lsd_hl_lev_save[float_columns] = lsd_hl_lev_save[float_columns].round(4) # Apply rounding to float columns to reduce output file size
+
     ## Write out
-    lsd_hl_lev_save = lsd_hl_lev.drop(columns='Temp_K').merge(temperatures[[
-        'idx_HL', temperature_metric]], on='idx_HL').rename(columns=rename_dict)
     lsd_hl_lev_save.to_csv(os.path.join(
         output_dir, 'HydroLAKES_emissions.csv'))
 
     ## Version of BAWLD_HL for archive (continue from Map Analysis section)
     assert 'gdf_bawld_sum_lev' in locals(), "Need to run Map Analysis segment first"
 
-    ## Rename columns and rm redundant ones
-    columns_save = ['Cell_ID', 'Long', 'Lat', 'Area_Pct', 'Shp_Area', 'Area_km2',
-                    'Oc_0_5_km2', 'Oc_5_50_km2', 'Oc_50_95_km2', 'Oc_95_100_km2', 'd_counting_km2',
+    ## Rename columns and rm redundant ones to reduce data sprawl 
+    columns_save = ['Cell_ID', 'Long', 'Lat', 'Shp_Area', 'Area_km2', 'lake_count',
+                    'd_counting_km2', 'd_counting_grid_frac', 'Temp_K',
                     'est_mg_m2_day', 'est_g_day', 'LEV_MEAN_km2', 'LEV_MIN_km2',
                     'LEV_MAX_km2', 'LEV_MEAN_frac', 'LEV_MIN_frac', 'LEV_MAX_frac',
-                    'LEV_MEAN_grid_frac',
-                    'LEV_MIN_grid_frac', 'LEV_MAX_grid_frac', 'geometry']
+                    'LEV_MEAN_grid_frac', 'LEV_MIN_grid_frac', 'LEV_MAX_grid_frac', 'geometry']
     columns_save_lav = [s for s in columns_save if 'LEV' in s]
     values = list(map(lambda s: s.replace('LEV', 'LAV'), columns_save_lav))
     lav_dict = {k: v for k, v in zip(
         columns_save_lav, values)}  # lake aquatic veg
     lav_dict.update({'Area_km2': 'Lake_area_km2'})
-
-    ## Write out as csv (full column names) and shapefile
     gdf_bawld_sum_lev_save = gdf_bawld_sum_lev[columns_save].rename(
         columns=lav_dict)
-    gpd.GeoDataFrame(gdf_bawld_sum_lev_save).to_file(
-        os.path.join(output_dir, 'BAWLD_V1_LAV_V1.shp'), engine='pyogrio')
-    gdf_bawld_sum_lev_save.drop(columns='geometry').to_csv(
-        os.path.join(output_dir, 'BAWLD_V1_LAV_V1.csv'))
+    float_columns = gdf_bawld_sum_lev_save.select_dtypes(include=['float']).columns.tolist() # Get a list of columns with float data type
+    gdf_bawld_sum_lev_save[float_columns] = gdf_bawld_sum_lev_save[float_columns].round(4) # Apply rounding to float columns
 
+    ## Write out as csv (full column names) and shapefile
+    gdf_bawld_sum_lev_save.drop(columns='geometry').to_csv(
+        os.path.join(output_dir, 'BAWLD_V1_LAV.csv'))
+    gpd.GeoDataFrame(gdf_bawld_sum_lev_save).to_file(
+        os.path.join(output_dir, 'BAWLD_V1_LAV.shp'), engine='pyogrio') # Can ignore "value not written errors"
+    
     ## Save extrapolations table
-    tb_comb.to_csv(os.path.join(
-        output_dir, 'HydroLAKES_extrapolated_to_correct.csv'))
-    ## Then, rm erroneous -9.22E+18 entries in 'Count' and update columns
+    lsd_hl_trunc.extrapLSD.to_df().to_csv(os.path.join(
+        output_dir, 'HydroLAKES_extrapolated.csv'))
     pass
+
 ################
 
 # TODO:
