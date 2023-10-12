@@ -158,19 +158,19 @@ def plotEPDFByValue(values, ax=None, bins=100, **kwargs):
     ax.set_xlabel('Lake area')
     return  # S
 
-def plotEmaxSens(lsd, extreme_regions_lsd, lsd_binned_ref, lsd_ref, tmin=0.0001, tmax=5, emax=0.1, y_scaler=1e6*1.11, ax=None):
+def plotEmaxSens(lad, extreme_regions_lad, lad_binned_ref, lad_ref, tmin=0.0001, tmax=5, emax=0.1, y_scaler=1e6*1.11, ax=None):
     '''
-    Shortcut to plot WBD comparison against HL LSD in WBD-NAHL domain. Prepares binned_ref based on tmin, tmax, emax and allows user to run in a loop.
+    Shortcut to plot WBD comparison against HL LAD in WBD-NAHL domain. Prepares binned_ref based on tmin, tmax, emax and allows user to run in a loop.
     
     Parameters
     ----------
-    extreme_regions_lsd
-    binned_ref_lsd (LSD)
+    extreme_regions_lad
+    binned_ref_lad (LAD)
         Airborne HR data to use for extrapolation
-    lsd_ref (LSD)
-        LSD to use for ground truth (e.g. WBD)
+    lad_ref (LAD)
+        LAD to use for ground truth (e.g. WBD)
     tmin, tmax (floats) : (0.0001,30)
-        Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
+        Truncation limits for ref LAD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
     emax (float) : 0.5
         Upper extrapolation limit, defining the left bound of the index region (and right bound of the extrapolation region).
     y_scaler (float) : 1e6*1.11
@@ -185,20 +185,20 @@ def plotEmaxSens(lsd, extreme_regions_lsd, lsd_binned_ref, lsd_ref, tmin=0.0001,
     if not ax:
         _, ax = plt.subplots()
     # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-    binned_ref = BinnedLSD(lsd_binned_ref.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True,
-                        extreme_regions_lsd=extreme_regions_lsd)  # reference distrib (try 5, 0.5 as second args)
+    binned_ref = BinnedLAD(lad_binned_ref.truncate(tmin, tmax), tmin, emax, compute_ci_lad=True,
+                        extreme_regions_lad=extreme_regions_lad)  # reference distrib (try 5, 0.5 as second args)
     # Beware chaining unless I return a new variable. # Try 0.1
-    lsd_trunc = lsd.truncate(emax, np.inf)
-    lsd_trunc.extrapolate(binned_ref) # no binned_lev included for now
+    lad_trunc = lad.truncate(emax, np.inf)
+    lad_trunc.extrapolate(binned_ref) # no binned_lev included for now
 
-    ax = lsd_ref.truncate(0.001, 10000).plot_lsd(all=False, reverse=False, normalized=False, color='r', ax=ax)
-    lsd_trunc.truncate(0, 10000).plot_extrap_lsd(label='HL-extrapolated', normalized=False, ax=ax, error_bars=True)
+    ax = lad_ref.truncate(0.001, 10000).plot_lad(all=False, reverse=False, normalized=False, color='r', ax=ax)
+    lad_trunc.truncate(0, 10000).plot_extrap_lad(label='HL-extrapolated', normalized=False, ax=ax, error_bars=True)
     # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})') # 'roi_region' must be a global var for this to work
-    ax.set_title(f'Extrapolation limit: {emax} $km^2$ | Total area: {lsd_trunc.truncate(0, 10000).sumAreas()/1e6:0.2} $Mkm^2$')
+    ax.set_title(f'Extrapolation limit: {emax} $km^2$ | Total area: {lad_trunc.truncate(0, 10000).sumAreas()/1e6:0.2} $Mkm^2$')
 
     ax2=ax.twinx() # Add normalized axis
     ymin, ymax = ax.get_ylim()
-    ax2.set_ylim([ymin, ymax/lsd_trunc.sumAreas()*y_scaler]) # hot fix
+    ax2.set_ylim([ymin, ymax/lad_trunc.sumAreas()*y_scaler]) # hot fix
     ax2.set_ylabel('Cumulative area fraction')
     ax.get_figure().tight_layout()
     ax.legend(loc='upper left')
@@ -277,7 +277,7 @@ def confidence_interval_from_extreme_regions(group_means, group_low, group_high,
 
 
 def binnedVals2Error(binned_areas, n):
-    '''Convert BinnedLSD.binnedAreas to error bars for plotting. May need to subtract 1 from n.'''
+    '''Convert BinnedLAD.binnedAreas to error bars for plotting. May need to subtract 1 from n.'''
     ci = binned_areas.loc[:, ['lower', 'upper']].to_numpy().reshape((n, 2)).T
     mean = binned_areas.loc[:, ['mean']].to_numpy()
     yerr = np.abs(ci - mean)
@@ -342,7 +342,7 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev
     names (list) : list of strings with dataset/region names in same order as ref_dfs
 
     extreme_regions_lev : array-like
-        List of two region names to use for min/max LEV. Note, here region names must match entries in 'names,' so must be acronyms (e.g. CSD), unlike in BinnedLSD.
+        List of two region names to use for min/max LEV. Note, here region names must match entries in 'names,' so must be acronyms (e.g. CSD), unlike in BinnedLAD.
 
     use_zero_oc : Boolean (False)
         Whether to include zero occurrence bin in estimator. Setting to False (default) decreases sensitivity to misalignment between vector lakes and occurrence values because a complete shift will produce NaN due to only the zero bin overlaping with a lake 
@@ -361,7 +361,7 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev
 
     # Multiply the dataframes element-wise based on common columns
     cols = ['LEV_' + name for name in names]
-    # will have same length as df, which can become a LSD
+    # will have same length as df, which can become a LAD
     df_lev = pd.DataFrame(columns=cols)
 
     ## Branch
@@ -414,7 +414,7 @@ def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev
     ## Summary stats
     if extreme_regions_lev is not None:
         assert np.all(['LEV_' + region_col in df_lev.columns for region_col in extreme_regions_lev]
-                      ), "One region name in extreme_regions_lev is not present in lsd."
+                      ), "One region name in extreme_regions_lev is not present in lad."
         df_lev['LEV_MEAN'] = df_lev[cols].mean(axis=1)
         df_lev['LEV_MIN'] = df_lev['LEV_' + extreme_regions_lev[0]]
         df_lev['LEV_MAX'] = df_lev['LEV_' + extreme_regions_lev[1]]
@@ -480,13 +480,13 @@ def loadUAVSAR(ref_names=['CSB', 'CSD', 'PAD', 'YF']):
     Uses the regions in ref_names for averaging and regions in extreme_regions_lev_for_extrap for confidence interval.
 
     Returns:
-    lsd_lev_cat: LSD
-        LSD for reference regions. Used as LEV for non-inventoried lakes.
+    lad_lev_cat: LAD
+        LAD for reference regions. Used as LEV for non-inventoried lakes.
     ref_dfs: pd.DataFrame
         Giving Occurrence values by land cover class (e.g. LEV, Water) for reference UAVSAR regions. Used to estimate LEV for inventoried lakes.
     '''
 
-    ## Load LEV/LSD from UAVSAR
+    ## Load LEV/LAD from UAVSAR
     print('Loading UAVSAR and Pekel overlay...')
     default_ref_names = ['CSB', 'CSD', 'PAD', 'YF']
     pths_shp = ['/Volumes/thebe/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
@@ -509,31 +509,31 @@ def loadUAVSAR(ref_names=['CSB', 'CSD', 'PAD', 'YF']):
     _ = [pths_dict.pop(key)
          for key in default_ref_names if not key in ref_names]
 
-    lsd_levs = []
+    lad_levs = []
     for i, pth in enumerate(pths_dict.values()):
-        lsd_lev_tmp = LSD.from_shapefile(pth['pths_shp'], name=ref_names[i], area_var='area_px_m2',
+        lad_lev_tmp = LAD.from_shapefile(pth['pths_shp'], name=ref_names[i], area_var='area_px_m2',
                                          lev_var='em_fractio', idx_var='label', _areaConversionFactor=1e6, other_vars=['edge', 'cir_observ'])
-        lsd_lev_tmp.query('edge==0 and cir_observ==1', inplace=True)
-        lsd_levs.append(lsd_lev_tmp)
+        lad_lev_tmp.query('edge==0 and cir_observ==1', inplace=True)
+        lad_levs.append(lad_lev_tmp)
 
     ## Plots (only works for four regions)
     # fig, axes = plt.subplots(2,2, sharex=True, sharey=True)
     # for i, ax in enumerate(axes.flatten()):
-    #     lsd_levs[i].plot_lev_cdf_by_lake_area(error_bars=False, ax=ax, plotLegend=False)
+    #     lad_levs[i].plot_lev_cdf_by_lake_area(error_bars=False, ax=ax, plotLegend=False)
 
     ref_dfs = list(map(produceRefDs, [value['pths_csv']
                    for value in pths_dict.values()]))  # load ref dfs
-    lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
-    return lsd_lev_cat, ref_dfs
+    lad_lev_cat = LAD.concat(lad_levs, broadcast_name=True)
+    return lad_lev_cat, ref_dfs
 
 
-def regionStats(lsd) -> True:
+def regionStats(lad) -> True:
     """
     Analyze regions to choose min and max for confidence interval. Creates a df where each row is a region, with attributes for stats.
 
     Parameters
     ----------
-    lsd : LSD
+    lad : LAD
 
     Returns
     -------
@@ -542,15 +542,15 @@ def regionStats(lsd) -> True:
     """
     cols = ['region', 'maxA', 'A_0.1', 'nGT0.5', 'nGT1', 'nGT5']
     df_regions = pd.DataFrame(columns=cols)
-    for i, region in enumerate(np.unique(lsd.Region)):
-        lsd_tmp = lsd.query(f"Region == '{region}'")
+    for i, region in enumerate(np.unique(lad.Region)):
+        lad_tmp = lad.query(f"Region == '{region}'")
         df_dict = {
             'region': region,
-            'maxA': lsd_tmp.Area_km2.max(),  # make sure region has data beyond index range
-            'A_0.1': lsd_tmp.area_fraction(0.1),
-            'nGT0.5': lsd_tmp.query("Area_km2 > 0.5").shape[0],
-            'nGT1': lsd_tmp.query("Area_km2 > 1").shape[0],
-            'nGT5': lsd_tmp.query("Area_km2 > 5").shape[0],
+            'maxA': lad_tmp.Area_km2.max(),  # make sure region has data beyond index range
+            'A_0.1': lad_tmp.area_fraction(0.1),
+            'nGT0.5': lad_tmp.query("Area_km2 > 0.5").shape[0],
+            'nGT1': lad_tmp.query("Area_km2 > 1").shape[0],
+            'nGT5': lad_tmp.query("Area_km2 > 5").shape[0],
         }
         df_tmp = pd.DataFrame(df_dict, index=pd.Index([i]))
         df_regions = pd.concat((df_regions, df_tmp), ignore_index=True)
@@ -559,18 +559,18 @@ def regionStats(lsd) -> True:
 ## Class (using inheritance)
 
 
-class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
+class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
     '''Lake size distribution'''
 
     def __init__(self, df, name=None, area_var=None, region_var=None, idx_var=None, name_var=None, lev_var=None, t_var=None, _areaConversionFactor=1, regions=None, computeArea=False, other_vars=None, **kwargs):
         '''
         Loads df or gdf and creates copy only with relevant var names.
-        If called with additional arguments (e.g. attributes from LSD class that is having a pd operation applied to it), they will be added as attributes
+        If called with additional arguments (e.g. attributes from LAD class that is having a pd operation applied to it), they will be added as attributes
 
         Parameters
         ----------
         df : pandas.DataFrame or geopandas.GeoDataframe
-            Dataframe to convert to LSD
+            Dataframe to convert to LAD
         name : str
             Name of dataset
         area_var : string, optional
@@ -590,14 +590,14 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         computeArea : Boolean, default:False
             If provided, will compute Area from geometry. Doesn't need a crs, but needs user input for 'areaConversionFactor.'
         other_vars : list, optional
-            If provided, LSD will retain these columns.
+            If provided, LAD will retain these columns.
         '''
 
         ## Add default name
         if name == None:
             name = 'unamed'
 
-        ## Check if proper column headings exist (this might occur if I am initiating from a merged group of existing LSD objects)
+        ## Check if proper column headings exist (this might occur if I am initiating from a merged group of existing LAD objects)
         if 'idx_' + name in df.columns:
             idx_var = 'idx_' + name
         if 'Area_km2' in df.columns:
@@ -638,7 +638,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         # remove duplicate columns (does it change order?)
         columns = np.unique(columns)
 
-        # This inititates the class as a DataFrame and sets self to be the output. By importing a slice, we avoid mutating the original var for 'df'. Problem here is that subsequent functions might not recognize the class as an LSD. CAn I re-write without using super()?
+        # This inititates the class as a DataFrame and sets self to be the output. By importing a slice, we avoid mutating the original var for 'df'. Problem here is that subsequent functions might not recognize the class as an LAD. CAn I re-write without using super()?
         super().__init__(df[columns])
 
         ## Compute areas if they don't exist
@@ -676,7 +676,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         self.truncationLimits = None
         self.isBinned = False
         self.bins = None
-        self.refBinnedLSD = None  # Not essential to pre-set this
+        self.refBinnedLAD = None  # Not essential to pre-set this
 
         ## Add passthrough attributes if they are given as kwargs (e.g. after calling a Pandas function). This overwrites defaults defined above.
         ## Any new attributes I create in future methods: ensure they start with '_' if I don't want them passed out.
@@ -702,7 +702,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
     def from_shapefile(cls, path, name=None, area_var=None, lev_var=None, region_var=None, idx_var=None, **kwargs):
         ''' 
         Load from shapefile on disk.
-        Accepts all arguments to LSD.
+        Accepts all arguments to LAD.
         '''
         columns = [col for col in [idx_var, area_var, lev_var, region_var]
                    if col is not None]  # allows 'region_var' to be None
@@ -741,14 +741,14 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         # loop through the shapefiles and load each one using Geopandas
         for shpfile in shapefiles:
-            lsd = cls.from_shapefile(
+            lad = cls.from_shapefile(
                 shpfile, area_var=area_var, lev_var=lev_var, region_var=region_var, idx_var=idx_var, **kwargs)
-            dfs.append(lsd)
+            dfs.append(lad)
 
         # merge all the loaded shapefiles into a single GeoDataFrame
-        lsd = LSD.concat(dfs, ignore_index=True)  # , crs=gdfs[0].crs)
-        lsd.name = name
-        return lsd
+        lad = LAD.concat(dfs, ignore_index=True)  # , crs=gdfs[0].crs)
+        lad.name = name
+        return lad
 
     def reindexregions_(self, regions):
         ''' Where regions is a list of region names corresponding to the numbers in the existing inedex. 2 is hard-coded in for now and refers to the 1-based indexing of the CIR shapefile and skips the final region (which is just the previous ones summed).'''
@@ -764,39 +764,39 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         return self.regions_
 
     @classmethod  # not sure if necessary
-    def concat(cls, lsds, broadcast_name=False, **kwargs):
+    def concat(cls, lads, broadcast_name=False, **kwargs):
         '''
-        Concatenates multiple LSD instances.
-        Don't call on an instance, but call from the base class. Takes the name of the first LSD
-        lsds : arry_like
-            Array of LSDS to concatenate.
+        Concatenates multiple LAD instances.
+        Don't call on an instance, but call from the base class. Takes the name of the first LAD
+        lads : arry_like
+            Array of LADS to concatenate.
         broadcast_name : boolean
-            If true, add a column to each of the input LSDS with their name (name of dataset)
+            If true, add a column to each of the input LADS with their name (name of dataset)
 
-        Example: LSD.concat((lsd1, lsd2))
+        Example: LAD.concat((lad1, lad2))
         '''
-        if broadcast_name:  # if combining multiple lsds from different sources
-            for lsd in lsds:
-                lsd['Name'] = lsd.name
+        if broadcast_name:  # if combining multiple lads from different sources
+            for lad in lads:
+                lad['Name'] = lad.name
                 name_var = 'Name'
                 name = 'multi'
-        else:  # if loading in lsds from same source, but different files
+        else:  # if loading in lads from same source, but different files
             name_var = None
-            name = lsds[0].name
+            name = lads[0].name
 
         ## Retain attrs and cols
         # cols=[]
-        # for lsd in lsds:
-        #     # attrs.append(lsd.get_public_attrs())
-        #     cols.extend(lsd.columns.to_list())
+        # for lad in lads:
+        #     # attrs.append(lad.get_public_attrs())
+        #     cols.extend(lad.columns.to_list())
         # cols = np.unique(cols).tolist()
         cols = None
-        # Need to re-init before returning because pd.DataFrame.concat is a function, not method and can't return in-place. Therefore, it returns a pd.DataFrame object that needs to be converted back to a LSD.
-        return cls(pd.concat(lsds, **kwargs), name=name, name_var=name_var, other_vars=cols)
+        # Need to re-init before returning because pd.DataFrame.concat is a function, not method and can't return in-place. Therefore, it returns a pd.DataFrame object that needs to be converted back to a LAD.
+        return cls(pd.concat(lads, **kwargs), name=name, name_var=name_var, other_vars=cols)
 
     def truncate(self, min: float, max: float = np.inf, inplace=False, **kwargs):
         '''
-        Truncates LSD by keeping only lakes >= min threshold [and < max threshold].
+        Truncates LAD by keeping only lakes >= min threshold [and < max threshold].
         Always performed inplace.
         TODO: rewrite to call query() instead of repeating lines.
         '''
@@ -808,18 +808,18 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         else:
             attrs = self.get_public_attrs()
             cols = self.columns.to_list()
-            lsd = LSD(pd.DataFrame.query(self, "(Area_km2 >= @min) and (Area_km2 < @max)",
+            lad = LAD(pd.DataFrame.query(self, "(Area_km2 >= @min) and (Area_km2 < @max)",
                       inplace=inplace, **kwargs), other_vars=cols, **attrs)  # false
             # idx = self.Area_km2.between(min, max, inclusive='left')
-            # lsd = self[idx] # This method still returns a pd.DataFrame...
-            lsd.isTruncated = True
-            lsd.truncationLimits = (min, max)
-            return lsd
+            # lad = self[idx] # This method still returns a pd.DataFrame...
+            lad.isTruncated = True
+            lad.truncationLimits = (min, max)
+            return lad
 
     def query(self, expr, inplace=False):
         '''
-        Runs np.DataFrame.query and returns an LSD of results. 
-        When inplace=False, output is re-generated as an LSD. When inplace=True, output LSD class is unchanged.
+        Runs np.DataFrame.query and returns an LAD of results. 
+        When inplace=False, output is re-generated as an LAD. When inplace=True, output LAD class is unchanged.
         '''
         if inplace == True:
             pd.DataFrame.query(self, expr, inplace=inplace)  # true
@@ -827,7 +827,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             cols = self.columns.to_list()
             attrs = self.get_public_attrs()
             # false
-            return LSD(pd.DataFrame.query(self, expr, inplace=inplace), other_vars=cols, **attrs)
+            return LAD(pd.DataFrame.query(self, expr, inplace=inplace), other_vars=cols, **attrs)
 
     def area_fraction(self, limit):
         '''
@@ -840,7 +840,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         '''
         if self.isTruncated:
             if self.truncationLimits[1] is not np.inf:
-                warn("Careful, you are computing an area fraction based on a top-truncated LSD, so the fraction may be too high.")
+                warn("Careful, you are computing an area fraction based on a top-truncated LAD, so the fraction may be too high.")
         # dynamically-named attribute (_ prefix means it won't get copied over after a truncation or concat)
         attr = f'_A_{limit}'
         if attr in self.get_public_attrs():
@@ -851,27 +851,27 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             setattr(self, attr, area_fraction)
             return area_fraction
 
-    def extrapolated_area_fraction(self, ref_LSD, bottomLim, limit, emax=0.5, tmax=5):
+    def extrapolated_area_fraction(self, ref_LAD, bottomLim, limit, emax=0.5, tmax=5):
         """
         Computes area fraction from lakes < limit in area, for limit < minimum observed lake area.
 
-        Does this by calling extrapolate() twice, using different bottomLims to ensure the area thresholds in question exactly match the desired limit. Creates attribute A_[n]_ where n=0.001, 0.01, etc. Self should be truncated, ref_LSD shouldn't.
+        Does this by calling extrapolate() twice, using different bottomLims to ensure the area thresholds in question exactly match the desired limit. Creates attribute A_[n]_ where n=0.001, 0.01, etc. Self should be truncated, ref_LAD shouldn't.
 
         TODO: add confidence interval
 
         Parameters
         ----------
-        self : LSD (truncated)
+        self : LAD (truncated)
         limit  : float
             threshold. Will be used for extrapolation (for numerator).
-        ref_LSD : LSD (not truncated)
-            Reference LSD to bin and then use for extrapolation.
+        ref_LAD : LAD (not truncated)
+            Reference LAD to bin and then use for extrapolation.
         bottomLim : float
             Bottom size limit to which to extrapolate (for denominator).    
         emax : float, default 0.5
             Extrapolation limit max. emax defines the right bound of the extrapolation region (and the left bound of the index region). Should be set a little higher than the resolution of the dataset to be extrapolated to account for biases near its detection limit.
         tmax : float, default 5
-            tmax defines the right bound of the index region (so it truncates the ref LSD). don't set it too high, which introduces variability between datasets in the index region fractional areas.
+            tmax defines the right bound of the index region (so it truncates the ref LAD). don't set it too high, which introduces variability between datasets in the index region fractional areas.
         Returns
         -------
         area_fraction (float): sum all areas < limit and divide
@@ -880,118 +880,118 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         ## Checks
         if self is None:
             raise ValueError("self cannot be None")
-        assert isinstance(ref_LSD, LSD), "ref_LSD must be type LSD"
-        assert not ref_LSD.isTruncated, "ref_LSD shouldn't already be truncated, because it needs to happen inside this function."
+        assert isinstance(ref_LAD, LAD), "ref_LAD must be type LAD"
+        assert not ref_LAD.isTruncated, "ref_LAD shouldn't already be truncated, because it needs to happen inside this function."
         assert self.isTruncated, "To be explicit, truncate self, which indicates which region to extrapolate to."
         # auto run area_fraction
-        assert limit < self.truncationLimits[0], f"Limit ({limit}) is >= the lower truncation limit of LSD ({self.truncationLimits[0]}), so use area_fraction() method instead."
+        assert limit < self.truncationLimits[0], f"Limit ({limit}) is >= the lower truncation limit of LAD ({self.truncationLimits[0]}), so use area_fraction() method instead."
         assert limit > bottomLim, f"'limit' ({limit}) must be > bottomLim ({bottomLim})."
         assert emax >= self.truncationLimits[
             0], f"emax ({emax}) should be >= the top truncation limit of self ({self.truncationLimits[1]})"
         if self.truncationLimits[1] is not np.inf:
-            warn("Careful, you are computing an extrapolated area fraction based on a top-truncated LSD, so the fraction may be too high.")
+            warn("Careful, you are computing an extrapolated area fraction based on a top-truncated LAD, so the fraction may be too high.")
 
         ## Make copy for modification via extrapolate function
         attrs = self.get_public_attrs()
-        lsd = LSD(self, **attrs)
+        lad = LAD(self, **attrs)
 
         ## Computation
-        binned_ref = BinnedLSD(ref_LSD.truncate(
-            0, tmax), btm=limit, top=emax, compute_ci_lsd=False)
-        lsd.truncate(emax, np.inf, inplace=True)
-        lsd.extrapolate(binned_ref)
-        num = lsd.sumAreas(includeExtrap=True)
+        binned_ref = BinnedLAD(ref_LAD.truncate(
+            0, tmax), btm=limit, top=emax, compute_ci_lad=False)
+        lad.truncate(emax, np.inf, inplace=True)
+        lad.extrapolate(binned_ref)
+        num = lad.sumAreas(includeExtrap=True)
 
-        lsd = LSD(self, **attrs)  # re-init
-        binned_ref = BinnedLSD(ref_LSD.truncate(
-            0, tmax), bottomLim, emax, compute_ci_lsd=False)
-        lsd.truncate(emax, np.inf, inplace=True)
-        lsd.extrapolate(binned_ref)
-        denom = lsd.sumAreas(includeExtrap=True)
+        lad = LAD(self, **attrs)  # re-init
+        binned_ref = BinnedLAD(ref_LAD.truncate(
+            0, tmax), bottomLim, emax, compute_ci_lad=False)
+        lad.truncate(emax, np.inf, inplace=True)
+        lad.extrapolate(binned_ref)
+        denom = lad.sumAreas(includeExtrap=True)
         area_fraction = 1 - num / denom
 
-        # tmin, tmax = (0.0001,30) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
+        # tmin, tmax = (0.0001,30) # Truncation limits for ref LAD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
         # emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-        # binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True) # reference distrib (try 5, 0.5 as second args)
+        # binned_ref = BinnedLAD(lad.truncate(tmin, tmax), tmin, emax, compute_ci_lad=True) # reference distrib (try 5, 0.5 as second args)
 
-        ## update area fract on original lsd and return
+        ## update area fract on original lad and return
         attr = f'_A_{limit}'
-        setattr(self, attr, area_fraction)  # Save value within LSD structure
+        setattr(self, attr, area_fraction)  # Save value within LAD structure
         return area_fraction
 
-    def extrapolate(self, ref_BinnedLSD, ref_BinnedLEV=None):
+    def extrapolate(self, ref_BinnedLAD, ref_BinnedLEV=None):
         '''
         Extrapolate by filling empty bins below the dataset's resolution.
 
-        Note: The limits of the extrapolation are defined by the btmEdge/topEdge of ref_BinnedLSD. The top limit of rererence distribution is defined by the top truncation of the reference binnedLSD. Function checks to make sure it is truncated <= 5 km2.
+        Note: The limits of the extrapolation are defined by the btmEdge/topEdge of ref_BinnedLAD. The top limit of rererence distribution is defined by the top truncation of the reference binnedLAD. Function checks to make sure it is truncated <= 5 km2.
 
         Parameters
         ----------
-        ref_BinnedLSD : binnedLSD
-            Reference binnedLSD used for extrapolation.
-        ref_BinnedLEV : binnedLSD that has LEV 
-            Reference binnedLSD used for LEV extrapolation.This binned LSD probably comes from different data, hence the additional argument.
+        ref_BinnedLAD : binnedLAD
+            Reference binnedLAD used for extrapolation.
+        ref_BinnedLEV : binnedLAD that has LEV 
+            Reference binnedLAD used for LEV extrapolation.This binned LAD probably comes from different data, hence the additional argument.
 
         '''
-        # returns a binnedLSD
+        # returns a binnedLAD
         # give error if trying to extrapolate to a smaller area than is present in ref distrib
 
         # HERE truncate last bin
 
         ## Check validity
         # assert self.isTruncated # can correct for this
-        assert ref_BinnedLSD.isTruncated, "Reference binnedLSD must be top truncated or its bin estimates will be highly variable."
-        assert self.isTruncated, "LSD should be bottom-truncated when used for extrapolation to be explicit."
+        assert ref_BinnedLAD.isTruncated, "Reference binnedLAD must be top truncated or its bin estimates will be highly variable."
+        assert self.isTruncated, "LAD should be bottom-truncated when used for extrapolation to be explicit."
         assert self.truncationLimits[
-            0] == ref_BinnedLSD.topEdge, f"Mismatch between LSD bottom truncation limit ({self.truncationLimits[0]}) and ref binned LSD top edge ({ref_BinnedLSD.topEdge})"
-        assert ref_BinnedLSD.isNormalized
-        if ref_BinnedLSD.truncationLimits[1] > 5:
-            warn("Reference binned LSD should be top truncated to <= ~ 5 km2 to avoid too large of an index region (highly variable and HR lsd might be biased low in a large index region).")
+            0] == ref_BinnedLAD.topEdge, f"Mismatch between LAD bottom truncation limit ({self.truncationLimits[0]}) and ref binned LAD top edge ({ref_BinnedLAD.topEdge})"
+        assert ref_BinnedLAD.isNormalized
+        if ref_BinnedLAD.truncationLimits[1] > 5:
+            warn("Reference binned LAD should be top truncated to <= ~ 5 km2 to avoid too large of an index region (highly variable and HR lad might be biased low in a large index region).")
         if ref_BinnedLEV is not None:
             assert hasattr(
                 ref_BinnedLEV, 'binnedLEV'), "If ref_BinnedLEV is provided, it must have a a binnedLEV attribute."
-            assert ref_BinnedLSD.nbins == ref_BinnedLEV.nbins, "nbins differs between ref_BinnedLSD and ref_BinnedLEV"
-            assert ref_BinnedLSD.btmEdge == ref_BinnedLEV.btmEdge, f"Ref binned LSD btm edge ({ref_BinnedLSD.btmEdge}) doesn't equal ref binned LEV btm edge ({ref_BinnedLEV.btmEdge})"
-            assert ref_BinnedLSD.topEdge == ref_BinnedLEV.topEdge, f"Ref binned LSD top edge ({ref_BinnedLSD.topEdge}) doesn't equal ref binned LEV top edge ({ref_BinnedLEV.topEdge})"
-        ## Perform the extrapolation (bin self by its bottom truncation limit to the indexTopLim, and simply multiply it by the normalized refBinnedLSD to do the extrapolation)!
+            assert ref_BinnedLAD.nbins == ref_BinnedLEV.nbins, "nbins differs between ref_BinnedLAD and ref_BinnedLEV"
+            assert ref_BinnedLAD.btmEdge == ref_BinnedLEV.btmEdge, f"Ref binned LAD btm edge ({ref_BinnedLAD.btmEdge}) doesn't equal ref binned LEV btm edge ({ref_BinnedLEV.btmEdge})"
+            assert ref_BinnedLAD.topEdge == ref_BinnedLEV.topEdge, f"Ref binned LAD top edge ({ref_BinnedLAD.topEdge}) doesn't equal ref binned LEV top edge ({ref_BinnedLEV.topEdge})"
+        ## Perform the extrapolation (bin self by its bottom truncation limit to the indexTopLim, and simply multiply it by the normalized refBinnedLAD to do the extrapolation)!
 
-        # Sum all area in LSD in the index region, defined by the topEdge and top-truncation limit of the ref LSD.
+        # Sum all area in LAD in the index region, defined by the topEdge and top-truncation limit of the ref LAD.
         index_region_sum = self.truncate(
-            ref_BinnedLSD.topEdge, ref_BinnedLSD.truncationLimits[1]).Area_km2.sum()
-        last = ref_BinnedLSD.binnedAreas.index.get_level_values(
+            ref_BinnedLAD.topEdge, ref_BinnedLAD.truncationLimits[1]).Area_km2.sum()
+        last = ref_BinnedLAD.binnedAreas.index.get_level_values(
             0).max()  # last index with infinity to drop (use as mask)
         # remove the last entries, which are mean, lower, upper for the bin that goes to np.inf
-        binned_areas = ref_BinnedLSD.binnedAreas.drop(
+        binned_areas = ref_BinnedLAD.binnedAreas.drop(
             index=last) * index_region_sum
 
-        ## Return in place a new attribute called extrapLSD which is an instance of a binnedLSD
-        self.extrapLSD = BinnedLSD(btm=ref_BinnedLSD.btmEdge, top=ref_BinnedLSD.topEdge,
-                                   nbins=ref_BinnedLSD.nbins, compute_ci_lsd=ref_BinnedLSD.hasCI_lsd, binned_areas=binned_areas)
+        ## Return in place a new attribute called extrapLAD which is an instance of a binnedLAD
+        self.extrapLAD = BinnedLAD(btm=ref_BinnedLAD.btmEdge, top=ref_BinnedLAD.topEdge,
+                                   nbins=ref_BinnedLAD.nbins, compute_ci_lad=ref_BinnedLAD.hasCI_lad, binned_areas=binned_areas)
 
-        ## Add binnedLEV, if specified. Technically, not even extrapolating, just providing the reference distribution, but using same syntax as for LSD for compatibility.
+        ## Add binnedLEV, if specified. Technically, not even extrapolating, just providing the reference distribution, but using same syntax as for LAD for compatibility.
         if ref_BinnedLEV is not None:
             last_lev = ref_BinnedLEV.binnedAreas.index.get_level_values(
                 0).max()
-            self.extrapLSD.binnedLEV = ref_BinnedLEV.binnedLEV.drop(
+            self.extrapLAD.binnedLEV = ref_BinnedLEV.binnedLEV.drop(
                 index=last_lev)  # will this work if no LEV_MIN/MAX?
 
         ## Manually update its attributes
         # since bottom of index region matches, ensure top does as well in definition.
-        self.extrapLSD.indexTopLim = ref_BinnedLSD.truncationLimits[1]
-        self.extrapLSD.isExtrapolated = True
-        self.extrapLSD.isNormalized = False  # units of km2, not fractions
-        self.extrapLSD.bottomLim = ref_BinnedLSD.btmEdge
-        self.extrapLSD.topLim = ref_BinnedLSD.topEdge
-        self.extrapLSD.hasCI_lsd = ref_BinnedLSD.hasCI_lsd
-        self.extrapLSD.binnedDC = None
+        self.extrapLAD.indexTopLim = ref_BinnedLAD.truncationLimits[1]
+        self.extrapLAD.isExtrapolated = True
+        self.extrapLAD.isNormalized = False  # units of km2, not fractions
+        self.extrapLAD.bottomLim = ref_BinnedLAD.btmEdge
+        self.extrapLAD.topLim = ref_BinnedLAD.topEdge
+        self.extrapLAD.hasCI_lad = ref_BinnedLAD.hasCI_lad
+        self.extrapLAD.binnedDC = None
         if hasattr(ref_BinnedLEV, 'hasCI_lev'):
-            self.extrapLSD.hasCI_lev = ref_BinnedLEV.hasCI_lev
-        self.extrapLSD.extreme_regions_lsd = ref_BinnedLSD.extreme_regions_lsd
+            self.extrapLAD.hasCI_lev = ref_BinnedLEV.hasCI_lev
+        self.extrapLAD.extreme_regions_lad = ref_BinnedLAD.extreme_regions_lad
         if hasattr(ref_BinnedLEV, 'extreme_regions_lev'):
-            self.extrapLSD.extreme_regions_lev = ref_BinnedLEV.extreme_regions_lev
+            self.extrapLAD.extreme_regions_lev = ref_BinnedLEV.extreme_regions_lev
         
-        ## Save reference binned LSD (which has any remaining attrs)
-        self.refBinnedLSD = ref_BinnedLSD
+        ## Save reference binned LAD (which has any remaining attrs)
+        self.refBinnedLAD = ref_BinnedLAD
         return
 
     def sumAreas(self, ci=False, includeExtrap=True):
@@ -1010,12 +1010,12 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         self._total_area = None
         if includeExtrap:
             assert hasattr(
-                self, 'extrapLSD'), "LSD doesn't include an extrapLSD attribute."
+                self, 'extrapLAD'), "LAD doesn't include an extrapLAD attribute."
             if ci == False:
-                self._extrap_area = self.extrapLSD.sumAreas(ci=ci)
+                self._extrap_area = self.extrapLAD.sumAreas(ci=ci)
                 out = self._extrap_area + self._observed_area
             else:
-                self._extrap_area = np.array(self.extrapLSD.sumAreas(ci=ci))
+                self._extrap_area = np.array(self.extrapLAD.sumAreas(ci=ci))
                 # convert to tuple, as is common for python fxns to return
                 out = tuple(self._extrap_area + self._observed_area)
             self._total_area = self._observed_area + self._extrap_area
@@ -1041,20 +1041,20 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         result = lev_sum
         total_area = self.sumAreas(includeExtrap=False, ci=False)
         if includeExtrap:
-            if hasattr(self, 'extrapLSD'):
-                if hasattr(self.extrapLSD, 'binnedLEV'):
-                    lev_sum_extrap = self.extrapLSD.sumLev(asFraction=False)
+            if hasattr(self, 'extrapLAD'):
+                if hasattr(self.extrapLAD, 'binnedLEV'):
+                    lev_sum_extrap = self.extrapLAD.sumLev(asFraction=False)
                     result = lev_sum + lev_sum_extrap
-                    # result = lev_sum * self.sumAreas(includeExtrap=False) + lev_sum_extrap * self.extrapLSD.sumAreas(ci=False)
+                    # result = lev_sum * self.sumAreas(includeExtrap=False) + lev_sum_extrap * self.extrapLAD.sumAreas(ci=False)
                     total_area = self.sumAreas(includeExtrap=True)
-                    # np.average(pd.concat((m, m_extrap), axis=1), axis=1, weights=[self.sumAreas(includeExtrap=False), self.extrapLSD.sumAreas(ci=False)]) # Note:weights are scalers
+                    # np.average(pd.concat((m, m_extrap), axis=1), axis=1, weights=[self.sumAreas(includeExtrap=False), self.extrapLAD.sumAreas(ci=False)]) # Note:weights are scalers
                     pass
                 else:
                     warn(
-                        'No LEV in extrapolated LSD. Returning calculation based on inventoried lake LEV only.')
+                        'No LEV in extrapolated LAD. Returning calculation based on inventoried lake LEV only.')
             else:
                 warn(
-                    'No extrapolated LSD. Returning calculation based on inventoried lake LEV only.')
+                    'No extrapolated LAD. Returning calculation based on inventoried lake LEV only.')
         else:
             pass
         if asFraction:
@@ -1075,15 +1075,15 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             list of model coefficients
         returns: ax
         '''
-        assert 'Temp_K' in self.columns, "LSD needs a Temp_K attribute in order to predict flux."
+        assert 'Temp_K' in self.columns, "LAD needs a Temp_K attribute in order to predict flux."
         if includeExtrap == True:
             assert hasattr(
-                self, 'extrapLSD'), "includeExtrap was set to true, but no self.extrapLSD found."
+                self, 'extrapLAD'), "includeExtrap was set to true, but no self.extrapLAD found."
             # Use lake-area-weighted average temp as temp for extrapolated lakes, since we don't know where they are located
-            self.extrapLSD.Temp_K = np.average(
+            self.extrapLAD.Temp_K = np.average(
                 self.Temp_K, weights=self.Area_km2)
-            self.extrapLSD.predictFlux(model)
-            binned_total_flux_Tg_yr = self.extrapLSD._total_flux_Tg_yr
+            self.extrapLAD.predictFlux(model)
+            binned_total_flux_Tg_yr = self.extrapLAD._total_flux_Tg_yr
         else:
             binned_total_flux_Tg_yr = 0  # Not NaN, because needs to be added
 
@@ -1103,7 +1103,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         return
 
     ## Plotting
-    def plot_lsd(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, plotLabels=False, **kwargs):
+    def plot_lad(self, all=True, plotLegend=True, groupby_name=False, cdf=True, ax=None, plotLabels=False, **kwargs):
         '''
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
 
@@ -1136,7 +1136,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
                                 alpha=0.4, label=region, **kwargs)
 
         else:
-            assert 'Name' in self.columns, "LSD is missing 'Name' column."
+            assert 'Name' in self.columns, "LAD is missing 'Name' column."
             # cmap = colors.Colormap('Pastel1')
             names = np.unique(self['Name'])
             cmap = plt.cm.get_cmap('Paired', len(names))
@@ -1177,7 +1177,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         ## colors
         # rainbow_cycler = cycler
-        assert 'est_g_day' in self.columns, "LSD doesn't have a flux estimate yet."
+        assert 'est_g_day' in self.columns, "LAD doesn't have a flux estimate yet."
         # colors from https://stackoverflow.com/a/46152327/7690975 Other option is: `from cycler import cycler; `# ax.set_prop_cycle(rainbow_cycler), plt(... prop_cycle=rainbow_cycler, )
         sns.set_palette("colorblind", len(self.regions()))
 
@@ -1187,24 +1187,24 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         if groupby_name == False:  # wish there was a way to do this without both plots in the if/then statement
             for region in self.regions():
-                lsd_by_region = self.query(f'Region == "{region}"')
-                X, S = ECDFByValue(lsd_by_region.Area_km2, values_for_sum=lsd_by_region.est_g_day *
+                lad_by_region = self.query(f'Region == "{region}"')
+                X, S = ECDFByValue(lad_by_region.Area_km2, values_for_sum=lad_by_region.est_g_day *
                                    365.25 / 1e12, reverse=reverse)  # convert from g/day to Tg/yr
                 # if reverse, set this in ECDFByValue on previous line
                 plotECDFByValue(X=X, S=S, ax=ax, alpha=0.4,
                                 label=region, normalized=normalized, reverse=False)
 
         else:
-            assert 'Name' in self.columns, "LSD is missing 'Name' column."
+            assert 'Name' in self.columns, "LAD is missing 'Name' column."
             # cmap = colors.Colormap('Pastel1')
             names = np.unique(self['Name'])
             cmap = plt.cm.get_cmap('Paired', len(names))
             for j, name in enumerate(names):
                 # OLD: can't use .regions() after using DataFrame.query because it returns a DataFrame
                 for i, region in enumerate(np.unique(pd.DataFrame.query(self, f'Name == "{name}"').Region)):
-                    lsd_by_region_name = self.query(f'Region == "{region}"')
+                    lad_by_region_name = self.query(f'Region == "{region}"')
                     X, S = ECDFByValue(
-                        lsd_by_region_name.Area_km2, values_for_sum=lsd_by_region_name.est_g_day * 365.25 / 1e12, reverse=reverse)
+                        lad_by_region_name.Area_km2, values_for_sum=lad_by_region_name.est_g_day * 365.25 / 1e12, reverse=reverse)
                     plotECDFByValue(X=X, S=S, ax=ax, alpha=0.6, label=name, color=cmap(
                         j), normalized=normalized, reverse=False)
         ## repeat for all
@@ -1228,9 +1228,9 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         return ax
 
-    def plot_extrap_lsd(self, plotLegend=True, ax=None, normalized=False, reverse=False, error_bars=False, **kwargs):
+    def plot_extrap_lad(self, plotLegend=True, ax=None, normalized=False, reverse=False, error_bars=False, **kwargs):
         '''
-        Plots LSD using both measured and extrapolated values. 
+        Plots LAD using both measured and extrapolated values. 
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
 
         Parameters
@@ -1245,17 +1245,17 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         if ax == None:
             _, ax = plt.subplots()  # figsize=(5,3)
 
-        if self.extrapLSD.hasCI_lsd:  # Need to extract means in a different way if there is no CI
-            means = self.extrapLSD.binnedAreas.loc[:, 'mean']
+        if self.extrapLAD.hasCI_lad:  # Need to extract means in a different way if there is no CI
+            means = self.extrapLAD.binnedAreas.loc[:, 'mean']
         else:
-            means = self.extrapLSD.binnedAreas
+            means = self.extrapLAD.binnedAreas
         # plot for observed part of distrib
         X, S = ECDFByValue(self.Area_km2, reverse=False)
         # take geom mean of each interval
         geom_means = np.array(list(map(
-            interval_geometric_mean, self.extrapLSD.binnedAreas.loc[:, 'mean'].index.get_level_values(0))))
+            interval_geometric_mean, self.extrapLAD.binnedAreas.loc[:, 'mean'].index.get_level_values(0))))
         means = means.values  # convert to numpy
-        S += self.extrapLSD.sumAreas()  # add sum of extrap distrib to original cumsum
+        S += self.extrapLAD.sumAreas()  # add sum of extrap distrib to original cumsum
         # pre-pend the cumsum of extrap distrib binned vals
         S0 = np.cumsum(means)
         if not 'color' in kwargs:
@@ -1269,18 +1269,18 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         ## Add error bars
         if error_bars == True:
-            assert self.extrapLSD.hasCI_lsd, 'If plotting error bars, self.extrapLSD.hasCI_lsd needs a CI.'
+            assert self.extrapLAD.hasCI_lad, 'If plotting error bars, self.extrapLAD.hasCI_lad needs a CI.'
 
             ## as area plot: extrap section
             S_low0 = np.cumsum(
-                self.extrapLSD.binnedAreas.loc[:, 'lower'])  # btm section
-            S_up0 = np.cumsum(self.extrapLSD.binnedAreas.loc[:, 'upper'])
+                self.extrapLAD.binnedAreas.loc[:, 'lower'])  # btm section
+            S_up0 = np.cumsum(self.extrapLAD.binnedAreas.loc[:, 'upper'])
 
             ## Observed section
-            yerr_top = self.extrapLSD.binnedAreas.loc[:, 'mean'].sum(
-            ) - self.extrapLSD.binnedAreas.loc[:, 'lower'].sum()
-            yerr_btm = self.extrapLSD.binnedAreas.loc[:, 'upper'].sum(
-            ) - self.extrapLSD.binnedAreas.loc[:, 'mean'].sum()
+            yerr_top = self.extrapLAD.binnedAreas.loc[:, 'mean'].sum(
+            ) - self.extrapLAD.binnedAreas.loc[:, 'lower'].sum()
+            yerr_btm = self.extrapLAD.binnedAreas.loc[:, 'upper'].sum(
+            ) - self.extrapLAD.binnedAreas.loc[:, 'mean'].sum()
             S_low = np.maximum(S - yerr_top, 0)
             S_up = S + yerr_btm
             ax.fill_between(np.concatenate((geom_means, X)), np.concatenate((S_low0, S_low)) / denom /
@@ -1302,7 +1302,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
     def plot_extrap_lev(self, plotLegend=True, ax=None, normalized=False, reverse=False, error_bars=False, **kwargs):
         '''
-        Plots lev from LSD using both measured and extrapolated values. 
+        Plots lev from LAD using both measured and extrapolated values. 
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
 
         Parameters
@@ -1315,16 +1315,16 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         returns: ax
         '''
-        assert 'LEV_MEAN' in self.columns, "LSD doesn't have a LEV estimate yet."
+        assert 'LEV_MEAN' in self.columns, "LAD doesn't have a LEV estimate yet."
         assert hasattr(
-            self.extrapLSD, 'binnedLEV'), "binnedLSD doesn't have an extrap lev estimate yet."
+            self.extrapLAD, 'binnedLEV'), "binnedLAD doesn't have an extrap lev estimate yet."
         assert reverse == False, "No branch yet written for flux plots in reverse."
         if error_bars:
             assert_vars = ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']
         else:
             assert_vars = ['LEV_MEAN']
         for var in assert_vars:
-            assert var in self.columns, f"LSD is missing {var} column, which is required to plot lev cdf."
+            assert var in self.columns, f"LAD is missing {var} column, which is required to plot lev cdf."
 
         ## Prepare values
         if ax == None:
@@ -1332,22 +1332,22 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         try:
             # take geom mean of each interval
             geom_means = np.array(
-                list(map(interval_geometric_mean, self.extrapLSD.binnedLEV.index)))
+                list(map(interval_geometric_mean, self.extrapLAD.binnedLEV.index)))
 
         except:
             # if ci values are present
             geom_means = np.array(list(map(
-                interval_geometric_mean, self.extrapLSD.binnedLEV.loc[:, 'mean'].index.get_level_values(0))))
-        # used to be a branch for if self.extrapLSD.hasCI_lsd...
-        means = self.extrapLSD.binnedLEV * \
-            self.extrapLSD.binnedAreas.loc[:, 'mean']
+                interval_geometric_mean, self.extrapLAD.binnedLEV.loc[:, 'mean'].index.get_level_values(0))))
+        # used to be a branch for if self.extrapLAD.hasCI_lad...
+        means = self.extrapLAD.binnedLEV * \
+            self.extrapLAD.binnedAreas.loc[:, 'mean']
 
         X, S = ECDFByValue(self.Area_km2, values_for_sum=self.LEV_MEAN *
                            self.Area_km2, reverse=False)  # convert from frac to km2
         # TODO: need branch for if no 'mean' col for all occurrences, or ensure it always will have one # HERE 4/5/2023
-        binned_lev_km2 = (self.extrapLSD.binnedLEV *
-                          self.extrapLSD.binnedAreas.loc[:, 'mean'])
-        # self.extrapLSD.sumLev0() # add sum of extrap distrib to original cumsum
+        binned_lev_km2 = (self.extrapLAD.binnedLEV *
+                          self.extrapLAD.binnedAreas.loc[:, 'mean'])
+        # self.extrapLAD.sumLev0() # add sum of extrap distrib to original cumsum
         S += binned_lev_km2.loc[:, 'mean'].sum()
         # pre-pend the cumsum of extrap distrib binned vals
         S0 = np.cumsum(means.loc[:, 'mean'])
@@ -1356,13 +1356,13 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         ## Add error bars
         if error_bars == True:
-            assert self.extrapLSD.hasCI_lev, "error_bars is set, but extrapolated lev has no CI (self.extrapLSD.hasCI_lev is False)"
+            assert self.extrapLAD.hasCI_lev, "error_bars is set, but extrapolated lev has no CI (self.extrapLAD.hasCI_lev is False)"
 
             ## Compute error bounds for extrapolated LEV
             S_low0 = np.cumsum(
-                self.extrapLSD.binnedLEV.loc[:, 'lower'] * self.extrapLSD.binnedAreas.loc[:, 'mean'])  # btm section
+                self.extrapLAD.binnedLEV.loc[:, 'lower'] * self.extrapLAD.binnedAreas.loc[:, 'mean'])  # btm section
             S_up0 = np.cumsum(
-                self.extrapLSD.binnedLEV.loc[:, 'upper'] * self.extrapLSD.binnedAreas.loc[:, 'mean'])
+                self.extrapLAD.binnedLEV.loc[:, 'upper'] * self.extrapLAD.binnedAreas.loc[:, 'mean'])
 
             ## Compute error bounds for estimated LEV from obs
             X_low, S_low = ECDFByValue(
@@ -1379,7 +1379,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         ## Plot main curves
         if normalized:
             ylabel = 'Cumulative aquatic vegetation fraction'
-            # self.sumLev0() # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
+            # self.sumLev0() # note this won't include extrap lake fluxes if there is no self.extrapBinnedLAD, but the assert checks for this.
             denom = binned_lev_km2.loc[:, 'mean'].sum()
         else:
             ylabel = 'Cumulative aquatic vegetation (million $km^2$)'
@@ -1396,7 +1396,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
     def plot_extrap_flux(self, plotLegend=True, ax=None, normalized=False, reverse=False, error_bars=False, **kwargs):
         '''
-        Plots fluxes from LSD using both measured and extrapolated values. 
+        Plots fluxes from LAD using both measured and extrapolated values. 
         Calls plotECDFByValue and sends it any remaining argumentns (e.g. reverse=False).
 
         TODO: plot with CI
@@ -1410,22 +1410,22 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         returns: ax
         '''
-        assert 'est_g_day' in self.columns, "LSD doesn't have a flux estimate yet."
+        assert 'est_g_day' in self.columns, "LAD doesn't have a flux estimate yet."
         assert hasattr(
-            self.extrapLSD, 'binnedG_day'), "binnedLSD doesn't have a flux estimate yet."
+            self.extrapLAD, 'binnedG_day'), "binnedLAD doesn't have a flux estimate yet."
         assert reverse == False, "No branch yet written for flux plots in reverse."
         ## Prepare values
         if ax == None:
             _, ax = plt.subplots()  # figsize=(5,3)
 
         # Create plot values for observed part
-        means = self.extrapLSD.binnedG_day.loc[:, 'mean']
+        means = self.extrapLAD.binnedG_day.loc[:, 'mean']
         X, S = ECDFByValue(self.Area_km2, values_for_sum=self.est_g_day *
                            365.25 / 1e12, reverse=False)  # scale to Tg / yr
-        # take geom mean of each interval Try self.extrapLSD.binnedAreas.loc[:, 'mean'].index.get_level_values(0)
+        # take geom mean of each interval Try self.extrapLAD.binnedAreas.loc[:, 'mean'].index.get_level_values(0)
         geom_means = np.array(list(map(interval_geometric_mean, means.index)))
         # X = np.concatenate((geom_means, X))
-        S += self.extrapLSD.sumFluxes()['mean']  # add to original cumsum
+        S += self.extrapLAD.sumFluxes()['mean']  # add to original cumsum
         # S = np.concatenate((np.cumsum(means)* 365.25 / 1e12, S)) # pre-pend the binned vals
         S0 = np.cumsum(means) * 365.25 / 1e12  # pre-pend the binned vals
         if not 'color' in kwargs:
@@ -1434,7 +1434,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         if normalized:
             ylabel = 'Cumulative fraction of emissions'
-            # note this won't include extrap lake fluxes if there is no self.extrapBinnedLSD, but the assert checks for this.
+            # note this won't include extrap lake fluxes if there is no self.extrapBinnedLAD, but the assert checks for this.
             denom = self._total_flux_Tg_yr['mean']
         else:
             ylabel = 'Cumulative emissions (Tg/yr)'
@@ -1443,22 +1443,22 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         ## Add error bars
         # if None:
         if error_bars == True:
-            assert self.extrapLSD.hasCI_lsd, "error_bars is set, but extrapolated LSD has no CI (self.extrapLSD.hasCI_lsd is False)"
+            assert self.extrapLAD.hasCI_lad, "error_bars is set, but extrapolated LAD has no CI (self.extrapLAD.hasCI_lad is False)"
 
             ## as area plot: extrapolated flux
             S_low0 = np.cumsum(
-                self.extrapLSD.binnedG_day.loc[:, 'lower']) * 365.25 / 1e12 / denom  # btm section
+                self.extrapLAD.binnedG_day.loc[:, 'lower']) * 365.25 / 1e12 / denom  # btm section
             S_up0 = np.cumsum(
-                self.extrapLSD.binnedG_day.loc[:, 'upper']) * 365.25 / 1e12 / denom
+                self.extrapLAD.binnedG_day.loc[:, 'upper']) * 365.25 / 1e12 / denom
 
             ## as area plot: estimated flux from obs
             X_low, S_low = ECDFByValue(
                 self.Area_km2, self.est_g_day * 365.25 / 1e12 / denom, reverse=False)
-            S_low += self.extrapLSD.binnedG_day.loc[:,
+            S_low += self.extrapLAD.binnedG_day.loc[:,
                                                     'lower'].sum() * 365.25 / 1e12 / denom
             _, S_up = ECDFByValue(self.Area_km2, self.est_g_day *
                                   365.25 / 1e12 / denom, reverse=False)  # re-compute
-            S_up += self.extrapLSD.binnedG_day.loc[:,
+            S_up += self.extrapLAD.binnedG_day.loc[:,
                                                    'upper'].sum() * 365.25 / 1e12 / denom
             ax.fill_between(np.concatenate((geom_means, X_low)), np.concatenate((S_low0, S_low)), np.concatenate(
                 (S_up0, S_up)), alpha=0.1, color=kwargs['color'])  # TODO: remove overlap line
@@ -1498,7 +1498,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             _, ax = plt.subplots()  # figsize=(5,3)
 
         for var in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
-            assert var in self.columns, f"LSD is missing {var} column, which is required to plot lev cdf."
+            assert var in self.columns, f"LAD is missing {var} column, which is required to plot lev cdf."
 
         if normalized:
             plotECDFByValue(self.LEV_MEAN, ax=ax, alpha=0.4, color='black',
@@ -1534,7 +1534,7 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         else:
             assert_vars = ['LEV_MEAN']
         for var in assert_vars:
-            assert var in self.columns, f"LSD is missing {var} column, which is required to plot lev cdf."
+            assert var in self.columns, f"LAD is missing {var} column, which is required to plot lev cdf."
         sns.set_palette("colorblind", len(self.regions()))
 
         ## plot
@@ -1571,40 +1571,40 @@ class LSD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         return ax
 
 
-class BinnedLSD():
+class BinnedLAD():
     '''This class represents lakes as area bins with summed areas.'''
 
-    def __init__(self, lsd=None, btm=None, top=None, nbins=None, bins=None, normalize=True, compute_ci_lsd=False, compute_ci_lev=False, compute_ci_lev_existing=False, compute_ci_flux=False, binned_areas=None, extreme_regions_lsd=None, extreme_regions_lev=None):
+    def __init__(self, lad=None, btm=None, top=None, nbins=None, bins=None, normalize=True, compute_ci_lad=False, compute_ci_lev=False, compute_ci_lev_existing=False, compute_ci_flux=False, binned_areas=None, extreme_regions_lad=None, extreme_regions_lev=None):
         '''
         Bins will have left end closed and right end open.
-        When creating this class to extrapolate a LSD, ensure that lsd is top-truncated to ~1km to reduce variability in bin sums. This chosen top limit will be used as the upper limit to the index region (used for normalization) and will be applied to the target LSD used for extrapolation.
-        When creating from an lsd, give lsd, btm, top [, nbins, compute_ci_lsd] arguments. When creating from existing binned values (e.g.) from extrapolation, give btm, top, nbins, compute_ci_lsd and binnedAreas args.
+        When creating this class to extrapolate a LAD, ensure that lad is top-truncated to ~1km to reduce variability in bin sums. This chosen top limit will be used as the upper limit to the index region (used for normalization) and will be applied to the target LAD used for extrapolation.
+        When creating from an lad, give lad, btm, top [, nbins, compute_ci_lad] arguments. When creating from existing binned values (e.g.) from extrapolation, give btm, top, nbins, compute_ci_lad and binnedAreas args.
 
         Parameters
         ----------
-        lsd : LSD
+        lad : LAD
             Lake-size distribution class to bin
         btm : float 
             Leftmost edge of bottom bin. Ignored if bins is given. 
         top : float
             Rightmost edge of top bin. Note: np.inf will be added to it to create one additional top bin for index region. Ignored if bins is given.
         nbins : int
-            Number of bins to use for np.geomspace (not counting the top bin that goes to np.inf when 'lsd' arg is given). Can use either nbins or  bins.
+            Number of bins to use for np.geomspace (not counting the top bin that goes to np.inf when 'lad' arg is given). Can use either nbins or  bins.
         bins : array-like
             Alternative to specifiying number of bins: give actual bin edges. Top edge of infinity will be added.
         normalize : Boolean (True)
             If True (default), normalized each bin by index region
-        compute_ci_lsd : Boolean (False)
-            Compute confidence interval for lsd by breaking down by region. Function will always bin LSD (at least without CI)
+        compute_ci_lad : Boolean (False)
+            Compute confidence interval for lad by breaking down by region. Function will always bin LAD (at least without CI)
         compute_ci_lev : Boolean (False)
             Compute confidence interval for lev by breaking down by region. Function will always bin LEV (at least without CI)
         compute_ci_lev_existing : Boolean (False)
             Compute confidence interval for lev by using existing columns LEV_MIN and LEV_MAX. Useful for binning observed (not extrapolated) lakes data.
         compute_ci_flux : Boolean (False)
-            Compute confidence interval for flux by multiplying by ci_lsd CI. Function will always bin LEV (at least without CI)
+            Compute confidence interval for flux by multiplying by ci_lad CI. Function will always bin LEV (at least without CI)
         binnedAreas : pandas.DataFrame (None)
-            Used for LSD.extrapolate(). Has structure similar to what is returned by self.binnedAreas if called with lsd argument. Format: multi-index with two columns, first giving bins, and second giving normalized lake area sum statistic (mean, upper, lower).
-        extreme_regions_lsd : array-like (None)
+            Used for LAD.extrapolate(). Has structure similar to what is returned by self.binnedAreas if called with lad argument. Format: multi-index with two columns, first giving bins, and second giving normalized lake area sum statistic (mean, upper, lower).
+        extreme_regions_lad : array-like (None)
             List of region names to use for min/max area
         extreme_regions_lev : array-like (None)
             List of region names to use for min/max LEV
@@ -1625,19 +1625,19 @@ class BinnedLSD():
         self.topEdge = top
         self.nbins = nbins
         self.isExtrapolated = False
-        self.extreme_regions_lsd = None  # init
+        self.extreme_regions_lad = None  # init
         self.extreme_regions_lev = None  # init
         self.isNormalized = False  # init
 
-        if lsd is not None:  # sets binnedLSD from existing LSD
-            assert (btm is not None and top is not None) or bins is not None, "if 'lsd' argument is given, so must be 'btm' and 'top' or 'bins'"
-            assert binned_areas is None, "If 'lsd' is given, 'binned_areas' shouldn't be."
+        if lad is not None:  # sets binnedLAD from existing LAD
+            assert (btm is not None and top is not None) or bins is not None, "if 'lad' argument is given, so must be 'btm' and 'top' or 'bins'"
+            assert binned_areas is None, "If 'lad' is given, 'binned_areas' shouldn't be."
 
-            # This ensures I can pass through all the attributes of parent LSD
-            attrs = lsd.get_public_attrs()
-            cols = lsd.columns.to_list()
+            # This ensures I can pass through all the attributes of parent LAD
+            attrs = lad.get_public_attrs()
+            cols = lad.columns.to_list()
             # create copy since deepcopy returns a pd.DataFrame
-            lsd = LSD(lsd, **attrs, other_vars=cols)
+            lad = LAD(lad, **attrs, other_vars=cols)
             if bins is not None:
                 self.bin_edges = np.concatenate(
                     (bins, [np.inf]))  # bins are user-specified
@@ -1646,14 +1646,14 @@ class BinnedLSD():
                     btm, top, nbins + 1), [np.inf])).round(6)  # bins computed from nbins and edges
             self.area_bins = pd.IntervalIndex.from_breaks(
                 self.bin_edges, closed='left')
-            lsd['size_bin'] = pd.cut(lsd.Area_km2, self.area_bins, right=False)
+            lad['size_bin'] = pd.cut(lad.Area_km2, self.area_bins, right=False)
             self.hasCI_lev = False  # init
 
             ## # Boolean to determine branch for LEV
-            hasLEV = 'LEV_MEAN' in lsd.columns
-            hasFlux = 'est_g_day' in lsd.columns
-            hasDC = 'd_counting_frac' in lsd.columns
-            # hasLEV_CI = np.all([attr in lsd.columns for attr in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']])
+            hasLEV = 'LEV_MEAN' in lad.columns
+            hasFlux = 'est_g_day' in lad.columns
+            hasDC = 'd_counting_frac' in lad.columns
+            # hasLEV_CI = np.all([attr in lad.columns for attr in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']])
 
             if not hasLEV:
                 self.binnedLEV = None
@@ -1662,24 +1662,24 @@ class BinnedLSD():
                 self.binnedMg_m2_day = None
 
             ## Bin
-            group_sums = lsd.groupby(['size_bin']).Area_km2.sum(
+            group_sums = lad.groupby(['size_bin']).Area_km2.sum(
                 numeric_only=True)  # These don't get lower/upper estimates for now
             # These don't get lower/upper estimates for now
-            group_counts = lsd.groupby(['size_bin']).Area_km2.count()
-            if compute_ci_lsd:
-                assert extreme_regions_lsd is not None, "If compute_ci_lsd is True, extreme_regions_lsd must be provided"
-                assert np.all([region in lsd.Region.unique() for region in extreme_regions_lsd]
-                              ), "One region name in extreme_regions_lsd is not present in lsd."
+            group_counts = lad.groupby(['size_bin']).Area_km2.count()
+            if compute_ci_lad:
+                assert extreme_regions_lad is not None, "If compute_ci_lad is True, extreme_regions_lad must be provided"
+                assert np.all([region in lad.Region.unique() for region in extreme_regions_lad]
+                              ), "One region name in extreme_regions_lad is not present in lad."
 
                 ## First, group by area bin and take sum and counts of each bin
-                group_low_sums, group_high_sums = [lsd[lsd['Region'] == region].groupby(
-                    ['size_bin']).Area_km2.sum() for region in extreme_regions_lsd]
-                self.hasCI_lsd = True
-                self.extreme_regions_lsd = extreme_regions_lsd
+                group_low_sums, group_high_sums = [lad[lad['Region'] == region].groupby(
+                    ['size_bin']).Area_km2.sum() for region in extreme_regions_lad]
+                self.hasCI_lad = True
+                self.extreme_regions_lad = extreme_regions_lad
             else:
                 ## Create a series to emulate the structure I used to use to store region confidence intervals
                 group_low_sums, group_high_sums = None, None
-                self.hasCI_lsd = False
+                self.hasCI_lad = False
 
             ds = confidence_interval_from_extreme_regions(
                 group_sums, group_low_sums, group_high_sums, name='Area_km2')
@@ -1703,27 +1703,27 @@ class BinnedLSD():
 
             ## bin LEVbinnedDCz
             if hasLEV:
-                group_means_lev = lsd.groupby(
+                group_means_lev = lad.groupby(
                     ['size_bin']).LEV_MEAN.mean(numeric_only=True)
                 if compute_ci_lev:
-                    assert extreme_regions_lev is not None, "If compute_ci_lsd is True, and LSD has LEV, extreme_regions_lev must be provided"
-                    assert np.all([region in lsd.Region.unique() for region in extreme_regions_lev]
-                                  ), "One region name in extreme_regions_lev is not present in lsd."
-                    # group_means_lev_low = lsd.groupby(['size_bin']).LEV_MIN.mean(numeric_only=True)
-                    # group_means_lev_high = lsd.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
+                    assert extreme_regions_lev is not None, "If compute_ci_lad is True, and LAD has LEV, extreme_regions_lev must be provided"
+                    assert np.all([region in lad.Region.unique() for region in extreme_regions_lev]
+                                  ), "One region name in extreme_regions_lev is not present in lad."
+                    # group_means_lev_low = lad.groupby(['size_bin']).LEV_MIN.mean(numeric_only=True)
+                    # group_means_lev_high = lad.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
                     # Here, my ref distrib has no LEV_MIN/MAX, since it is observed, so I use extreme reegions for uncertainty bounds
-                    group_means_lev_low, group_means_lev_high = [lsd[lsd['Region'] == region].groupby(
+                    group_means_lev_low, group_means_lev_high = [lad[lad['Region'] == region].groupby(
                         ['size_bin']).LEV_MEAN.mean(numeric_only=True) for region in extreme_regions_lev]
                     self.hasCI_lev = True
                     self.extreme_regions_lev = extreme_regions_lev
                     pass
                 # if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
-                #     self.binnedLEV = lsd.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
+                #     self.binnedLEV = lad.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
                 elif compute_ci_lev_existing:
                     assert compute_ci_lev is False, "If selecting 'compute_ci_lev_existing', make sure 'compute_ci_lev' is False."
-                    assert np.all(np.isin(['LEV_MIN', 'LEV_MAX'], lsd.columns)
-                                  ), "If selecting 'compute_ci_lev_existing', both 'LEV_MIN' and 'LEV_MAX' need to be present in lsd columns."
-                    group_means_lev_low, group_means_lev_high = [lsd.groupby(
+                    assert np.all(np.isin(['LEV_MIN', 'LEV_MAX'], lad.columns)
+                                  ), "If selecting 'compute_ci_lev_existing', both 'LEV_MIN' and 'LEV_MAX' need to be present in lad columns."
+                    group_means_lev_low, group_means_lev_high = [lad.groupby(
                         ['size_bin'])[stat].mean(numeric_only=True) for stat in ['LEV_MIN', 'LEV_MAX']]
                 else:
                     group_means_lev_low, group_means_lev_high = None, None
@@ -1736,32 +1736,32 @@ class BinnedLSD():
 
             ## bin flux
             if hasFlux:
-                ds_g_day_from_sum = lsd.groupby(['size_bin']).est_g_day.sum(
+                ds_g_day_from_sum = lad.groupby(['size_bin']).est_g_day.sum(
                     numeric_only=True)  # method #1: sum g/day for each lake
                 self.binnedG_day = confidence_interval_from_extreme_regions(
                     ds_g_day_from_sum, None, None, name='est_g_day')  # Save for potential comparison?
                 if compute_ci_flux:  # CI
-                    assert compute_ci_lsd is not None, "If compute_ci_flux is True, compute_ci_lsd must be provided"
-                    # group_means_flux0, group_means_flux_low0, group_means_flux_high0 = [lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) * self.binnedAreas.loc[:,stat] * 1e3 for stat in ['mean', 'lower', 'upper']] # method #2: would have units of g / day (don't multiply by area yet).
-                    group_means_flux, group_means_flux_low, group_means_flux_high = [lsd.groupby(['size_bin']).est_mg_m2_day.mean(
+                    assert compute_ci_lad is not None, "If compute_ci_flux is True, compute_ci_lad must be provided"
+                    # group_means_flux0, group_means_flux_low0, group_means_flux_high0 = [lad.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) * self.binnedAreas.loc[:,stat] * 1e3 for stat in ['mean', 'lower', 'upper']] # method #2: would have units of g / day (don't multiply by area yet).
+                    group_means_flux, group_means_flux_low, group_means_flux_high = [lad.groupby(['size_bin']).est_mg_m2_day.mean(
                         numeric_only=True) for stat in ['mean', 'lower', 'upper']]  # Low/mean/high are all the same on a per-area basis!
                     self.hasCI_flux = True
                     pass
                 else:  # This branch is silly, because neither branch computes a meaningful confidence interval. See self.PredictFlux() for actual conversion to CI based on CI of areas and given per-area fluxes
-                    group_means_flux = lsd.groupby(['size_bin']).est_mg_m2_day.mean(
+                    group_means_flux = lad.groupby(['size_bin']).est_mg_m2_day.mean(
                         numeric_only=True)  # Low/mean/high are all the same on a per-area basis!
                     group_means_flux_low, group_means_flux_high = None, None
                     self.hasCI_flux = False
                 self.binnedMg_m2_day = confidence_interval_from_extreme_regions(
                     group_means_flux, group_means_flux_low, group_means_flux_high, name='est_mg_m2_day')
 
-            # copy attribute from parent LSD (note 'size_bin' is added in earlier this method)
+            # copy attribute from parent LAD (note 'size_bin' is added in earlier this method)
             for attr in ['isTruncated', 'truncationLimits', 'name', 'size_bin']:
-                setattr(self, attr, getattr(lsd, attr))
+                setattr(self, attr, getattr(lad, attr))
 
             ## bin double counting
             if hasDC:
-                dc = lsd.groupby(['size_bin']).d_counting_frac.mean(
+                dc = lad.groupby(['size_bin']).d_counting_frac.mean(
                     numeric_only=True)
                 binnedDC = confidence_interval_from_extreme_regions(
                     dc, None, None, name='dc')
@@ -1774,14 +1774,14 @@ class BinnedLSD():
                 warn('The first bin has count zero. Did you set the lowest bin edge < the lower truncation limit of the dataset?')
 
         else:  # used for area extrapolation
-            assert nbins is not None and compute_ci_lsd is not None, "If 'binned_areas' argument is given, so must be 'nbins', and 'compute_ci_lsd'."
-            self.bin_edges = 'See self.refBinnedLSD'
-            self.area_bins = 'See self.refBinnedLSD'
-            self.hasCI_lsd = compute_ci_lsd  # retain from arg
+            assert nbins is not None and compute_ci_lad is not None, "If 'binned_areas' argument is given, so must be 'nbins', and 'compute_ci_lad'."
+            self.bin_edges = 'See self.refBinnedLAD'
+            self.area_bins = 'See self.refBinnedLAD'
+            self.hasCI_lad = compute_ci_lad  # retain from arg
             self.hasCI_lev = compute_ci_lev  # retain
             self.binnedAreas = binned_areas  # retain from arg
-            self.binnedCounts = 'See self.refBinnedLSD'
-            self.binnedLEV = 'See self.refBinnedLSD'
+            self.binnedCounts = 'See self.refBinnedLAD'
+            self.binnedLEV = 'See self.refBinnedLAD'
             self.binnedG_day = None
             self.binnedMg_m2_day = None
             self.hasCI_flux = None
@@ -1797,7 +1797,7 @@ class BinnedLSD():
     #     self.isNormalized = True
 
     def FromExtrap():
-        '''Creates a class similar to binnedLSD,'''
+        '''Creates a class similar to binnedLAD,'''
         pass
 
     def get_public_attrs(self):
@@ -1813,17 +1813,17 @@ class BinnedLSD():
             Whether to output the lower and upper confidence intervals.
         '''
         if self.isNormalized:
-            warn('Careful: binnedLSD is normalized, and you may be summing the top bin that gives the index region.')
+            warn('Careful: binnedLAD is normalized, and you may be summing the top bin that gives the index region.')
 
-        if self.hasCI_lsd:
+        if self.hasCI_lad:
             if ci:
                 return self.binnedAreas.loc[:, 'mean'].sum(), self.binnedAreas.loc[:, 'lower'].sum(), self.binnedAreas.loc[:, 'upper'].sum()
             else:
                 return self.binnedAreas.loc[:, 'mean'].sum()
-        else:  # no .hasCI_lsd
+        else:  # no .hasCI_lad
             if ci:
                 raise ValueError(
-                    'BinnedLSD doesnt have a confidence interval, so it cant be included in sum.')
+                    'BinnedLAD doesnt have a confidence interval, so it cant be included in sum.')
             else:
                 return self.binnedAreas.sum()
 
@@ -1842,7 +1842,7 @@ class BinnedLSD():
         ## Remove last bin, if desired
         if self.isExtrapolated == False:
             if show_rightmost == False:  # if I need to cut off rightmost bin
-                # if self.hasCI_lsd: # sloppy fix
+                # if self.hasCI_lad: # sloppy fix
                 #     binned_areas = pd.Series({'mean': binned_areas.values[0].iloc[:-1],
                 #                                 'lower': binned_areas.values[1].iloc[:-1],
                 #                                 'upper': binned_areas.values[2].iloc[:-1]})
@@ -1858,7 +1858,7 @@ class BinnedLSD():
         # plt.bar(self.bin_edges[:-1], binned_areas)
         if as_lineplot:
             assert isinstance(
-                binned_areas, pd.Series), "As written, BinnedLSD.plot requires pd.Series argument is as_lineplot==True."
+                binned_areas, pd.Series), "As written, BinnedLAD.plot requires pd.Series argument is as_lineplot==True."
             xlabel = 'Lake area ($km^2$)'
 
             ## Normalize by total to make true PDF
@@ -1908,8 +1908,8 @@ class BinnedLSD():
         returns: ax
         '''
         assert hasattr(
-            self, 'Temp_K'), "Binned LSD needs a Temp_K attribute in order to predict flux."
-        assert self.isNormalized == False, "Binned LSD is normalized so values will be unitless for area."
+            self, 'Temp_K'), "Binned LAD needs a Temp_K attribute in order to predict flux."
+        assert self.isNormalized == False, "Binned LAD is normalized so values will be unitless for area."
         means = self.binnedAreas.loc[:, 'mean']
         geom_mean_areas = np.array(
             list(map(interval_geometric_mean, means.index)))
@@ -1923,7 +1923,7 @@ class BinnedLSD():
         ## Flux (flux rate, gCH4/day)
         est_g_day_mean, est_g_day_low, est_g_day_high = [est_mg_m2_day * self.binnedAreas.loc[:, stat] * 1e3 for stat in [
             'mean', 'lower', 'upper']]  # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
-        # group_means_flux, group_means_flux_low, group_means_flux_high = [lsd.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) for stat in ['mean', 'lower', 'upper']] # Low/mean/high are all the same on a per-area basis!
+        # group_means_flux, group_means_flux_low, group_means_flux_high = [lad.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) for stat in ['mean', 'lower', 'upper']] # Low/mean/high are all the same on a per-area basis!
         est_g_day = confidence_interval_from_extreme_regions(
             est_g_day_mean, est_g_day_low, est_g_day_high, name='est_g_day')
         self._total_flux_Tg_yr = est_g_day.groupby(
@@ -1932,7 +1932,7 @@ class BinnedLSD():
         ## Add attrs
         self.binnedMg_m2_day = confidence_interval_from_extreme_regions(pd.Series(
             est_mg_m2_day, index=est_g_day.loc[:, 'mean'].index), None, None, name='est_mg_m2_day')  # in analogy with binnedAreas and binnedCounts
-        # in analogy with binnedAreas and binnedCounts # HERE: is this updated value the same as the one computed in BinnedLSD.init?
+        # in analogy with binnedAreas and binnedCounts # HERE: is this updated value the same as the one computed in BinnedLAD.init?
         self.binnedG_day = est_g_day
 
         # return self._Total_flux_Tg_yr
@@ -1965,29 +1965,29 @@ class BinnedLSD():
         table.rename(columns={'LEV_frac':'LAV_frac'}, inplace=True)
         return table
     
-def combineBinnedLSDs(lsds):
-    '''Combines two or more BinnedLSDs in the tuple lsds and returns a new BinnedLSD.'''
+def combineBinnedLADs(lads):
+    '''Combines two or more BinnedLADs in the tuple lads and returns a new BinnedLAD.'''
     
     # Step 1: Check compatibility
     # (You'll need to implement this part based on the requirements of your specific application)
 
-    # Step 2: Concatenate binnedAreas and init BinnedLSD class
-    combined_binned_areas = pd.concat([lsd.binnedAreas.reset_index() for lsd in lsds]).set_index(['size_bin', 'stat'])
-    nbins = np.sum([lsd.nbins for lsd in lsds])
-    cmb_binned_lsd = BinnedLSD(binned_areas=combined_binned_areas, nbins = nbins, compute_ci_lsd=False,
+    # Step 2: Concatenate binnedAreas and init BinnedLAD class
+    combined_binned_areas = pd.concat([lad.binnedAreas.reset_index() for lad in lads]).set_index(['size_bin', 'stat'])
+    nbins = np.sum([lad.nbins for lad in lads])
+    cmb_binned_lad = BinnedLAD(binned_areas=combined_binned_areas, nbins = nbins, compute_ci_lad=False,
                                 compute_ci_lev=False)
     
     ## Add in binned LEV, flux attributes
-    cmb_binned_lsd.binnedLEV = pd.concat([lsd.binnedLEV.reset_index() for lsd in lsds], axis=0).set_index(['size_bin', 'stat'])
-    cmb_binned_lsd.binnedG_day = pd.concat([lsd.binnedG_day.reset_index() for lsd in lsds], axis=0).set_index(['size_bin', 'stat'])
-    cmb_binned_lsd.binnedMg_m2_day = pd.concat([lsd.binnedMg_m2_day.reset_index() for lsd in lsds], axis=0).set_index(['size_bin', 'stat'])
-    cmb_binned_lsd.binnedDC = pd.concat([lsd.binnedDC.reset_index() for lsd in lsds], axis=0).set_index(['size_bin', 'stat'])
-    cmb_binned_lsd.binnedCounts = pd.concat([lsd.binnedCounts.reset_index() for lsd in lsds], axis=0).set_index(['size_bin', 'stat'])
+    cmb_binned_lad.binnedLEV = pd.concat([lad.binnedLEV.reset_index() for lad in lads], axis=0).set_index(['size_bin', 'stat'])
+    cmb_binned_lad.binnedG_day = pd.concat([lad.binnedG_day.reset_index() for lad in lads], axis=0).set_index(['size_bin', 'stat'])
+    cmb_binned_lad.binnedMg_m2_day = pd.concat([lad.binnedMg_m2_day.reset_index() for lad in lads], axis=0).set_index(['size_bin', 'stat'])
+    cmb_binned_lad.binnedDC = pd.concat([lad.binnedDC.reset_index() for lad in lads], axis=0).set_index(['size_bin', 'stat'])
+    cmb_binned_lad.binnedCounts = pd.concat([lad.binnedCounts.reset_index() for lad in lads], axis=0).set_index(['size_bin', 'stat'])
 
     # Step 3: Handle confidence intervals (if needed)
     # (You'll need to implement this part based on your specific requirements)
 
-    return cmb_binned_lsd
+    return cmb_binned_lad
 
 ## Custom grouping function (Thanks ChatGPT!)
 def interval_group(interval, edges=[0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000, np.inf]):
@@ -2007,152 +2007,152 @@ def runTests():
     '''Practicing loading and functions/methods with/without various arguments.
     Can pause and examine classes to inspect attributes.'''
     # ## Testing from shapefile
-    # lsd_from_shp = LSD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
-    # lsd_from_shp = LSD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area')
-    # lsd_from_shp = LSD.from_shapefile('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None, _areaConversionFactor=1e6)
+    # lad_from_shp = LAD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
+    # lad_from_shp = LAD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area')
+    # lad_from_shp = LAD.from_shapefile('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None, _areaConversionFactor=1e6)
     # print('\tPassed load from shapefile.')
 
     ## Testing from gdf
     # gdf = pyogrio.read_dataframe('/Volumes/thebe/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
-    # lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4')
+    # lad_from_gdf = LAD(gdf, area_var='Area', name='CIR', region_var='Region4')
     # regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    # lsd_from_gdf = LSD(gdf, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
+    # lad_from_gdf = LAD(gdf, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
     # print('\tPassed load from gdf.')
 
     # ## Loading from dir
     # exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
-    # lsd_from_dir = LSD.from_paths('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/y*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=exclude)
+    # lad_from_dir = LAD.from_paths('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/y*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=exclude)
 
     # ## Test concat
-    # lsd_concat = LSD.concat((lsd_from_shp, lsd_from_gdf))
-    # lsd_concat = LSD.concat((lsd_from_shp, lsd_from_gdf), broadcast_name=True)
+    # lad_concat = LAD.concat((lad_from_shp, lad_from_gdf))
+    # lad_concat = LAD.concat((lad_from_shp, lad_from_gdf), broadcast_name=True)
     # print('\tPassed concat.')
 
     # ## Test truncate
-    # lsd_concat.truncate(0.01, 20)
+    # lad_concat.truncate(0.01, 20)
     # print('\tPassed truncate.')
     # pass
 
     # ## Test compute area from geometry
 
     # ## Test area fraction
-    # lsd_from_gdf.area_fraction(1)
+    # lad_from_gdf.area_fraction(1)
     # print('\tPassed area_fraction.')
 
     ## Load with proper parameters
-    # lsd_hl = LSD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
+    # lad_hl = LAD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
     regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin',
                'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    lsd_cir = LSD.from_shapefile('/Volumes/thebe/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp',
+    lad_cir = LAD.from_shapefile('/Volumes/thebe/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp',
                                  area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
     ## Test binned PDF
-    # plotEPDFByValue(lsd_cir.Area_km2)
+    # plotEPDFByValue(lad_cir.Area_km2)
 
     ####################################
     ## LEV Tests
     ####################################
 
     ref_names = ['CSB', 'CSD', 'PAD', 'YF']
-    lsd_lev_cat, ref_dfs = loadUAVSAR(ref_names)
+    lad_lev_cat, ref_dfs = loadUAVSAR(ref_names)
 
     ## Test LEV estimate: Load UAVSAR/GSW overlay stats
     print('Load HL with joined occurrence...')
-    # lsd_hl_oc = pyogrio.read_dataframe('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
+    # lad_hl_oc = pyogrio.read_dataframe('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
     # read smaller csv gzip version of data.
-    lsd_hl_oc = pd.read_csv(
+    lad_hl_oc = pd.read_csv(
         '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', nrows=10000)
 
     extreme_regions_lev_for_extrap = ['CSD', 'PAD']
     # use same regions for extrap as for estimate
-    lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names,
+    lev = computeLEV(lad_hl_oc, ref_dfs, ref_names,
                      extreme_regions_lev=extreme_regions_lev_for_extrap)
-    lsd_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id')
+    lad_lev = LAD(lev, area_var='Lake_area', idx_var='Hylak_id')
 
     ## Test plot LEV  CDF
-    lsd_lev.plot_lev_cdf()
+    lad_lev.plot_lev_cdf()
 
     ## Test plot LEV CDF by lake area
-    lsd_lev.plot_lev_cdf_by_lake_area()
-    print(f"Mean LEV: {lsd_lev.sumLev(asFraction=True)['mean']:.2%}")
+    lad_lev.plot_lev_cdf_by_lake_area()
+    print(f"Mean LEV: {lad_lev.sumLev(asFraction=True)['mean']:.2%}")
 
-    ## Test binned LEV HL LSD (won't actually use this for analysis)
-    # extreme_regions_lsd = ['Tuktoyaktuk Peninsula', 'Prairie Potholes North'] # tmp
-    # binned = BinnedLSD(lsd_lev.truncate(0.5,1), 0.5, 1000, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
+    ## Test binned LEV HL LAD (won't actually use this for analysis)
+    # extreme_regions_lad = ['Tuktoyaktuk Peninsula', 'Prairie Potholes North'] # tmp
+    # binned = BinnedLAD(lad_lev.truncate(0.5,1), 0.5, 1000, compute_ci_lad=True, extreme_regions_lad=extreme_regions_lad) # compute_ci_lad=False will disable plotting CI.
 
-    ## Test 1: Bin the reference UAVSAR LEV LSDs
-    # lsd_lev_binneds = []
-    # for i, lsd_lev in enumerate(lsd_levs):
-    #     lsd_lev_binneds.append(BinnedLSD(lsd_lev, 0.000125, 0.5).binnedLEV)
-    # pd.DataFrame(lsd_lev_binneds).T
+    ## Test 1: Bin the reference UAVSAR LEV LADs
+    # lad_lev_binneds = []
+    # for i, lad_lev in enumerate(lad_levs):
+    #     lad_lev_binneds.append(BinnedLAD(lad_lev, 0.000125, 0.5).binnedLEV)
+    # pd.DataFrame(lad_lev_binneds).T
 
     ## Test 2: Concat all ref LEV distributions and bin
-    # lsd_lev_cat = LSD.concat(lsd_levs, broadcast_name=True)
-    # def ci_from_named_regions(LSD, regions):
-    binned_lev = BinnedLSD(lsd_lev_cat, 0.0001, 0.5, compute_ci_lev=True,
+    # lad_lev_cat = LAD.concat(lad_levs, broadcast_name=True)
+    # def ci_from_named_regions(LAD, regions):
+    binned_lev = BinnedLAD(lad_lev_cat, 0.0001, 0.5, compute_ci_lev=True,
                            extreme_regions_lev=extreme_regions_lev_for_extrap)  # 0.000125 is native
 
     ####################################
-    ## LSD/bin/extrap Tests
+    ## LAD/bin/extrap Tests
     ####################################
 
-    ## Test binnedLSD
-    extreme_regions_lsd = ['Tuktoyaktuk Peninsula',
+    ## Test binnedLAD
+    extreme_regions_lad = ['Tuktoyaktuk Peninsula',
                            'Prairie Potholes North']  # tmp
-    # binned = BinnedLSD(lsd_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd) # compute_ci_lsd=False will disable plotting CI.
-    # compute_ci_lsd=False will disable plotting CI.
-    binned = BinnedLSD(lsd_cir.truncate(0.0001, 1),
-                       0.0001, 0.5, compute_ci_lsd=False)
+    # binned = BinnedLAD(lad_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lad=True, extreme_regions_lad=extreme_regions_lad) # compute_ci_lad=False will disable plotting CI.
+    # compute_ci_lad=False will disable plotting CI.
+    binned = BinnedLAD(lad_cir.truncate(0.0001, 1),
+                       0.0001, 0.5, compute_ci_lad=False)
     binned.plot()
     binned.plot(as_lineplot=True)
 
-    ## Test binnedLSD with edges specified
-    # compute_ci_lsd=False will disable plotting CI.
-    binned_manual = BinnedLSD(lsd_cir.truncate(0.0001, 1), 0.0001, 0.5, bins=[
-                              0.001, 0.1, 0.5], compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd)
+    ## Test binnedLAD with edges specified
+    # compute_ci_lad=False will disable plotting CI.
+    binned_manual = BinnedLAD(lad_cir.truncate(0.0001, 1), 0.0001, 0.5, bins=[
+                              0.001, 0.1, 0.5], compute_ci_lad=True, extreme_regions_lad=extreme_regions_lad)
     binned_manual.plot()
 
-    ## Test binnedLSD with fluxes
+    ## Test binnedLAD with fluxes
     model = loadBAWLD_CH4()
-    lsd_cir['Temp_K'] = 10  # placeholder, required for prediction
-    lsd_cir.predictFlux(model, includeExtrap=False)
-    binned = BinnedLSD(lsd_cir.truncate(0.0001, 1), 0.0001, 0.5, compute_ci_lsd=True, compute_ci_flux=True,
-                       extreme_regions_lsd=extreme_regions_lsd)  # compute_ci_lsd=False will disable plotting CI.
+    lad_cir['Temp_K'] = 10  # placeholder, required for prediction
+    lad_cir.predictFlux(model, includeExtrap=False)
+    binned = BinnedLAD(lad_cir.truncate(0.0001, 1), 0.0001, 0.5, compute_ci_lad=True, compute_ci_flux=True,
+                       extreme_regions_lad=extreme_regions_lad)  # compute_ci_lad=False will disable plotting CI.
 
     ## Test extrapolate on small data
-    # lsd_hl_trunc = lsd_hl.truncate(0.1, np.inf, inplace=False) # Beware chaining unless I return a new variable.
-    # lsd_hl_trunc.extrapolate(binned, binned_lev)
+    # lad_hl_trunc = lad_hl.truncate(0.1, np.inf, inplace=False) # Beware chaining unless I return a new variable.
+    # lad_hl_trunc.extrapolate(binned, binned_lev)
 
     ## Test extrapolate on small data with binned LEV
-    lsd_hl_trunc = lsd_lev.truncate(0.5, np.inf, inplace=False)
-    lsd_hl_trunc.extrapolate(binned, binned_lev)
+    lad_hl_trunc = lad_lev.truncate(0.5, np.inf, inplace=False)
+    lad_hl_trunc.extrapolate(binned, binned_lev)
 
     ## Test mean lev with extrap
-    print(f"Mean LEV: {lsd_hl_trunc.sumLev(asFraction=True)['mean']:.2%}")
+    print(f"Mean LEV: {lad_hl_trunc.sumLev(asFraction=True)['mean']:.2%}")
 
     ## Compare extrapolated sums
-    lsd_hl_trunc.extrapLSD.sumAreas()
-    lsd_hl_trunc.sumAreas()
+    lad_hl_trunc.extrapLAD.sumAreas()
+    lad_hl_trunc.sumAreas()
 
     ## Test plot extrap LEV
-    # ax = lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=True, color='blue')
+    # ax = lad_hl_trunc.plot_extrap_lad(normalized=False, error_bars=True, color='blue')
     # ax2=ax.twinx()
-    # lsd_hl_trunc.plot_extrap_lev(ax=ax2, error_bars=True, color='green')
+    # lad_hl_trunc.plot_extrap_lev(ax=ax2, error_bars=True, color='green')
     # ymin, ymax = ax.get_ylim()
     # ax2.set_ylim([ymin, ymax])
     # plt.tight_layout()
 
     ## Compare extrapolated area fractions
-    # frac = lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.0001, 0.01)
+    # frac = lad_hl_trunc.extrapolated_area_fraction(lad_cir, 0.0001, 0.01)
     # print(frac)
-    # # lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.00001, 0.01) # test for bin warning
-    # # lsd_hl_trunc.extrapolated_area_fraction(lsd_cir, 0.0001, 1)# Test for limit error
+    # # lad_hl_trunc.extrapolated_area_fraction(lad_cir, 0.00001, 0.01) # test for bin warning
+    # # lad_hl_trunc.extrapolated_area_fraction(lad_cir, 0.0001, 1)# Test for limit error
 
     ## Plot
-    # lsd_hl_trunc.extrapLSD.plot()
-    # ax = lsd_hl_trunc.plot_lsd(reverse=False, normalized=True)
-    # lsd_hl_trunc.plot_extrap_lsd(normalized=True, error_bars=False, reverse=False) # ax=ax,
-    # lsd_hl_trunc.plot_extrap_lsd(normalized=False, error_bars=True, reverse=False) # ax=ax,
+    # lad_hl_trunc.extrapLAD.plot()
+    # ax = lad_hl_trunc.plot_lad(reverse=False, normalized=True)
+    # lad_hl_trunc.plot_extrap_lad(normalized=True, error_bars=False, reverse=False) # ax=ax,
+    # lad_hl_trunc.plot_extrap_lad(normalized=False, error_bars=True, reverse=False) # ax=ax,
 
     ####################################
     ## Flux Tests
@@ -2168,30 +2168,30 @@ def runTests():
 
     ## Test flux prediction from observed lakes
     model = loadBAWLD_CH4()
-    # lsd_hl_trunc['Temp_K'] = 10 # placeholder until I load from file, required for prediction
+    # lad_hl_trunc['Temp_K'] = 10 # placeholder until I load from file, required for prediction
     # some rows don't merge, I think bc I think idx_unamed is nto for HL... just use as example
-    temp = lsd_hl_trunc.merge(
+    temp = lad_hl_trunc.merge(
         df_clim, how='left', left_on='idx_unamed', right_on='Cell_ID')
     temperature_metric = 'jja'
-    lsd_hl_trunc['Temp_K'] = temp[temperature_metric]
-    lsd_hl_trunc.predictFlux(model, includeExtrap=False)
+    lad_hl_trunc['Temp_K'] = temp[temperature_metric]
+    lad_hl_trunc.predictFlux(model, includeExtrap=False)
 
     ## Test flux prediction from extrapolated lakes
-    # Placeholder # np.average(lsd_hl_trunc.Temp_K, weights=lsd_hl_trunc.Area_km2) # Use lake-area-weighted average temp as temp for extrapolated lakes, since we don't know where they are located
-    lsd_hl_trunc.extrapLSD.Temp_K = 9.8 + 273.15
-    lsd_hl_trunc.extrapLSD.predictFlux(model)
+    # Placeholder # np.average(lad_hl_trunc.Temp_K, weights=lad_hl_trunc.Area_km2) # Use lake-area-weighted average temp as temp for extrapolated lakes, since we don't know where they are located
+    lad_hl_trunc.extrapLAD.Temp_K = 9.8 + 273.15
+    lad_hl_trunc.extrapLAD.predictFlux(model)
 
     ## Test combined prediction
-    lsd_hl_trunc.predictFlux(model, includeExtrap=True)
+    lad_hl_trunc.predictFlux(model, includeExtrap=True)
 
     ## Test plot fluxes
-    # lsd_hl_trunc.plot_flux(reverse=False, normalized=True, all=False)
-    # lsd_hl_trunc.plot_flux(reverse=False, normalized=False, all=False)
+    # lad_hl_trunc.plot_flux(reverse=False, normalized=True, all=False)
+    # lad_hl_trunc.plot_flux(reverse=False, normalized=False, all=False)
 
     ## Test plot extrap fluxes
-    lsd_hl_trunc.plot_extrap_flux(
+    lad_hl_trunc.plot_extrap_flux(
         reverse=False, normalized=False, error_bars=True)
-    lsd_hl_trunc.plot_extrap_flux(
+    lad_hl_trunc.plot_extrap_flux(
         reverse=False, normalized=True, error_bars=True)
 
     pass
@@ -2257,43 +2257,43 @@ if __name__ == '__main__':
                'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River',
                'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North',
                'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    lsd_cir = LSD.from_shapefile('/Volumes/thebe/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp',
+    lad_cir = LAD.from_shapefile('/Volumes/thebe/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp',
                                  area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
-    ## Loading PeRL LSD
+    ## Loading PeRL LAD
     perl_exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701', 'hbl00119740617',
                     'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707',
                     'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx',
                     'bar00120080730_qb_nplaea.shp']
-    lsd_perl = LSD.from_paths('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/*.shp',
+    lad_perl = LAD.from_paths('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/*.shp',
                               area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=perl_exclude)
 
     ## Loading from Mullen
-    lsd_mullen = LSD.from_paths('/Volumes/thebe/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/*_3Y_lakes-and-ponds.zip', _areaConversionFactor=1000000,
+    lad_mullen = LAD.from_paths('/Volumes/thebe/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/*_3Y_lakes-and-ponds.zip', _areaConversionFactor=1000000,
                                 name='Mullen', computeArea=True)  # '/Volumes/thebe/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/[A-Z][A-Z]_08*.zip'
 
     ## Combine PeRL and CIR and Mullen
-    lsd = LSD.concat((lsd_cir, lsd_perl, lsd_mullen),
+    lad = LAD.concat((lad_cir, lad_perl, lad_mullen),
                      broadcast_name=True, ignore_index=True)
 
     # ## plot
-    # lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=True, plotLabels=False)
-    # lsd.truncate(0.0001, 10).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
+    # lad.truncate(0.0001, 10).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=True, plotLabels=False)
+    # lad.truncate(0.0001, 10).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
 
     # ## Plot just CIR
-    # lsd_cir.truncate(0.0001, 5).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=False)
-    # lsd_cir.truncate(0.0001, 5).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
+    # lad_cir.truncate(0.0001, 5).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=False)
+    # lad_cir.truncate(0.0001, 5).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
 
     # ## Plot just PeRL
-    # lsd_perl.truncate(0.0001, 5).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=False)
-    # lsd_perl.truncate(0.0001, 5).plot_lsd(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
+    # lad_perl.truncate(0.0001, 5).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=False)
+    # lad_perl.truncate(0.0001, 5).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
 
     # ## Compute extreme regions and save to spreadsheet
-    # df_regions = regionStats(lsd)
+    # df_regions = regionStats(lad)
     # df_regions.to_csv(os.path.join(tb_dir, 'region_stats.csv'))
 
     # ## YF compare
-    # LSD(lsd.query("Region=='YF_3Y_lakes-and-ponds' or Region=='Yukon Flats Basin'"), name='compare').plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=False)
+    # LAD(lad.query("Region=='YF_3Y_lakes-and-ponds' or Region=='Yukon Flats Basin'"), name='compare').plot_lad(all=False, plotLegend=True, reverse=False, groupby_name=False)
 
     ####################################
     ## LEV Analysis
@@ -2302,31 +2302,31 @@ if __name__ == '__main__':
     ## Load csv and shapefiles
     ref_names = ['CSB', 'CSD', 'PAD', 'YF']
     extreme_regions_lev_for_extrap = ['CSD', 'PAD']
-    lsd_lev_cat, ref_dfs = loadUAVSAR(ref_names)
+    lad_lev_cat, ref_dfs = loadUAVSAR(ref_names)
 
     ## Create binned ref LEV distribution from UAVSAR
-    binned_lev = BinnedLSD(lsd_lev_cat, 0.0001, 0.5, compute_ci_lev=True,
+    binned_lev = BinnedLAD(lad_lev_cat, 0.0001, 0.5, compute_ci_lev=True,
                            extreme_regions_lev=extreme_regions_lev_for_extrap)  # 0.000125 is native
 
     ## LEV estimate: Load UAVSAR/GSW overlay stats
     print('Load HL with joined occurrence...')
-    # lsd_hl_oc = pyogrio.read_dataframe('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values # outdated version
+    # lad_hl_oc = pyogrio.read_dataframe('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values # outdated version
     # read smaller csv gzip version of data.
-    lsd_hl_oc = pd.read_csv(
+    lad_hl_oc = pd.read_csv(
         df_HL_jn_full_pth, compression='gzip', low_memory=False)
-    lev = computeLEV(lsd_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap,
+    lev = computeLEV(lad_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap,
                      use_low_oc=use_low_oc)  # use same extreme regions for est as for extrap
 
     ## Set high arctic lakes LEV to 0 (no GSW present above 78 degN)
     lev.loc[lev.Pour_lat >= 78, ['LEV_MEAN',
                                  'LEV_MIN', 'LEV_MAX']] = 0  # LEV_MEAN
 
-    ## Turn into a LSD
-    lsd_hl_lev = LSD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL') # main dataset for analysis
+    ## Turn into a LAD
+    lad_hl_lev = LAD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL') # main dataset for analysis
 
     # ## Plot LEV CDF by lake area (no extrap) and report mean LEV fraction
-    # lsd_hl_lev.plot_lev_cdf_by_lake_area()
-    # lsd_hl_lev.plot_lev_cdf_by_lake_area(normalized=False)
+    # lad_hl_lev.plot_lev_cdf_by_lake_area()
+    # lad_hl_lev.plot_lev_cdf_by_lake_area(normalized=False)
 
     ####################################
     ## Climate Analysis: join in temperature
@@ -2345,24 +2345,24 @@ if __name__ == '__main__':
     # take only first lake (for cases where lake is equidistant from multiple cells)
     df_hl_nearest_bawld = df_hl_nearest_bawld.groupby(
         'Hylak_id').first().reset_index()
-    # Need to create new var because output of merge is not LSD
-    lsd_hl_lev_m = lsd_hl_lev.merge(df_hl_nearest_bawld[[
+    # Need to create new var because output of merge is not LAD
+    lad_hl_lev_m = lad_hl_lev.merge(df_hl_nearest_bawld[[
         'Hylak_id', 'BAWLD_Cell', '0-5', '5-50', '50-95', '95-100']], left_on='idx_HL', right_on='Hylak_id', how='left')
     
     ## Join in ERA5 temperatures from previously-computed lookup table
-    temperatures = lsd_hl_lev_m[['idx_HL', 'BAWLD_Cell']].merge(df_clim, how='left', left_on='idx_HL', right_on='Hylak_id')
+    temperatures = lad_hl_lev_m[['idx_HL', 'BAWLD_Cell']].merge(df_clim, how='left', left_on='idx_HL', right_on='Hylak_id')
     # Fill any missing data with mean
     temperatures.fillna(temperatures.mean(), inplace=True)
-    lsd_hl_lev['Temp_K'] = temperatures[temperature_metric]
-    lsd_hl_lev['BAWLD_Cell'] = temperatures['BAWLD_Cell'].astype('int')
+    lad_hl_lev['Temp_K'] = temperatures[temperature_metric]
+    lad_hl_lev['BAWLD_Cell'] = temperatures['BAWLD_Cell'].astype('int')
 
     ## Add binned occurrence values
     for var in ['0-5', '5-50', '50-95', '95-100']:
-        lsd_hl_lev[var] = lsd_hl_lev_m[var]
+        lad_hl_lev[var] = lad_hl_lev_m[var]
 
     ## Compute double-counting
-    lsd_hl_lev['d_counting_frac'] = (
-        lsd_hl_lev['0-5'] + lsd_hl_lev['5-50']) / 100
+    lad_hl_lev['d_counting_frac'] = (
+        lad_hl_lev['0-5'] + lad_hl_lev['5-50']) / 100
     
     ## Compute cell-area-weighted average of climate as FYI
     # print(f'Mean JJA temperature across {roi_region} domain: {np.average(df_clim.jja, weights=df_clim.Shp_Area)}')
@@ -2423,116 +2423,116 @@ if __name__ == '__main__':
 
     if roi_region == 'WBD_BAWLD':
         print('Load WBD...')
-        lsd_wbd = LSD.from_shapefile(
+        lad_wbd = LAD.from_shapefile(
             '/Volumes/thebe/Other/Feng-High-res-inland-surface-water-tundra-boreal-NA/edk_out/fixed_geoms/WBD.shp', area_var='Area', name='WBD', idx_var='OBJECTID')
-        lsd_wbd.truncate(0.001, inplace=True)
+        lad_wbd.truncate(0.001, inplace=True)
 
     ## Plot WBD
-    # lsd_wbd.plot_lsd(reverse=False, all=False)
+    # lad_wbd.plot_lad(reverse=False, all=False)
 
     ## Combine WBD with HR dataset over small lakes for plotting comparison
-    # setattr(lsd, 'name', 'HR datasets')
-    # lsd['Region'] = 'NaN' # Hot fix to tell it not to plot a curve for each region # ***This is the buggy line!!!! Uncomment to get good curves, but no error bars if I haven't set compute_ci = False.
-    # lsd_compare = LSD.concat((lsd.truncate(0.001, 50), lsd_wbd.truncate(0.001, 50)), broadcast_name=True, ignore_index=True)
-    # lsd_compare.plot_lsd(all=False, plotLegend=True, reverse=False, groupby_name=True)
+    # setattr(lad, 'name', 'HR datasets')
+    # lad['Region'] = 'NaN' # Hot fix to tell it not to plot a curve for each region # ***This is the buggy line!!!! Uncomment to get good curves, but no error bars if I haven't set compute_ci = False.
+    # lad_compare = LAD.concat((lad.truncate(0.001, 50), lad_wbd.truncate(0.001, 50)), broadcast_name=True, ignore_index=True)
+    # lad_compare.plot_lad(all=False, plotLegend=True, reverse=False, groupby_name=True)
 
     ## Estimate area fraction
-    # lsd_wbd.area_fraction(0.1)
-    # lsd_wbd.area_fraction(0.01)
-    # lsd_wbd.area_fraction(0.001)
+    # lad_wbd.area_fraction(0.1)
+    # lad_wbd.area_fraction(0.01)
+    # lad_wbd.area_fraction(0.001)
 
-    # lsd.area_fraction(0.1)
-    # lsd.area_fraction(0.01)
-    # lsd.area_fraction(0.001)
+    # lad.area_fraction(0.1)
+    # lad.area_fraction(0.01)
+    # lad.area_fraction(0.001)
 
-    ## Load hydrolakes. if not using lsd_hl_lev
+    ## Load hydrolakes. if not using lad_hl_lev
     # print('Load HL...')
-    # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None)
+    # lad_hl = LAD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None)
 
     ## Load sheng
     # print('Load Sheng...')
-    # lsd_hl = LSD.from_shapefile(gdf_Sheng_pth, area_var=sheng_area_var, idx_var=None, name='Sheng', region_var=None)
+    # lad_hl = LAD.from_shapefile(gdf_Sheng_pth, area_var=sheng_area_var, idx_var=None, name='Sheng', region_var=None)
 
     ## Extrapolate
     # ['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']
-    extreme_regions_lsd = [
+    extreme_regions_lad = [
         'Tuktoyaktuk Peninsula', 'sur00120130802_tsx_nplaea']
-    # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
+    # Truncation limits for ref LAD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
     tmin, tmax = (0.0001, 5)
     # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
     emax = 0.5
-    binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True,
-                           extreme_regions_lsd=extreme_regions_lsd)  # reference distrib (try 5, 0.5 as second args)
+    binned_ref = BinnedLAD(lad.truncate(tmin, tmax), tmin, emax, compute_ci_lad=True,
+                           extreme_regions_lad=extreme_regions_lad)  # reference distrib (try 5, 0.5 as second args)
     # Beware chaining unless I return a new variable. # Try 0.1
-    lsd_hl_trunc = lsd_hl_lev.truncate(emax, np.inf)
-    lsd_hl_trunc.extrapolate(binned_ref, binned_lev)
-    meas = lsd_hl_lev.sumAreas(includeExtrap=False)
-    extrap = lsd_hl_trunc.sumAreas()
+    lad_hl_trunc = lad_hl_lev.truncate(emax, np.inf)
+    lad_hl_trunc.extrapolate(binned_ref, binned_lev)
+    meas = lad_hl_lev.sumAreas(includeExtrap=False)
+    extrap = lad_hl_trunc.sumAreas()
 
     limit = 0.01
-    frac = lsd_hl_trunc.extrapolated_area_fraction(lsd, 0.0001, limit)
+    frac = lad_hl_trunc.extrapolated_area_fraction(lad, 0.0001, limit)
     print(f'Total measured lake area in {roi_region} domain: {meas:,.0f} km2')
     print(
         f'Total extrapolated lake area in {roi_region} domain: {extrap:,.0f} km2')
     print(f'{1-(meas / extrap):.1%} of lake area is < 0.1 km2.')
     print(f'{frac:.1%} of lake area is < {limit} km2.')
-    print(f'{lsd_hl_trunc.extrapolated_area_fraction(lsd, 0.0001, 0.001):.1%} of lake area is < 0.001 km2.')
+    print(f'{lad_hl_trunc.extrapolated_area_fraction(lad, 0.0001, 0.001):.1%} of lake area is < 0.001 km2.')
 
-    ## Report extrapolated area fractions (need method for area fractions on extrapolatedLSD)
-    # print(f'Area fraction < 0.01 km2: {lsd.area_fraction(0.01):,.2%}')
-    # print(f'Area fraction < 0.1 km2: {lsd.area_fraction(0.1):,.2%}')
+    ## Report extrapolated area fractions (need method for area fractions on extrapolatedLAD)
+    # print(f'Area fraction < 0.01 km2: {lad.area_fraction(0.01):,.2%}')
+    # print(f'Area fraction < 0.1 km2: {lad.area_fraction(0.1):,.2%}')
 
     # ## Plot HL extrapolation
-    # # ax = lsd_hl.plot_lsd(all=False, reverse=False, normalized=False)
-    # ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=False, normalized=False)
+    # # ax = lad_hl.plot_lad(all=False, reverse=False, normalized=False)
+    # ax = lad_hl_trunc.plot_extrap_lad(label='HL-extrapolated', error_bars=False, normalized=False)
     # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
 
     ## Flux prediction from observed and extrap lakes
     model = loadBAWLD_CH4()
-    lsd_hl_trunc.predictFlux(model, includeExtrap=True)
+    lad_hl_trunc.predictFlux(model, includeExtrap=True)
 
-    ## Plot combined extrap LSD/LEV
+    ## Plot combined extrap LAD/LEV
     fig, ax = plt.subplots(2, 1, sharex=True)
-    lsd_hl_trunc.plot_extrap_lsd(
+    lad_hl_trunc.plot_extrap_lad(
         ax=ax[0], label='Lake area', error_bars=True, normalized=False, color='blue', plotLegend=False)
     # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
     ax2 = ax[0].twinx()
-    lsd_hl_trunc.plot_extrap_lev(
+    lad_hl_trunc.plot_extrap_lev(
         ax=ax[0], error_bars=True, color='green', label='Lake vegetation area', plotLegend=False, )
     ymin, ymax = ax[0].get_ylim()
-    ax2.set_ylim([ymin, ymax / lsd_hl_trunc.sumAreas()])
+    ax2.set_ylim([ymin, ymax / lad_hl_trunc.sumAreas()])
     ax[0].set_ylabel('Cumulative area (million $km^2$)')
     ax[0].set_xlabel('')
     ax2.set_ylabel('Cumulative area fraction')
     # plt.tight_layout()
 
     ## Plot extrapolated fluxes
-    lsd_hl_trunc.plot_extrap_flux(
+    lad_hl_trunc.plot_extrap_flux(
         ax=ax[1], reverse=False, normalized=False, error_bars=True, plotLegend=False, label='Emissions')
     ax2 = ax[1].twinx()
     ymin, ymax = ax[1].get_ylim()
-    ax2.set_ylim([ymin, ymax / lsd_hl_trunc._total_flux_Tg_yr['mean']])
+    ax2.set_ylim([ymin, ymax / lad_hl_trunc._total_flux_Tg_yr['mean']])
     ax2.set_ylabel('Cumulative emissions fraction')
     plt.tight_layout()
     [ax2.get_figure().savefig(
         f'/Volumes/thebe/pic/BAWLD_areas_v{v}' + ext, transparent=True, dpi=300) for ext in ['.png', '.pdf']]
 
-    # ## Plot combined extrap LSD/Flux
+    # ## Plot combined extrap LAD/Flux
     # norm = True # False
-    # ax = lsd_hl_trunc.plot_extrap_lsd(label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
+    # ax = lad_hl_trunc.plot_extrap_lad(label='HL-extrapolated', error_bars=True, normalized=False, color='blue')
     # # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
     # ax2=ax.twinx()
-    # lsd_hl_trunc.plot_extrap_flux(ax=ax2, reverse=False, normalized=norm, error_bars=True)
+    # lad_hl_trunc.plot_extrap_flux(ax=ax2, reverse=False, normalized=norm, error_bars=True)
     # plt.tight_layout()
 
     ## Plot inset with just LEV, with normalized second axis
     sns.set_theme('poster', font='Ariel')
     sns.set_style('ticks')
-    ax = lsd_hl_trunc.plot_extrap_lev(
+    ax = lad_hl_trunc.plot_extrap_lev(
         error_bars=True, color='green', plotLegend=False)
     ax2 = ax.twinx()
     ymin, ymax = ax.get_ylim()
-    ax2.set_ylim([ymin, ymax / lsd_hl_trunc.sumLev()['mean']])
+    ax2.set_ylim([ymin, ymax / lad_hl_trunc.sumLev()['mean']])
     ax.set_ylabel('')  # 'Cumulative aquatic vegetation area (million $km^2$)')
     ax2.set_ylabel('')  # 'Cumulative aquatic vegetation area fraction')
     plt.tight_layout()
@@ -2542,26 +2542,26 @@ if __name__ == '__main__':
     sns.set_style('ticks')
 
     # ## Retrieve data from plot
-    # ax.get_lines()[0].get_ydata() # gives right part of LSD plot # [1] is left part
+    # ax.get_lines()[0].get_ydata() # gives right part of LAD plot # [1] is left part
     # ax2.get_lines()[0].get_ydata() # gives right part of LEV plot
     # X_lev = np.concatenate((ax.get_lines()[1].get_xdata(), ax.get_lines()[0].get_xdata()))
     # S_lev = np.concatenate((ax.get_lines()[1].get_ydata(), ax.get_lines()[0].get_ydata()))
 
     ## LEV fraction stats, without and with extrap
-    lev_est = lsd_hl_trunc.sumLev(includeExtrap=False, asFraction=True)
+    lev_est = lad_hl_trunc.sumLev(includeExtrap=False, asFraction=True)
     print(
         f"Mean inventoried-lake LEV: {lev_est['mean']:0.2%} ({lev_est['lower']:0.2%}, {lev_est['upper']:0.2%})")
-    lev_est = lsd_hl_trunc.extrapLSD.sumLev(asFraction=True)
+    lev_est = lad_hl_trunc.extrapLAD.sumLev(asFraction=True)
     print(
         f"Mean non-inventoried-lake LEV: {lev_est['mean']:0.2%} ({lev_est['lower']:0.2%}, {lev_est['upper']:0.2%})")
-    lev_est = lsd_hl_trunc.sumLev(includeExtrap=True, asFraction=True)
+    lev_est = lad_hl_trunc.sumLev(includeExtrap=True, asFraction=True)
     print(
         f"Mean total LEV: {lev_est['mean']:0.2%} ({lev_est['lower']:0.2%}, {lev_est['upper']:0.2%})")
 
     ## Area vs LEV plots (TODO: add extrap points)
     fig, ax = plt.subplots()
-    # ax.scatter(lsd_hl_trunc.Area_km2, lsd_hl_trunc.LEV_MEAN)
-    sns.scatterplot(lsd_hl_trunc, x='Area_km2', y='LEV_MEAN', ax=ax, alpha=0.1)
+    # ax.scatter(lad_hl_trunc.Area_km2, lad_hl_trunc.LEV_MEAN)
+    sns.scatterplot(lad_hl_trunc, x='Area_km2', y='LEV_MEAN', ax=ax, alpha=0.1)
     ax.set_xscale('log')
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})')
     [ax.get_figure().savefig(
@@ -2571,16 +2571,16 @@ if __name__ == '__main__':
     ## Global lake area analysis
     ####################################
 
-    # ## Remake plot for LSD
+    # ## Remake plot for LAD
     # fig, ax = plt.subplots()
-    # lsd_hl_trunc.plot_extrap_lsd(ax=ax, label='Lake area', error_bars=True, normalized=True, color='grey', plotLegend=False)
+    # lad_hl_trunc.plot_extrap_lad(ax=ax, label='Lake area', error_bars=True, normalized=True, color='grey', plotLegend=False)
     # # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
     # # ax2=ax.twinx()
     # ax.set_ylabel('Cumulative area (normalized)')
     # # ax.set_xlabel('')
     # # ax2.set_ylabel('Cumulative area (normalized)')
 
-    # ## Compare to Downing 2016, re-using code snippet from BinnedLSD and plot over first plot
+    # ## Compare to Downing 2016, re-using code snippet from BinnedLAD and plot over first plot
     # btm = 0.001
     # top = 100000
     # nbins = 8
@@ -2592,11 +2592,11 @@ if __name__ == '__main__':
     # group_sums = pd.Series(d06, index=area_bins, name='Area_km2') # from Downing 2006 paper
     # binnedAreas = confidence_interval_from_extreme_regions(group_sums, None, None, name='Area_km2') # # Why are lower/upper non NaN?? Ignore.
 
-    # ## Put Downing number into my BinnedLSD data structure, just to verify plot
-    # lsd_d06 = BinnedLSD(btm=btm, top=top, nbins=nbins, binned_areas=binnedAreas, compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedAreas args
-    # # lsd_d06_canon = BinnedLSD(btm=bin_edges[4], top=bin_edges[-2], nbins=4, binned_areas=confidence_interval_from_extreme_regions(group_sums[4:-1], None, None, name='Area_km2'), compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedAreas args
-    # # lsd_d06_extrap = BinnedLSD(btm=bin_edges[0], top=bin_edges[4], nbins=4, binned_areas=confidence_interval_from_extreme_regions(group_sums[:4], None, None, name='Area_km2'), compute_ci_lsd=False) # give btm, top, nbins, compute_ci_lsd and binnedAreas args
-    # lsd_d06.plot(ax=ax, show_rightmost=False, as_lineplot=True, as_cumulative=True) # plot as binnedLSD, skipping top bin with Caspian Sea
+    # ## Put Downing number into my BinnedLAD data structure, just to verify plot
+    # lad_d06 = BinnedLAD(btm=btm, top=top, nbins=nbins, binned_areas=binnedAreas, compute_ci_lad=False) # give btm, top, nbins, compute_ci_lad and binnedAreas args
+    # # lad_d06_canon = BinnedLAD(btm=bin_edges[4], top=bin_edges[-2], nbins=4, binned_areas=confidence_interval_from_extreme_regions(group_sums[4:-1], None, None, name='Area_km2'), compute_ci_lad=False) # give btm, top, nbins, compute_ci_lad and binnedAreas args
+    # # lad_d06_extrap = BinnedLAD(btm=bin_edges[0], top=bin_edges[4], nbins=4, binned_areas=confidence_interval_from_extreme_regions(group_sums[:4], None, None, name='Area_km2'), compute_ci_lad=False) # give btm, top, nbins, compute_ci_lad and binnedAreas args
+    # lad_d06.plot(ax=ax, show_rightmost=False, as_lineplot=True, as_cumulative=True) # plot as binnedLAD, skipping top bin with Caspian Sea
 
     # # fig, ax = plt.subplots()
     # # ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
@@ -2614,43 +2614,43 @@ if __name__ == '__main__':
 
     ###########################
     ## Create Table
-    ## Create extrap LSD with all bin edge lining up with powers of 10, for Table
-    ## All bins are from lsd_hl_trunc_log10bins, derived from lsd_hl_lev, the original data used to derive plot data
-    ## Bottom bins use different extrap bins than lsd_hl_trunc, which is used for plots
+    ## Create extrap LAD with all bin edge lining up with powers of 10, for Table
+    ## All bins are from lad_hl_trunc_log10bins, derived from lad_hl_lev, the original data used to derive plot data
+    ## Bottom bins use different extrap bins than lad_hl_trunc, which is used for plots
     ###########################
 
     ## Extrapolate with log10 bins
     log_bins_lower = [tmin, 0.001, 0.01, 0.1, emax]
     # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-    binned_ref_log10bins = BinnedLSD(lsd.truncate(tmin, tmax), bins=log_bins_lower, compute_ci_lsd=True,
-                                     extreme_regions_lsd=extreme_regions_lsd)  # reference distrib (try 5, 0.5 as second args)
-    binned_lev_log10bins = BinnedLSD(lsd_lev_cat, bins=log_bins_lower, compute_ci_lev=True,
+    binned_ref_log10bins = BinnedLAD(lad.truncate(tmin, tmax), bins=log_bins_lower, compute_ci_lad=True,
+                                     extreme_regions_lad=extreme_regions_lad)  # reference distrib (try 5, 0.5 as second args)
+    binned_lev_log10bins = BinnedLAD(lad_lev_cat, bins=log_bins_lower, compute_ci_lev=True,
                                      extreme_regions_lev=extreme_regions_lev_for_extrap)  # 0.000125 is native
     # Beware chaining unless I return a new variable. # Try 0.1
-    lsd_hl_trunc_log10bins = lsd_hl_lev.truncate(emax, np.inf)
-    lsd_hl_trunc_log10bins.extrapolate(
+    lad_hl_trunc_log10bins = lad_hl_lev.truncate(emax, np.inf)
+    lad_hl_trunc_log10bins.extrapolate(
         binned_ref_log10bins, binned_lev_log10bins)
 
     ## Predict flux on extrapolated part (re-computes for observed part)
-    lsd_hl_trunc_log10bins.predictFlux(model, includeExtrap=True)
+    lad_hl_trunc_log10bins.predictFlux(model, includeExtrap=True)
 
     ## bin upper with log10 bins
     log_bins_upper = [0.5, 1, 10, 100, 1000, 10000, 100000]
     # now, bin upper values for Table estimate, use regions as placeholder to get dummy CI
-    lsd_hl_trunc_log10bins_binned = BinnedLSD(lsd_hl_trunc_log10bins, bins=log_bins_upper, compute_ci_lsd=False,
+    lad_hl_trunc_log10bins_binned = BinnedLAD(lad_hl_trunc_log10bins, bins=log_bins_upper, compute_ci_lad=False,
                                      compute_ci_lev=False, compute_ci_lev_existing=True, normalize=False)
     
     ## Add placeholder attributes prior to combining in function
     # Note:extrapolated values use LEV as placeholder, but should be ignored.
-    lsd_hl_trunc_log10bins.extrapLSD.binnedDC = lsd_hl_trunc_log10bins.extrapLSD.binnedLEV.rename('dc')
-    lsd_hl_trunc_log10bins.extrapLSD.binnedCounts = (lsd_hl_trunc_log10bins.extrapLSD.binnedLEV * np.nan).rename('Count')
+    lad_hl_trunc_log10bins.extrapLAD.binnedDC = lad_hl_trunc_log10bins.extrapLAD.binnedLEV.rename('dc')
+    lad_hl_trunc_log10bins.extrapLAD.binnedCounts = (lad_hl_trunc_log10bins.extrapLAD.binnedLEV * np.nan).rename('Count')
 
-    ## Combine binnedLSDs using nifty function
-    lsd_binned_cmb = combineBinnedLSDs((lsd_hl_trunc_log10bins.extrapLSD, lsd_hl_trunc_log10bins_binned))   
+    ## Combine binnedLADs using nifty function
+    lad_binned_cmb = combineBinnedLADs((lad_hl_trunc_log10bins.extrapLAD, lad_hl_trunc_log10bins_binned))   
     
     ## Make table: can ignore CI if nan or same as mean
     tb_comb = pd.concat(
-        (lsd_binned_cmb.binnedAreas/ 1e6, lsd_binned_cmb.binnedLEV, lsd_binned_cmb.binnedG_day * 365.25 / 1e12, lsd_binned_cmb.binnedDC, lsd_binned_cmb.binnedCounts), axis=1)
+        (lad_binned_cmb.binnedAreas/ 1e6, lad_binned_cmb.binnedLEV, lad_binned_cmb.binnedG_day * 365.25 / 1e12, lad_binned_cmb.binnedDC, lad_binned_cmb.binnedCounts), axis=1)
 
     ## Change units
     mean_rows = tb_comb.loc[:, 'mean', :]
@@ -2659,8 +2659,8 @@ if __name__ == '__main__':
     tb_comb.columns = ['Area_Mkm2', 'LEV_Mkm2', 'Tg_yr', 'DC_Mkm2', 'Count']
 
     ## Report double counting
-    # dummy = lsd_hl_lev[~np.isnan(lsd_hl_lev.d_counting)]
-    dummy = lsd_hl_lev.fillna(0)  # assuming missing lakes have 0 LEV
+    # dummy = lad_hl_lev[~np.isnan(lad_hl_lev.d_counting)]
+    dummy = lad_hl_lev.fillna(0)  # assuming missing lakes have 0 LEV
     print(
         f"Double counting of inventoried lakes: {np.average(dummy.d_counting_frac, weights = dummy.Area_km2):0.3}%")
 
@@ -2693,9 +2693,9 @@ if __name__ == '__main__':
     print(f"Total flux: {sums['Tg_yr']:0.3} Tg/yr")
     print(f"Total double counting: {sums['DC_Mkm2']:0.3} Mkm2")
     ## print number of ref lakes:
-    # len(lsd_hl_trunc)
-    # lsd_hl_trunc.refBinnedLSD.binnedCounts.sum()
-    # lsd_hl_trunc.extrapLSD.sumAreas()
+    # len(lad_hl_trunc)
+    # lad_hl_trunc.refBinnedLAD.binnedCounts.sum()
+    # lad_hl_trunc.extrapLAD.sumAreas()
 
     ####################################
     ## Map Analysis
@@ -2703,23 +2703,23 @@ if __name__ == '__main__':
 
     ## Rescale to km2
     for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
-        lsd_hl_lev[col + '_km2'] = lsd_hl_lev[col] * \
-            lsd_hl_lev['Area_km2']  # add absolute area units
-    # lsd_hl_lev.to_csv('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
+        lad_hl_lev[col + '_km2'] = lad_hl_lev[col] * \
+            lad_hl_lev['Area_km2']  # add absolute area units
+    # lad_hl_lev.to_csv('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
 
     ## Rescale double-counting to km2 for data archival purposes
-    lsd_hl_lev['d_counting_km2'] = lsd_hl_lev.d_counting_frac * \
-        lsd_hl_lev['Area_km2']
+    lad_hl_lev['d_counting_km2'] = lad_hl_lev.d_counting_frac * \
+        lad_hl_lev['Area_km2']
 
     ## Prep weighted avgs
-    lsd_hl_lev.predictFlux(model, includeExtrap=False)
-    lsd_hl_lev['Temp_K_wght_sum'] = lsd_hl_lev.Temp_K * lsd_hl_lev.Area_km2
+    lad_hl_lev.predictFlux(model, includeExtrap=False)
+    lad_hl_lev['Temp_K_wght_sum'] = lad_hl_lev.Temp_K * lad_hl_lev.Area_km2
 
     ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
-    df_bawld_sum_lev = lsd_hl_lev.groupby('BAWLD_Cell').sum(numeric_only=True)  # Could add Occ
+    df_bawld_sum_lev = lad_hl_lev.groupby('BAWLD_Cell').sum(numeric_only=True)  # Could add Occ
 
     ## Lake count
-    df_bawld_sum_lev['lake_count'] = lsd_hl_lev[['Area_km2', 'BAWLD_Cell']].groupby('BAWLD_Cell').count().astype('int')
+    df_bawld_sum_lev['lake_count'] = lad_hl_lev[['Area_km2', 'BAWLD_Cell']].groupby('BAWLD_Cell').count().astype('int')
 
     ## Rescale back to LEV fraction (of lake) as well (equiv to lake area-weighted mean of LEV fraction within grid cell)
     for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
@@ -2768,7 +2768,7 @@ if __name__ == '__main__':
 
     ## What percentage of HL is 0-50 Oc bin?
     # print('Load HL...')
-    # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None) # Need to load version with joined in Oc stats per lake
+    # lad_hl = LAD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None) # Need to load version with joined in Oc stats per lake
     # use df_hl_nearest_bawld
 
     ###########################
@@ -2803,7 +2803,7 @@ if __name__ == '__main__':
 
     # ## Compare HL extrapolation to WBD:
     # assert roi_region == 'WBD_BAWLD', f"Carefull, you are comparing to WBD, but roi_region is {roi_region}."
-    # ax = plotEmaxSens(lsd_hl_lev, extreme_regions_lsd, lsd, lsd_wbd, tmin=0.0001, tmax=5, emax=0.5, y_scaler=1e6*1.11)
+    # ax = plotEmaxSens(lad_hl_lev, extreme_regions_lad, lad, lad_wbd, tmin=0.0001, tmax=5, emax=0.5, y_scaler=1e6*1.11)
     # [ax.get_figure().savefig(f'/Volumes/thebe/pic/WBD_HL_compare_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
 
     # ## Sensitivity test for emax
@@ -2812,44 +2812,44 @@ if __name__ == '__main__':
     # sns.set_context('poster')
     # sns.set_style('ticks')
     # for i, emax in enumerate(emax_vals):
-    #     plotEmaxSens(lsd_hl_lev, extreme_regions_lsd, lsd, lsd_wbd, tmin=0.0001, tmax=5, emax=emax, y_scaler=1e6*1.12, ax=axes.flatten()[i])
+    #     plotEmaxSens(lad_hl_lev, extreme_regions_lad, lad, lad_wbd, tmin=0.0001, tmax=5, emax=emax, y_scaler=1e6*1.12, ax=axes.flatten()[i])
     # fig.set_tight_layout(tight=True)
     # sns.set_theme('notebook', font='Ariel')
     # sns.set_style('ticks')
     # [fig.savefig(f'/Volumes/thebe/pic/WBD_HL_emax_sensitivity_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
 
     # ## Report vals (for WBD)
-    # wbd_sum = lsd_wbd.truncate(0.001, 10000).Area_km2.sum()
-    # hl_extrap_sum = lsd_hl_trunc.truncate(0, 10000).sumAreas() # This uses lsd_hl_truncate used for prediction, earlier in the script.
+    # wbd_sum = lad_wbd.truncate(0.001, 10000).Area_km2.sum()
+    # hl_extrap_sum = lad_hl_trunc.truncate(0, 10000).sumAreas() # This uses lad_hl_truncate used for prediction, earlier in the script.
     # print(f'{wbd_sum:,.0f} vs {hl_extrap_sum:,.0f} km2 ({((hl_extrap_sum - wbd_sum) / hl_extrap_sum):.2%}) difference between observed datasets WBD and HL in {roi_region}.')
-    # print(f'WBD area fraction < 0.01 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.01):,.2%}')
-    # print(f'WBD area fraction < 0.1 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.1):,.2%}')
-    # print(f'WBD area fraction < 0.5 km2: {lsd_wbd.truncate(0.001, np.inf).area_fraction(0.5):,.2%}')
+    # print(f'WBD area fraction < 0.01 km2: {lad_wbd.truncate(0.001, np.inf).area_fraction(0.01):,.2%}')
+    # print(f'WBD area fraction < 0.1 km2: {lad_wbd.truncate(0.001, np.inf).area_fraction(0.1):,.2%}')
+    # print(f'WBD area fraction < 0.5 km2: {lad_wbd.truncate(0.001, np.inf).area_fraction(0.5):,.2%}')
 
     # ## Compare HL to WBD measured lakes in same domain:
-    # # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
-    # # lsd_hl = LSD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None) # reload, if needed # don't truncate this time
-    # ax = lsd_wbd.truncate(0.1, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='r')
-    # lsd_hl_lev.truncate(0.1, 1000).plot_lsd(normalized=False, reverse=False, ax=ax, all=False) # need to have loaded proper lsd hl bawld
+    # # lad_hl.truncate(0, 1000).plot_lad(all=False, reverse=False, normalized=False)
+    # # lad_hl = LAD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None) # reload, if needed # don't truncate this time
+    # ax = lad_wbd.truncate(0.1, 1000).plot_lad(all=False, reverse=False, normalized=False, color='r')
+    # lad_hl_lev.truncate(0.1, 1000).plot_lad(normalized=False, reverse=False, ax=ax, all=False) # need to have loaded proper lad hl bawld
     # ax.set_title(f'[{roi_region}]')
     # ax.get_figure().tight_layout()
 
     # ## Compare WBD [self-]extrapolation to WBD (control tests):
-    # # lsd_hl.truncate(0, 1000).plot_lsd(all=False, reverse=False, normalized=False)
-    # tmin, tmax = (0.001, 30) # Truncation limits for ref LSD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
+    # # lad_hl.truncate(0, 1000).plot_lad(all=False, reverse=False, normalized=False)
+    # tmin, tmax = (0.001, 30) # Truncation limits for ref LAD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
     # emax = 0.5 # Extrapolation limit emax defines the left bound of the index region (and right bound of the extrapolation region).
-    # # binned_ref = BinnedLSD(lsd_wbd.truncate(tmin, tmax), tmin, emax) # uncomment to use self-extrap
+    # # binned_ref = BinnedLAD(lad_wbd.truncate(tmin, tmax), tmin, emax) # uncomment to use self-extrap
     # # txt='self-'
-    # binned_ref = BinnedLSD(lsd.truncate(tmin, tmax), tmin, emax, compute_ci_lsd=True, extreme_regions_lsd=extreme_regions_lsd)
+    # binned_ref = BinnedLAD(lad.truncate(tmin, tmax), tmin, emax, compute_ci_lad=True, extreme_regions_lad=extreme_regions_lad)
     # txt=''
-    # lsd_wbd_trunc = lsd_wbd.truncate(emax, np.inf)
-    # lsd_wbd_trunc.extrapolate(binned_ref)
-    # ax = lsd_wbd.truncate(0.001, 1000).plot_lsd(all=False, reverse=False, normalized=False, color='blue', plotLegend=False)
-    # lsd_wbd_trunc.truncate(0.001, 1000).plot_extrap_lsd(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax, error_bars=True, plotLegend=False)
+    # lad_wbd_trunc = lad_wbd.truncate(emax, np.inf)
+    # lad_wbd_trunc.extrapolate(binned_ref)
+    # ax = lad_wbd.truncate(0.001, 1000).plot_lad(all=False, reverse=False, normalized=False, color='blue', plotLegend=False)
+    # lad_wbd_trunc.truncate(0.001, 1000).plot_extrap_lad(label=f'WBD-{txt}extrapolated', normalized=False, ax=ax, error_bars=True, plotLegend=False)
 
     # ax2=ax.twinx() # Add normalized axis
     # ymin, ymax = ax.get_ylim()
-    # ax2.set_ylim([ymin, ymax/lsd_wbd_trunc.sumAreas()*1e6*1.28]) # hot fix
+    # ax2.set_ylim([ymin, ymax/lad_wbd_trunc.sumAreas()*1e6*1.28]) # hot fix
     # ax2.set_ylabel('Cumulative area fraction')
     # ax.get_figure().tight_layout()
     # [ax.get_figure().savefig(f'/Volumes/thebe/pic/WBD_WBD_compare_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
@@ -2873,13 +2873,13 @@ if __name__ == '__main__':
     rename_dict.update({'idx_HL': 'Hylak_id'})
 
     # Format data types
-    lsd_hl_lev_save = lsd_hl_lev.drop(columns=['Region', 'Temp_K_wght_sum', 'LEV_MAX_km2', 'LEV_MEAN_km2', 'LEV_MIN_km2', 'd_counting_km2']).rename(columns=rename_dict)
-    lsd_hl_lev_save['Hylak_id'] = lsd_hl_lev_save['Hylak_id'].astype('int')
-    float_columns = lsd_hl_lev_save.select_dtypes(include=['float']).columns.tolist() # Get a list of columns with float data type
-    lsd_hl_lev_save[float_columns] = lsd_hl_lev_save[float_columns].round(4) # Apply rounding to float columns to reduce output file size
+    lad_hl_lev_save = lad_hl_lev.drop(columns=['Region', 'Temp_K_wght_sum', 'LEV_MAX_km2', 'LEV_MEAN_km2', 'LEV_MIN_km2', 'd_counting_km2']).rename(columns=rename_dict)
+    lad_hl_lev_save['Hylak_id'] = lad_hl_lev_save['Hylak_id'].astype('int')
+    float_columns = lad_hl_lev_save.select_dtypes(include=['float']).columns.tolist() # Get a list of columns with float data type
+    lad_hl_lev_save[float_columns] = lad_hl_lev_save[float_columns].round(4) # Apply rounding to float columns to reduce output file size
 
     ## Write out
-    lsd_hl_lev_save.to_csv(os.path.join(
+    lad_hl_lev_save.to_csv(os.path.join(
         output_dir, 'HydroLAKES_emissions.csv'))
 
     ## Version of BAWLD_HL for archive (continue from Map Analysis section)
@@ -2908,7 +2908,7 @@ if __name__ == '__main__':
         os.path.join(output_dir, 'BAWLD_V1_LAV.shp'), engine='pyogrio') # Can ignore "value not written errors"
     
     ## Save extrapolations table
-    lsd_hl_trunc.extrapLSD.to_df().to_csv(os.path.join(
+    lad_hl_trunc.extrapLAD.to_df().to_csv(os.path.join(
         output_dir, 'HydroLAKES_extrapolated.csv'))
     pass
 
@@ -2922,23 +2922,23 @@ if __name__ == '__main__':
 * add std or CI x
 * write out x
 * find a way to relate to flux estimates
-* Re-define LSD so if called with no args but proper column names it returns a LSD correctly.
+* Re-define LAD so if called with no args but proper column names it returns a LAD correctly.
 * Use fid_as_index argument when loading with pyarrow
 * Preserve og index when concatenating so I can look up lakes from raw file (combine with above re: fid)
 * Branches for if there is no CI/error bars in binned distrib. Make sure there is still a second index called 'stat' with constant val 'mean'
 * Rewrite sumLev() to output a series x
 * Go back and add branches for no CI to the various methods. Make sure it still has a second index for 'stat' with constant val 'mean'
-* Make predictFlux() calls consistent bw LSD and BinnedLSD, whether they return a value or add an attribute.
+* Make predictFlux() calls consistent bw LAD and BinnedLAD, whether they return a value or add an attribute.
 * Thorough testing of all function options
 * Search for "TODO"
 * Code in LEV flux calc from table-2-stats
-* Most awkward part of the LSD class is that I can't use any builtin pandas function without returning a DataFrame, so I have developed ways to re-initiate a LSD from a DataFrame to use when needed.
-    *Possible solution: re-define LSD class to be a genric structre that has an LSD attribute that is simply a dataframe. Re-define operaters print/__repr__ and slicing operations so it still behaves like the base structure is a df.
-* Add binnedLSD.truncate() method that removes bins
+* Most awkward part of the LAD class is that I can't use any builtin pandas function without returning a DataFrame, so I have developed ways to re-initiate a LAD from a DataFrame to use when needed.
+    *Possible solution: re-define LAD class to be a genric structre that has an LAD attribute that is simply a dataframe. Re-define operaters print/__repr__ and slicing operations so it still behaves like the base structure is a df.
+* Add binnedLAD.truncate() method that removes bins
 * Truncate CSV decimals when writing out data files
 * Add confusion matrix output steps (in LEV_GSW_overlay.ipynb) to main script.
 
 
 NOTES:
-* Every time a create an LSD() object in a function from an existing LSD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
+* Every time a create an LAD() object in a function from an existing LAD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
 '''
