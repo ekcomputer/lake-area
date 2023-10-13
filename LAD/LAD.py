@@ -8,23 +8,15 @@ from scipy import stats
 from statsmodels.formula.api import ols
 from glob import glob
 from matplotlib import pyplot as plt
-from matplotlib.colors import Colormap
 import matplotlib as mpl
-import matplotlib.colors as colors
-import matplotlib
-import matplotlib.mlab as mlab
-import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
 from labellines import labelLines
 import seaborn as sns
-import scipy.ndimage as ndi
 from scipy.stats import pearsonr
 from sklearn.metrics import mean_squared_error
 import pandas as pd
 import geopandas as gpd
 import pyogrio
-import powerlaw
-from tqdm import tqdm
 
 ## Plotting params
 sns.set_theme('notebook', font='Ariel')
