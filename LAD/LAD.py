@@ -2929,6 +2929,7 @@ if __name__ == '__main__':
 * Add binnedLAD.truncate() method that removes bins
 * Truncate CSV decimals when writing out data files
 * Add confusion matrix output steps (in LEV_GSW_overlay.ipynb) to main script.
+* replace sklearn 'mean_squared_error' function to make package easier to install.
 
 
 NOTES:
