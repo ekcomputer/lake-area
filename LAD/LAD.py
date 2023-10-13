@@ -8,23 +8,15 @@ from scipy import stats
 from statsmodels.formula.api import ols
 from glob import glob
 from matplotlib import pyplot as plt
-from matplotlib.colors import Colormap
 import matplotlib as mpl
-import matplotlib.colors as colors
-import matplotlib
-import matplotlib.mlab as mlab
-import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
 from labellines import labelLines
 import seaborn as sns
-import scipy.ndimage as ndi
 from scipy.stats import pearsonr
 from sklearn.metrics import mean_squared_error
 import pandas as pd
 import geopandas as gpd
 import pyogrio
-import powerlaw
-from tqdm import tqdm
 
 ## Plotting params
 sns.set_theme('notebook', font='Ariel')
@@ -2911,34 +2903,3 @@ if __name__ == '__main__':
     lad_hl_trunc.extrapLAD.to_df().to_csv(os.path.join(
         output_dir, 'HydroLAKES_extrapolated.csv'))
     pass
-
-################
-
-# TODO:
-'''
-* make equivalence to hl_pond_frac_cir x
-* [try using numba to accelerate?]
-* save 1 vs. 0.3 cutoff as var 
-* add std or CI x
-* write out x
-* find a way to relate to flux estimates
-* Re-define LAD so if called with no args but proper column names it returns a LAD correctly.
-* Use fid_as_index argument when loading with pyarrow
-* Preserve og index when concatenating so I can look up lakes from raw file (combine with above re: fid)
-* Branches for if there is no CI/error bars in binned distrib. Make sure there is still a second index called 'stat' with constant val 'mean'
-* Rewrite sumLev() to output a series x
-* Go back and add branches for no CI to the various methods. Make sure it still has a second index for 'stat' with constant val 'mean'
-* Make predictFlux() calls consistent bw LAD and BinnedLAD, whether they return a value or add an attribute.
-* Thorough testing of all function options
-* Search for "TODO"
-* Code in LEV flux calc from table-2-stats
-* Most awkward part of the LAD class is that I can't use any builtin pandas function without returning a DataFrame, so I have developed ways to re-initiate a LAD from a DataFrame to use when needed.
-    *Possible solution: re-define LAD class to be a genric structre that has an LAD attribute that is simply a dataframe. Re-define operaters print/__repr__ and slicing operations so it still behaves like the base structure is a df.
-* Add binnedLAD.truncate() method that removes bins
-* Truncate CSV decimals when writing out data files
-* Add confusion matrix output steps (in LEV_GSW_overlay.ipynb) to main script.
-
-
-NOTES:
-* Every time a create an LAD() object in a function from an existing LAD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
-'''
