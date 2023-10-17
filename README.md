@@ -1,4 +1,7 @@
-# Lake Area Distribution (LAD): A Python package to extrapolate the lake-area distribution to small lakes and calculate their vegetation coverage and methane emissions
+# Lake Area Distribution (LAD)
+[![Build Status](https://github.com/ekcomputer/lake-area/actions/workflows/python-package.yml/badge.svg)](https://github.com/ekcomputer/lake-area/actions/workflows/python-package.yml)
+
+**A Python package to extrapolate the lake-area distribution to small lakes and calculate their vegetation coverage and methane emissions**
 
 ![Alt text](assets/example_plot.png)
 ## Basic Usage
@@ -29,12 +32,17 @@ lad_hr_pth = '../sample_data/CIR_Canadian_Shield.shp'
 lad_from_shp = LAD.from_shapefile(lad_hr_pth, area_var='Area', name='CIR', region_var='Region4')
 ```
 
+### Further documentation in progress
+Documentation and sample data sets still need to be created for predicting methane emissions based on temperature and lake area. There are also some pre-processing steps, which led to the sample data sets, which are not documented.
+
 ## Installation
 
-I suggest using the `mamba` package manager (install into base environment). You can use simple `conda` commands interchangably, if you do not want to install new software. First, create a new conda/mamba environment and activate it. Then:
+I suggest using the `mamba` package manager (install into base environment). You can use simple `conda` commands interchangably, if you do not want to install new software. First, create a new conda/mamba environment (here called my_env) and activate it. Then:
 
 ```shell
-$ mamba install --file requirements.txt
+$ mamba create -n my_env
+$ mamba install -n my_env --file requirements.txt
+$ mamba activate my_env
 ```
 
 Access the classes and functions by importing the package. Enter the `LAD` project directory and run:
@@ -59,3 +67,20 @@ If you want to install the package in editable mode (meaning you can make change
 
 To use the jupyter notebooks, you will also need to install the requirements in [requirements_optional.txt](requirements_optional.txt)
 
+## Citing this package
+
+**Data and software**: \
+Kyzivat, E., & Smith, L. (2023). Parameters for estimating methane emissions from Arctic-boreal lakes: Non-inventoried small lake areas, aquatic vegetation, and potential double-counting with wetlands. Arctic Data Center [Dataset]. https://arcticdata.io/catalog/view/urn%3Auuid%3Ab1559439-8bad-4221-a861-75b1a847398c [Accessed XX-XX-XXXX]
+
+**Journal article**: \
+Kyzivat, E.D. and Smith, L.C. A closer look at the effects of lake area, aquatic vegetation, and double-counted wetlands on pan-Arctic lake methane emissions estimates. In revision at Geoophysical Research Letters.
+
+## References
+
+Sample data comes from the following sources: 
+
+Kyzivat, E. D., Smith, L. C., Pitcher, L. H., Fayne, J. V., Cooley, S. W., Topp, S. N., Langhorst, T., Harlan, M. E., Cooper, M. G., Gleason, C. J., & Pavelsky, T. M. (2019). ABoVE: AirSWOT Water Masks from color-infrared Imagery over Alaska and Canada, 2017. In ORNL DAAC. ORNL DAAC. https://doi.org/10.3334/ORNLDAAC/1707
+
+Kyzivat, E. D., Smith, L. C., Huang, C., Wang, C., Langhorst, T., Fayne, J. V., Harlan, M. E., Ishitsuka, Y., Feng, D., Dolan, W., Pitcher, L. H., & Pavelsky, T. M. (2021). ABoVE: UAVSAR Lake and wetland classification for Yukon Flats, Peace-Athabasca Delta, and Canadian Shield, 2017-2019. ORNL Distributed Active Archive Center. https://doi.org/10.3334/ORNLDAAC/1883
+
+Messager, M. L., Lehner, B., Grill, G., Nedeva, I., & Schmitt, O. (2016). Estimating the volume and age of water stored in global lakes using a geo-statistical approach. Nature Communications, 7, 1–11. https://doi.org/10.1038/ncomms13603
