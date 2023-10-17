@@ -24,12 +24,12 @@ sns.set_style('ticks')
 # mpl.rc('text', usetex=True)
 mpl.rcParams['pdf.fonttype'] = 42
 
-# ## Functions and classes
-# ### Plotting functions
+## Functions and classes
+## Plotting functions
 
 ## Common
 temperature_metric = 'ERA5_stl1'
-v = 23  # Version number for file naming
+v = 24  # Version number for file naming
 use_low_oc = True  # If false, use to compare to mutually-exclusive double-counted areas with Oc < 50%
 # No effect, because computed in prep_data.ipynb. Factor to multiply D flux and divide E flux to fill in missing pathway e.g. (1.2)
 eb_scaling = 0.580
@@ -571,8 +571,7 @@ def regionStats(lad) -> True:
         df_regions = pd.concat((df_regions, df_tmp), ignore_index=True)
     return df_regions
 
-## Class (using inheritance)
-
+## Classes (using inheritance)
 
 class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
     '''Lake size distribution'''
@@ -713,7 +712,6 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         return public_attrs(self)
 
     @classmethod
-    # **kwargs): #name='unamed', area_var='Area', region_var='NaN', idx_var='OID_'): # **kwargs
     def from_shapefile(cls, path, name=None, area_var=None, lev_var=None, region_var=None, idx_var=None, **kwargs):
         ''' 
         Load from shapefile on disk.
@@ -799,12 +797,6 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             name_var = None
             name = lads[0].name
 
-        ## Retain attrs and cols
-        # cols=[]
-        # for lad in lads:
-        #     # attrs.append(lad.get_public_attrs())
-        #     cols.extend(lad.columns.to_list())
-        # cols = np.unique(cols).tolist()
         cols = None
         # Need to re-init before returning because pd.DataFrame.concat is a function, not method and can't return in-place. Therefore, it returns a pd.DataFrame object that needs to be converted back to a LAD.
         return cls(pd.concat(lads, **kwargs), name=name, name_var=name_var, other_vars=cols)
@@ -825,8 +817,6 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             cols = self.columns.to_list()
             lad = LAD(pd.DataFrame.query(self, "(Area_km2 >= @min) and (Area_km2 < @max)",
                       inplace=inplace, **kwargs), other_vars=cols, **attrs)  # false
-            # idx = self.Area_km2.between(min, max, inclusive='left')
-            # lad = self[idx] # This method still returns a pd.DataFrame...
             lad.isTruncated = True
             lad.truncationLimits = (min, max)
             return lad
@@ -925,10 +915,6 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         denom = lad.sumAreas(includeExtrap=True)
         area_fraction = 1 - num / denom
 
-        # tmin, tmax = (0.0001,30) # Truncation limits for ref LAD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
-        # emax = 0.5 # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-        # binned_ref = BinnedLAD(lad.truncate(tmin, tmax), tmin, emax, compute_ci_lad=True) # reference distrib (try 5, 0.5 as second args)
-
         ## update area fract on original lad and return
         attr = f'_A_{limit}'
         setattr(self, attr, area_fraction)  # Save value within LAD structure
@@ -939,6 +925,7 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         Extrapolate by filling empty bins below the dataset's resolution.
 
         Note: The limits of the extrapolation are defined by the btmEdge/topEdge of ref_BinnedLAD. The top limit of rererence distribution is defined by the top truncation of the reference binnedLAD. Function checks to make sure it is truncated <= 5 km2.
+        TODO: give error if trying to extrapolate to a smaller area than is present in ref distrib; truncate last bin?
 
         Parameters
         ----------
@@ -947,14 +934,10 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         ref_BinnedLEV : binnedLAD that has LEV 
             Reference binnedLAD used for LEV extrapolation.This binned LAD probably comes from different data, hence the additional argument.
 
+        Returns: binnedLAD
         '''
-        # returns a binnedLAD
-        # give error if trying to extrapolate to a smaller area than is present in ref distrib
-
-        # HERE truncate last bin
 
         ## Check validity
-        # assert self.isTruncated # can correct for this
         assert ref_BinnedLAD.isTruncated, "Reference binnedLAD must be top truncated or its bin estimates will be highly variable."
         assert self.isTruncated, "LAD should be bottom-truncated when used for extrapolation to be explicit."
         assert self.truncationLimits[
@@ -1052,7 +1035,6 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         '''
         lev_sum = confidence_interval_from_extreme_regions(
             *[(pd.Series((self[param] * self.Area_km2).sum())) for param in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']]).loc[0, :]
-        # m = confidence_interval_from_extreme_regions(*[pd.Series(np.average(self[param], weights=self.Area_km2)) for param in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']]).loc[0,:]
         result = lev_sum
         total_area = self.sumAreas(includeExtrap=False, ci=False)
         if includeExtrap:
@@ -1060,9 +1042,7 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
                 if hasattr(self.extrapLAD, 'binnedLEV'):
                     lev_sum_extrap = self.extrapLAD.sumLev(asFraction=False)
                     result = lev_sum + lev_sum_extrap
-                    # result = lev_sum * self.sumAreas(includeExtrap=False) + lev_sum_extrap * self.extrapLAD.sumAreas(ci=False)
                     total_area = self.sumAreas(includeExtrap=True)
-                    # np.average(pd.concat((m, m_extrap), axis=1), axis=1, weights=[self.sumAreas(includeExtrap=False), self.extrapLAD.sumAreas(ci=False)]) # Note:weights are scalers
                     pass
                 else:
                     warn(
@@ -1133,10 +1113,6 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         returns: ax
         '''
         ## Cumulative histogram by value (lake area), not count
-
-        ## colors
-        # rainbow_cycler = cycler
-        # colors from https://stackoverflow.com/a/46152327/7690975 Other option is: `from cycler import cycler; `# ax.set_prop_cycle(rainbow_cycler), plt(... prop_cycle=rainbow_cycler, )
         sns.set_palette("colorblind", len(self.regions()))
 
         ## plot
@@ -1189,9 +1165,6 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         returns: ax
         '''
         ## Cumulative histogram by value (lake area), not count
-
-        ## colors
-        # rainbow_cycler = cycler
         assert 'est_g_day' in self.columns, "LAD doesn't have a flux estimate yet."
         # colors from https://stackoverflow.com/a/46152327/7690975 Other option is: `from cycler import cycler; `# ax.set_prop_cycle(rainbow_cycler), plt(... prop_cycle=rainbow_cycler, )
         sns.set_palette("colorblind", len(self.regions()))
@@ -1439,9 +1412,7 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
                            365.25 / 1e12, reverse=False)  # scale to Tg / yr
         # take geom mean of each interval Try self.extrapLAD.binnedAreas.loc[:, 'mean'].index.get_level_values(0)
         geom_means = np.array(list(map(interval_geometric_mean, means.index)))
-        # X = np.concatenate((geom_means, X))
         S += self.extrapLAD.sumFluxes()['mean']  # add to original cumsum
-        # S = np.concatenate((np.cumsum(means)* 365.25 / 1e12, S)) # pre-pend the binned vals
         S0 = np.cumsum(means) * 365.25 / 1e12  # pre-pend the binned vals
         if not 'color' in kwargs:
             kwargs['color'] = 'red'
@@ -1456,7 +1427,6 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             denom = 1
 
         ## Add error bars
-        # if None:
         if error_bars == True:
             assert self.extrapLAD.hasCI_lad, "error_bars is set, but extrapolated LAD has no CI (self.extrapLAD.hasCI_lad is False)"
 
@@ -1527,7 +1497,6 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         ## Legend
         if plotLegend:
-            # legend on right (see https://stackoverflow.com/a/43439132/7690975)
             ax.legend(loc='center left', bbox_to_anchor=(1.04, 0.5))
 
         return ax
@@ -1580,7 +1549,6 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             makePlots('LEV_MAX', 'grey')
         ## Legend
         if plotLegend:
-            # legend on right (see https://stackoverflow.com/a/43439132/7690975)
             ax.legend(loc='center left', bbox_to_anchor=(1.04, 0.5))
 
         return ax
@@ -1668,7 +1636,6 @@ class BinnedLAD():
             hasLEV = 'LEV_MEAN' in lad.columns
             hasFlux = 'est_g_day' in lad.columns
             hasDC = 'd_counting_frac' in lad.columns
-            # hasLEV_CI = np.all([attr in lad.columns for attr in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']])
 
             if not hasLEV:
                 self.binnedLEV = None
@@ -1725,16 +1692,12 @@ class BinnedLAD():
                     assert extreme_regions_lev is not None, "If compute_ci_lad is True, and LAD has LEV, extreme_regions_lev must be provided"
                     assert np.all([region in lad.Region.unique() for region in extreme_regions_lev]
                                   ), "One region name in extreme_regions_lev is not present in lad."
-                    # group_means_lev_low = lad.groupby(['size_bin']).LEV_MIN.mean(numeric_only=True)
-                    # group_means_lev_high = lad.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
                     # Here, my ref distrib has no LEV_MIN/MAX, since it is observed, so I use extreme reegions for uncertainty bounds
                     group_means_lev_low, group_means_lev_high = [lad[lad['Region'] == region].groupby(
                         ['size_bin'], observed=False).LEV_MEAN.mean(numeric_only=True) for region in extreme_regions_lev]
                     self.hasCI_lev = True
                     self.extreme_regions_lev = extreme_regions_lev
                     pass
-                # if not hasLEV_CI and hasLEV: # e.g. if loading from UAVSAR
-                #     self.binnedLEV = lad.groupby(['size_bin']).LEV_MEAN.mean(numeric_only=True)
                 elif compute_ci_lev_existing:
                     assert compute_ci_lev is False, "If selecting 'compute_ci_lev_existing', make sure 'compute_ci_lev' is False."
                     assert np.all(np.isin(['LEV_MIN', 'LEV_MAX'], lad.columns)
@@ -1804,13 +1767,7 @@ class BinnedLAD():
 
         ## More common args at end
         self.isBinned = True
-
         pass
-
-    # def normalize(self):
-    #     '''Divide bins by the largest bin.'''
-    #     pass
-    #     self.isNormalized = True
 
     def FromExtrap():
         '''Creates a class similar to binnedLAD,'''
@@ -1858,11 +1815,6 @@ class BinnedLAD():
         ## Remove last bin, if desired
         if self.isExtrapolated == False:
             if show_rightmost == False:  # if I need to cut off rightmost bin
-                # if self.hasCI_lad: # sloppy fix
-                #     binned_areas = pd.Series({'mean': binned_areas.values[0].iloc[:-1],
-                #                                 'lower': binned_areas.values[1].iloc[:-1],
-                #                                 'upper': binned_areas.values[2].iloc[:-1]})
-                # else:
                 binned_areas.drop(index=binned_areas.index.get_level_values(
                     0)[-1], level=0, inplace=True)
             else:
@@ -1871,7 +1823,6 @@ class BinnedLAD():
         ## Plot
         if ax is None:
             _, ax = plt.subplots()
-        # plt.bar(self.bin_edges[:-1], binned_areas)
         if as_lineplot:
             assert isinstance(
                 binned_areas, pd.Series), "As written, BinnedLAD.plot requires pd.Series argument is as_lineplot==True."
@@ -1939,7 +1890,6 @@ class BinnedLAD():
         ## Flux (flux rate, gCH4/day)
         est_g_day_mean, est_g_day_low, est_g_day_high = [est_mg_m2_day * self.binnedAreas.loc[:, stat] * 1e3 for stat in [
             'mean', 'lower', 'upper']]  # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
-        # group_means_flux, group_means_flux_low, group_means_flux_high = [lad.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) for stat in ['mean', 'lower', 'upper']] # Low/mean/high are all the same on a per-area basis!
         est_g_day = confidence_interval_from_extreme_regions(
             est_g_day_mean, est_g_day_low, est_g_day_high, name='est_g_day')
         self._total_flux_Tg_yr = est_g_day.groupby(
@@ -1986,10 +1936,7 @@ class BinnedLAD():
 def combineBinnedLADs(lads):
     '''Combines two or more BinnedLADs in the tuple lads and returns a new BinnedLAD.'''
 
-    # Step 1: Check compatibility
-    # (You'll need to implement this part based on the requirements of your specific application)
-
-    # Step 2: Concatenate binnedAreas and init BinnedLAD class
+    ## Concatenate binnedAreas and init BinnedLAD class
     combined_binned_areas = pd.concat(
         [lad.binnedAreas.reset_index() for lad in lads]).set_index(['size_bin', 'stat'])
     nbins = np.sum([lad.nbins for lad in lads])
@@ -2007,9 +1954,6 @@ def combineBinnedLADs(lads):
     ) for lad in lads], axis=0).set_index(['size_bin', 'stat'])
     cmb_binned_lad.binnedCounts = pd.concat([lad.binnedCounts.reset_index(
     ) for lad in lads], axis=0).set_index(['size_bin', 'stat'])
-
-    # Step 3: Handle confidence intervals (if needed)
-    # (You'll need to implement this part based on your specific requirements)
 
     return cmb_binned_lad
 
@@ -2168,8 +2112,9 @@ if __name__ == '__main__':
         exit()
 
     ## I/O
+    # tables output dir
     tb_dir = '/Volumes/thebe/Ch4/area_tables'
-    # dir for output data, used for archive
+    # dir for output data, used for data archive
     output_dir = '/Volumes/thebe/Ch4/output'
 
     ## BAWLD domain
