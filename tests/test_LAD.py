@@ -90,8 +90,8 @@ class TestLAD(unittest.TestCase):
 
         ## Test plot LEV CDF by lake area
         lad_lev.plot_lev_cdf_by_lake_area()
-        print(f"Mean LEV: {lad_lev.sumLev(
-            asFraction=True, includeExtrap=False)['mean']:.2%}")
+        mean = lad_lev.sumLev(asFraction=True, includeExtrap=False)['mean']
+        print(f"Mean LEV: {mean:.2%}")
 
         ## Test binned LEV HL LAD (won't actually use this for analysis)
         lad_lev.Region = 'Region 4'
@@ -124,10 +124,10 @@ class TestLAD(unittest.TestCase):
         # Beware chaining unless I return a new variable.
         lad_lr_trunc = lad_lev.truncate(0.5, np.inf, inplace=False)
         lad_lr_trunc.extrapolate(binned, ref_binned_lev)
-        print(f"Mean LEV: {lad_lr_trunc.sumLev(
-            asFraction=True, includeExtrap=True)['mean']:.2%}")
-        print(f"Total area: {lad_lr_trunc.sumAreas(
-            includeExtrap=True):.6} km2")
+        mean = lad_lr_trunc.sumLev(asFraction=True, includeExtrap=True)['mean']
+        print(f"Mean LEV: {mean:.2%}")
+        sum = lad_lr_trunc.sumAreas(includeExtrap=True)
+        print(f"Total area: {sum:.6} km2")
 
         ## Test plot extrap LAD, LEV
         ax = lad_lr_trunc.plot_extrap_lad(
