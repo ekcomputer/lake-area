@@ -1,5 +1,6 @@
 # Lake Area Distribution (LAD): A Python package to extrapolate the lake-area distribution to small lakes and calculate their vegetation coverage and methane emissions
 
+![Alt text](assets/example_plot.png)
 ## Basic Usage
 
 This package defines two classes: `LAD` (Lake-area distribution) and `BinnedLAD`(Binned LAD). Both are based on the `pandas.DataFrame` class but have additional attributes and methods. 
