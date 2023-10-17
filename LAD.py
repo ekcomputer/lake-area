@@ -321,9 +321,9 @@ def loadBAWLD_CH4():
     return model
 
 
-def computeLEV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev=None, use_zero_oc=False, use_low_oc=True) -> True:
+def computeLAV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev=None, use_zero_oc=False, use_low_oc=True) -> True:
     """
-    Uses Bayes' law and reference Lake Emergent Vegetation (LEV) distribution to estimate the LEV in a given df, based on water Occurrence.
+    Uses Bayes' law and reference Lake Emergent Vegetation (LEV) distribution to estimate the Lake Aquatic Vegetation (LAV) in a given df, based on water Occurrence.
 
     Parameters
     ----------
@@ -442,7 +442,7 @@ def convertOccurrenceFormat(df):
 
 def produceRefDs(ref_df_pth: str) -> True:
     """
-    Pre-process raw dataframe in prep for computeLEV function.
+    Pre-process raw dataframe in prep for computeLAV function.
 
     Parameters
     ----------
@@ -467,39 +467,54 @@ def produceRefDs(ref_df_pth: str) -> True:
     return df
 
 
-def loadUAVSAR(ref_names=['CSB', 'CSD', 'PAD', 'YF']):
-    '''
-    Uses the regions in ref_names for averaging and regions in extreme_regions_lev_for_extrap for confidence interval.
+def loadUAVSAR(ref_names=['CSB', 'CSD', 'PAD', 'YF'], pths_shp:list=None, pths_csv:list=None):
+    """
+    Loads UAVSAR (LEV) data from shapefiles and pre-processed overlay CSV.
 
-    Returns:
-    lad_lev_cat: LAD
-        LAD for reference regions. Used as LEV for non-inventoried lakes.
-    ref_dfs: pd.DataFrame
-        Giving Occurrence values by land cover class (e.g. LEV, Water) for reference UAVSAR regions. Used to estimate LEV for inventoried lakes.
-    '''
+    Uses the regions in ref_names for averaging and regions in extreme_regions_lev_for_extrap for confidence interval. If no paths are given, defaults to pre-defined paths. Run after produceRefDs.
+
+    Parameters
+    ----------
+    ref_names: list
+        Short names for regions to use
+    pths_shp : list
+        Path to shapefiles.
+    pths_csv : list
+        Path to CSV files.
+
+    Returns
+    -------
+    lad_lev_cat : LAD
+        LAD for reference regions concatenated together. Used as LEV for non-inventoried lakes.
+    ref_dfs : list
+        Giving Occurrence values by land cover class (e.g. LEV, Water) for reference UAVSAR regions.
+        Used to estimate LEV for inventoried lakes. List of pandas.DataFrames.
+    """
+
 
     ## Load LEV/LAD from UAVSAR
     print('Loading UAVSAR and Pekel overlay...')
-    default_ref_names = ['CSB', 'CSD', 'PAD', 'YF']
-    pths_shp = ['/Volumes/thebe/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
+    if pths_shp and pths_csv:
+        assert len(pths_shp) == len(pths_csv), "pths_shp must be same length as pths_csv"
+    if (pths_shp is None) ^ (pths_csv is None):
+        raise ValueError("pths_shp must be same length as pths_csv.")
+
+    if pths_shp is None: # default values
+        pths_shp = ['/Volumes/thebe/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
                 '/Volumes/thebe/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_lakes.shp',
                 '/Volumes/thebe/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_lakes.shp',
                 '/Volumes/thebe/PAD2019/classification_training/PixelClassifier/Final-ORNL-DAAC/shp_no_rivers_subroi_no_smoothing/YFLATS_190914_mosaic_rcls_lakes.shp']
 
-    pths_csv = [  # CSV
+    if pths_csv is None: # default values
+        pths_csv = [  # CSV
         '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay_v2/bakerc_16008_19059_012_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_train_LEV_s.csv',
         '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay_v2/daring_21405_17094_010_170909_L090_CX_01_LUT-Freeman_rcls_brn_zHist_Oc_train_LEV_s.csv',
         '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay_v2/padelE_36000_19059_003_190904_L090_CX_01_Freeman-inc_rcls_brn_zHist_Oc_train_LEV_s.csv',
-        # Note YF is split into train/holdout XX vs XX %
         '/Volumes/thebe/Ch4/misc/UAVSAR_polygonized/sub_roi/zonal_hist/v2_5m_bic/LEV_GSW_overlay_v2/YFLATS_190914_mosaic_rcls_brn_zHist_Oc_train_LEV_s.csv'
     ]
     values = [{'pths_shp': pths_shp[i], 'pths_csv': pths_csv[i]}
               for i in range(len(pths_shp))]
-    pths_dict = {k: v for k, v in zip(default_ref_names, values)}
-
-    ## Filter based on ref_names
-    _ = [pths_dict.pop(key)
-         for key in default_ref_names if not key in ref_names]
+    pths_dict = {k: v for k, v in zip(ref_names, values)}
 
     lad_levs = []
     for i, pth in enumerate(pths_dict.values()):
@@ -580,7 +595,7 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         regions : list, optional
             If provided, will transform numeric regions to text
         computeArea : Boolean, default:False
-            If provided, will compute Area from geometry. Doesn't need a crs, but needs user input for 'areaConversionFactor.'
+            If provided, will compute Area from geometry. Doesn't need a crs (but make sure it is equal-area projection), but needs user input for 'areaConversionFactor.'
         other_vars : list, optional
             If provided, LAD will retain these columns.
         '''
@@ -1654,10 +1669,10 @@ class BinnedLAD():
                 self.binnedMg_m2_day = None
 
             ## Bin
-            group_sums = lad.groupby(['size_bin']).Area_km2.sum(
+            group_sums = lad.groupby(['size_bin'], observed=False).Area_km2.sum(
                 numeric_only=True)  # These don't get lower/upper estimates for now
             # These don't get lower/upper estimates for now
-            group_counts = lad.groupby(['size_bin']).Area_km2.count()
+            group_counts = lad.groupby(['size_bin'], observed=False).Area_km2.count()
             if compute_ci_lad:
                 assert extreme_regions_lad is not None, "If compute_ci_lad is True, extreme_regions_lad must be provided"
                 assert np.all([region in lad.Region.unique() for region in extreme_regions_lad]
@@ -1665,7 +1680,7 @@ class BinnedLAD():
 
                 ## First, group by area bin and take sum and counts of each bin
                 group_low_sums, group_high_sums = [lad[lad['Region'] == region].groupby(
-                    ['size_bin']).Area_km2.sum() for region in extreme_regions_lad]
+                    ['size_bin'], observed=False).Area_km2.sum() for region in extreme_regions_lad]
                 self.hasCI_lad = True
                 self.extreme_regions_lad = extreme_regions_lad
             else:
@@ -1696,7 +1711,7 @@ class BinnedLAD():
             ## bin LEVbinnedDCz
             if hasLEV:
                 group_means_lev = lad.groupby(
-                    ['size_bin']).LEV_MEAN.mean(numeric_only=True)
+                    ['size_bin'], observed=False).LEV_MEAN.mean(numeric_only=True)
                 if compute_ci_lev:
                     assert extreme_regions_lev is not None, "If compute_ci_lad is True, and LAD has LEV, extreme_regions_lev must be provided"
                     assert np.all([region in lad.Region.unique() for region in extreme_regions_lev]
@@ -1705,7 +1720,7 @@ class BinnedLAD():
                     # group_means_lev_high = lad.groupby(['size_bin']).LEV_MAX.mean(numeric_only=True)
                     # Here, my ref distrib has no LEV_MIN/MAX, since it is observed, so I use extreme reegions for uncertainty bounds
                     group_means_lev_low, group_means_lev_high = [lad[lad['Region'] == region].groupby(
-                        ['size_bin']).LEV_MEAN.mean(numeric_only=True) for region in extreme_regions_lev]
+                        ['size_bin'], observed=False).LEV_MEAN.mean(numeric_only=True) for region in extreme_regions_lev]
                     self.hasCI_lev = True
                     self.extreme_regions_lev = extreme_regions_lev
                     pass
@@ -1716,7 +1731,7 @@ class BinnedLAD():
                     assert np.all(np.isin(['LEV_MIN', 'LEV_MAX'], lad.columns)
                                   ), "If selecting 'compute_ci_lev_existing', both 'LEV_MIN' and 'LEV_MAX' need to be present in lad columns."
                     group_means_lev_low, group_means_lev_high = [lad.groupby(
-                        ['size_bin'])[stat].mean(numeric_only=True) for stat in ['LEV_MIN', 'LEV_MAX']]
+                        ['size_bin'], observed=False)[stat].mean(numeric_only=True) for stat in ['LEV_MIN', 'LEV_MAX']]
                 else:
                     group_means_lev_low, group_means_lev_high = None, None
                     self.hasCI_lev = False
@@ -1728,19 +1743,19 @@ class BinnedLAD():
 
             ## bin flux
             if hasFlux:
-                ds_g_day_from_sum = lad.groupby(['size_bin']).est_g_day.sum(
+                ds_g_day_from_sum = lad.groupby(['size_bin'], observed=False).est_g_day.sum(
                     numeric_only=True)  # method #1: sum g/day for each lake
                 self.binnedG_day = confidence_interval_from_extreme_regions(
                     ds_g_day_from_sum, None, None, name='est_g_day')  # Save for potential comparison?
                 if compute_ci_flux:  # CI
                     assert compute_ci_lad is not None, "If compute_ci_flux is True, compute_ci_lad must be provided"
                     # group_means_flux0, group_means_flux_low0, group_means_flux_high0 = [lad.groupby(['size_bin']).est_mg_m2_day.mean(numeric_only=True) * self.binnedAreas.loc[:,stat] * 1e3 for stat in ['mean', 'lower', 'upper']] # method #2: would have units of g / day (don't multiply by area yet).
-                    group_means_flux, group_means_flux_low, group_means_flux_high = [lad.groupby(['size_bin']).est_mg_m2_day.mean(
+                    group_means_flux, group_means_flux_low, group_means_flux_high = [lad.groupby(['size_bin'], observed=False).est_mg_m2_day.mean(
                         numeric_only=True) for stat in ['mean', 'lower', 'upper']]  # Low/mean/high are all the same on a per-area basis!
                     self.hasCI_flux = True
                     pass
                 else:  # This branch is silly, because neither branch computes a meaningful confidence interval. See self.PredictFlux() for actual conversion to CI based on CI of areas and given per-area fluxes
-                    group_means_flux = lad.groupby(['size_bin']).est_mg_m2_day.mean(
+                    group_means_flux = lad.groupby(['size_bin'], observed=False).est_mg_m2_day.mean(
                         numeric_only=True)  # Low/mean/high are all the same on a per-area basis!
                     group_means_flux_low, group_means_flux_high = None, None
                     self.hasCI_flux = False
@@ -1753,7 +1768,7 @@ class BinnedLAD():
 
             ## bin double counting
             if hasDC:
-                dc = lad.groupby(['size_bin']).d_counting_frac.mean(
+                dc = lad.groupby(['size_bin'], observed=False).d_counting_frac.mean(
                     numeric_only=True)
                 binnedDC = confidence_interval_from_extreme_regions(
                     dc, None, None, name='dc')
@@ -1919,7 +1934,7 @@ class BinnedLAD():
         est_g_day = confidence_interval_from_extreme_regions(
             est_g_day_mean, est_g_day_low, est_g_day_high, name='est_g_day')
         self._total_flux_Tg_yr = est_g_day.groupby(
-            'stat').sum() * 365.25 / 1e12  # see Tg /yr
+            'stat', observed=False).sum() * 365.25 / 1e12  # see Tg /yr
 
         ## Add attrs
         self.binnedMg_m2_day = confidence_interval_from_extreme_regions(pd.Series(
@@ -1941,7 +1956,7 @@ class BinnedLAD():
         Area used for multiplication is the central estimate, not the CI, even when multiplying by LEV CI.
         '''
         summed_lev = (
-            self.binnedLEV * self.binnedAreas.loc[:, 'mean']).groupby(level=1).sum()  # km2
+            self.binnedLEV * self.binnedAreas.loc[:, 'mean']).groupby(level=1, observed=False).sum()  # km2
         if asFraction:
             result = summed_lev / self.sumAreas(ci=False)
         else:
@@ -1996,40 +2011,15 @@ def norm_table(table, mean_table):
     return table / mean_table.sum(axis=0)
     
 def runTests():
-    '''Practicing loading and functions/methods with/without various arguments.
-    Can pause and examine classes to inspect attributes.'''
-    # ## Testing from shapefile
-    # lad_from_shp = LAD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
-    # lad_from_shp = LAD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area')
-    # lad_from_shp = LAD.from_shapefile('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/arg00120110829_k2_nplaea.shp', area_var='AREA', idx_var=None, name='yuk00120090812', region_var=None, _areaConversionFactor=1e6)
-    # print('\tPassed load from shapefile.')
+    '''Legacy tests that still need to be added to tests/test_LAD.py pytest framework. Can run with `python LAD.py --test True` '''
 
-    ## Testing from gdf
-    # gdf = pyogrio.read_dataframe('/Volumes/thebe/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp', read_geometry=True, use_arrow=True)
-    # lad_from_gdf = LAD(gdf, area_var='Area', name='CIR', region_var='Region4')
-    # regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta', 'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River', 'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North', 'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    # lad_from_gdf = LAD(gdf, area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
-    # print('\tPassed load from gdf.')
+    lad_hr_pth = '/Users/ekyzivat/Library/CloudStorage/Dropbox/Python/Ch4/sample_data/CIR_Canadian_Shield.shp'
+    lad_lr_pth = '/Users/ekyzivat/Library/CloudStorage/Dropbox/Python/Ch4/sample_data/HydroLAKESv10_Sweden.shp'
+
 
     # ## Loading from dir
     # exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701','hbl00119740617', 'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707', 'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx', 'bar00120080730_qb_nplaea.shp']
     # lad_from_dir = LAD.from_paths('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/y*.shp', area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=exclude)
-
-    # ## Test concat
-    # lad_concat = LAD.concat((lad_from_shp, lad_from_gdf))
-    # lad_concat = LAD.concat((lad_from_shp, lad_from_gdf), broadcast_name=True)
-    # print('\tPassed concat.')
-
-    # ## Test truncate
-    # lad_concat.truncate(0.01, 20)
-    # print('\tPassed truncate.')
-    # pass
-
-    # ## Test compute area from geometry
-
-    # ## Test area fraction
-    # lad_from_gdf.area_fraction(1)
-    # print('\tPassed area_fraction.')
 
     ## Load with proper parameters
     # lad_hl = LAD.from_shapefile('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/HL_Sweden_md.shp', area_var='Lake_area', idx_var='Hylak_id', name='HL', region_var=None)
@@ -2038,39 +2028,30 @@ def runTests():
     lad_cir = LAD.from_shapefile('/Volumes/thebe/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp',
                                  area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
 
-    ## Test binned PDF
-    # plotEPDFByValue(lad_cir.Area_km2)
-
     ####################################
     ## LEV Tests
     ####################################
 
-    ref_names = ['CSB', 'CSD', 'PAD', 'YF']
-    lad_lev_cat, ref_dfs = loadUAVSAR(ref_names)
+    ########## Workflow for creating sample data with occurrence values
+    ## Save to sample data
+    # gdf = gpd.GeoDataFrame(geometry=gpd.points_from_xy(lad_hl_oc.Pour_long, lad_hl_oc.Pour_lat))
+    # gdf.plot()
 
-    ## Test LEV estimate: Load UAVSAR/GSW overlay stats
-    print('Load HL with joined occurrence...')
-    # lad_hl_oc = pyogrio.read_dataframe('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=False, max_features=1000) # load shapefile with full histogram of zonal stats occurrence values
-    # read smaller csv gzip version of data.
-    lad_hl_oc = pd.read_csv(
-        '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz', compression='gzip', nrows=10000)
+    # # Extract the list of 'hylak_id' from df_lad_from_shp['idx_HL']
+    # idx_HL_list = lad_from_shp['idx_HL'].tolist()
 
-    extreme_regions_lev_for_extrap = ['CSD', 'PAD']
-    # use same regions for extrap as for estimate
-    lev = computeLEV(lad_hl_oc, ref_dfs, ref_names,
-                     extreme_regions_lev=extreme_regions_lev_for_extrap)
-    lad_lev = LAD(lev, area_var='Lake_area', idx_var='Hylak_id')
+    # # Filter df_lad_hl_oc based on the condition
+    # filtered_df = lad_hl_oc[lad_hl_oc['Hylak_id'].isin(idx_HL_list)]
 
-    ## Test plot LEV  CDF
-    lad_lev.plot_lev_cdf()
+    # gdf_filt = gpd.GeoDataFrame(filtered_df, geometry=gpd.points_from_xy(filtered_df.Pour_long, filtered_df.Pour_lat), crs='EPSG:4326')
+    
+    # gdf_filt_og = gpd.GeoDataFrame(lad_from_shp, geometry=gpd.points_from_xy(lad_from_shp.Pour_long, lad_from_shp.Pour_lat), crs='EPSG:4326')
 
-    ## Test plot LEV CDF by lake area
-    lad_lev.plot_lev_cdf_by_lake_area()
-    print(f"Mean LEV: {lad_lev.sumLev(asFraction=True)['mean']:.2%}")
+    # gdf_filt.to_file('/Users/ekyzivat/Library/CloudStorage/Dropbox/Python/Ch4/sample_data/HydroLAKESv10_Sweden_Occurrence.shp')
 
-    ## Test binned LEV HL LAD (won't actually use this for analysis)
-    # extreme_regions_lad = ['Tuktoyaktuk Peninsula', 'Prairie Potholes North'] # tmp
-    # binned = BinnedLAD(lad_lev.truncate(0.5,1), 0.5, 1000, compute_ci_lad=True, extreme_regions_lad=extreme_regions_lad) # compute_ci_lad=False will disable plotting CI.
+    # gdf_filt.to_csv('/Users/ekyzivat/Library/CloudStorage/Dropbox/Python/Ch4/sample_data/HydroLAKESv10_Sweden_Occurrence.csv.gz', compression='gzip')
+
+    ###########
 
     ## Test 1: Bin the reference UAVSAR LEV LADs
     # lad_lev_binneds = []
@@ -2088,22 +2069,6 @@ def runTests():
     ## LAD/bin/extrap Tests
     ####################################
 
-    ## Test binnedLAD
-    extreme_regions_lad = ['Tuktoyaktuk Peninsula',
-                           'Prairie Potholes North']  # tmp
-    # binned = BinnedLAD(lad_cir.truncate(0.0001,1), 0.0001, 0.5, compute_ci_lad=True, extreme_regions_lad=extreme_regions_lad) # compute_ci_lad=False will disable plotting CI.
-    # compute_ci_lad=False will disable plotting CI.
-    binned = BinnedLAD(lad_cir.truncate(0.0001, 1),
-                       0.0001, 0.5, compute_ci_lad=False)
-    binned.plot()
-    binned.plot(as_lineplot=True)
-
-    ## Test binnedLAD with edges specified
-    # compute_ci_lad=False will disable plotting CI.
-    binned_manual = BinnedLAD(lad_cir.truncate(0.0001, 1), 0.0001, 0.5, bins=[
-                              0.001, 0.1, 0.5], compute_ci_lad=True, extreme_regions_lad=extreme_regions_lad)
-    binned_manual.plot()
-
     ## Test binnedLAD with fluxes
     model = loadBAWLD_CH4()
     lad_cir['Temp_K'] = 10  # placeholder, required for prediction
@@ -2111,28 +2076,10 @@ def runTests():
     binned = BinnedLAD(lad_cir.truncate(0.0001, 1), 0.0001, 0.5, compute_ci_lad=True, compute_ci_flux=True,
                        extreme_regions_lad=extreme_regions_lad)  # compute_ci_lad=False will disable plotting CI.
 
-    ## Test extrapolate on small data
-    # lad_hl_trunc = lad_hl.truncate(0.1, np.inf, inplace=False) # Beware chaining unless I return a new variable.
-    # lad_hl_trunc.extrapolate(binned, binned_lev)
-
-    ## Test extrapolate on small data with binned LEV
-    lad_hl_trunc = lad_lev.truncate(0.5, np.inf, inplace=False)
-    lad_hl_trunc.extrapolate(binned, binned_lev)
-
-    ## Test mean lev with extrap
-    print(f"Mean LEV: {lad_hl_trunc.sumLev(asFraction=True)['mean']:.2%}")
 
     ## Compare extrapolated sums
     lad_hl_trunc.extrapLAD.sumAreas()
     lad_hl_trunc.sumAreas()
-
-    ## Test plot extrap LEV
-    # ax = lad_hl_trunc.plot_extrap_lad(normalized=False, error_bars=True, color='blue')
-    # ax2=ax.twinx()
-    # lad_hl_trunc.plot_extrap_lev(ax=ax2, error_bars=True, color='green')
-    # ymin, ymax = ax.get_ylim()
-    # ax2.set_ylim([ymin, ymax])
-    # plt.tight_layout()
 
     ## Compare extrapolated area fractions
     # frac = lad_hl_trunc.extrapolated_area_fraction(lad_cir, 0.0001, 0.01)
@@ -2215,7 +2162,7 @@ if __name__ == '__main__':
     # above, but with all ocurrence values, not binned
     df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz' # main data source
     hl_area_var = 'Shp_Area'
-    hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v3.csv.gz'
+    hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ERA5_stl1_v3.csv.gz'
     bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
     # HL shapefile with ID of nearest BAWLD cell (still uses V3)
     hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
@@ -2228,7 +2175,7 @@ if __name__ == '__main__':
     # df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full_jnBAWLD_roiNAHL.csv.gz' # main data source # HL clipped to BAWLD and WBD
     # # gdf_HL_jn_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_binned_jnBAWLD_roiNAHL.shp' 
     # hl_area_var='Shp_Area'
-    # hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ABoVE_ERA5_stl1_v3.csv.gz'
+    # hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ERA5_stl1_v3.csv.gz'
     # hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
 
     ## BAWLD domain (Sheng lakes)
@@ -2306,7 +2253,7 @@ if __name__ == '__main__':
     # read smaller csv gzip version of data.
     lad_hl_oc = pd.read_csv(
         df_HL_jn_full_pth, compression='gzip', low_memory=False)
-    lev = computeLEV(lad_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap,
+    lev = computeLAV(lad_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap,
                      use_low_oc=use_low_oc)  # use same extreme regions for est as for extrap
 
     ## Set high arctic lakes LEV to 0 (no GSW present above 78 degN)
@@ -2336,7 +2283,7 @@ if __name__ == '__main__':
         hl_nearest_bawld_pth, read_geometry=False)
     # take only first lake (for cases where lake is equidistant from multiple cells)
     df_hl_nearest_bawld = df_hl_nearest_bawld.groupby(
-        'Hylak_id').first().reset_index()
+        'Hylak_id', observed=False).first().reset_index()
     # Need to create new var because output of merge is not LAD
     lad_hl_lev_m = lad_hl_lev.merge(df_hl_nearest_bawld[[
         'Hylak_id', 'BAWLD_Cell', '0-5', '5-50', '50-95', '95-100']], left_on='idx_HL', right_on='Hylak_id', how='left')
@@ -2375,7 +2322,7 @@ if __name__ == '__main__':
     gdf_holdout = convertOccurrenceFormat(gdf_holdout)
 
     ## Convert Occurence to LEV
-    a_lev_measured = computeLEV(gdf_holdout, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap,
+    a_lev_measured = computeLAV(gdf_holdout, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap,
                      use_low_oc=use_low_oc)
     
     ## rm edge lakes and small lakes below HL limit
@@ -2658,7 +2605,7 @@ if __name__ == '__main__':
 
     ## Combine intervals
     grouped_tb_mean, grouped_tb_lower, grouped_tb_upper = [tb_comb.loc[:, stat, :].groupby(
-        by=interval_group).sum() for stat in ['mean', 'lower', 'upper']]
+        by=interval_group, observed=False).sum() for stat in ['mean', 'lower', 'upper']]
 
     ## Normalize
     grouped_tb_mean_norm, grouped_tb_lower_norm, grouped_tb_upper_norm = map(
@@ -2708,10 +2655,10 @@ if __name__ == '__main__':
     lad_hl_lev['Temp_K_wght_sum'] = lad_hl_lev.Temp_K * lad_hl_lev.Area_km2
 
     ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
-    df_bawld_sum_lev = lad_hl_lev.groupby('BAWLD_Cell').sum(numeric_only=True)  # Could add Occ
+    df_bawld_sum_lev = lad_hl_lev.groupby('BAWLD_Cell', observed=False).sum(numeric_only=True)  # Could add Occ
 
     ## Lake count
-    df_bawld_sum_lev['lake_count'] = lad_hl_lev[['Area_km2', 'BAWLD_Cell']].groupby('BAWLD_Cell').count().astype('int')
+    df_bawld_sum_lev['lake_count'] = lad_hl_lev[['Area_km2', 'BAWLD_Cell']].groupby('BAWLD_Cell', observed=False).count().astype('int')
 
     ## Rescale back to LEV fraction (of lake) as well (equiv to lake area-weighted mean of LEV fraction within grid cell)
     for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
