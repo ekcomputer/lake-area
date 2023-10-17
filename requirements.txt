@@ -4,6 +4,7 @@ matplotlib-label-lines
 numpy==1.23.5
 openpyxl
 pandas==1.5.2
+pyarrow
 pyogrio==0.5.1
 scikit-learn
 scipy==1.9.3

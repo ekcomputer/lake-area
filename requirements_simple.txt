@@ -1,0 +1,13 @@
+gdal
+geopandas
+matplotlib
+matplotlib-label-lines
+numpy
+openpyxl
+pandas
+pyarrow
+pyogrio
+scikit-learn
+scipy
+seaborn
+statsmodels
