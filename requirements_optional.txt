@@ -4,6 +4,7 @@ dask==2023.9.3
 ee==0.4
 geemap==0.29.0
 geopandas==0.14.0
+jupyter
 matplotlib==3.8.0
 numpy==1.26.0
 pandas==2.1.1

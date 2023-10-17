@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 with open('README.md') as file:
-        long_description = file.read()
+    long_description = file.read()
 setup(
     name='LAD',
     version='0.1.0',
