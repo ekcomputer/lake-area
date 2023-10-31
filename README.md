@@ -70,11 +70,10 @@ To use the jupyter notebooks, you will also need to install the requirements in 
 ## Citing this package
 
 **Data and software**: \
-Kyzivat, E., & Smith, L. (2023). Parameters for estimating methane emissions from Arctic-boreal lakes: Non-inventoried small lake areas, aquatic vegetation, and potential double-counting with wetlands. Arctic Data Center [Dataset]. https://arcticdata.io/catalog/view/urn%3Auuid%3Ab1559439-8bad-4221-a861-75b1a847398c [Accessed XX-XX-XXXX]
+Kyzivat., E.D. and Smith, L.C. (2023). Parameters and code for estimating methane emissions from Arctic-boreal lakes, 2022. *Arctic Data Center*. [https://doi.org/10.18739/A27M04222](https://doi.org/10.18739/A27M04222) [Accessed XX-XX-XXXX]
 
 **Journal article**: \
-Kyzivat, E.D. and Smith, L.C. A closer look at the effects of lake area, aquatic vegetation, and double-counted wetlands on pan-Arctic lake methane emissions estimates. In revision at Geoophysical Research Letters.
-
+2.	Kyzivat, E.D. and Smith, L.C. A closer look at the effects of lake area, aquatic vegetation, and double-counted wetlands on pan-Arctic lake methane emissions estimates. In press at *Geophysical Research Letters*. [https://doi.org/10.1029/2023GL104825](https://doi.org/10.1029/2023GL104825)
 ## References
 
 Sample data comes from the following sources: 
