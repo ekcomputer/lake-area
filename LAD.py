@@ -2872,7 +2872,8 @@ if __name__ == '__main__':
 * Add confusion matrix output steps (in LEV_GSW_overlay.ipynb) to main script.
 * replace sklearn 'mean_squared_error' function to make package easier to install.
 * Fix runtime div by 0 warnings
-
+* Publish to pypi
+* install tests for mac - copy geospatial
 
 NOTES:
 * Every time a create an LAD() object in a function from an existing LAD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
