@@ -2,9 +2,11 @@
 
 import sys
 import unittest
+import numpy as np
 import pandas as pd
 import pyogrio
 from LAD import *
+from util import *
 
 lad_hr_pth = 'sample_data/CIR_Canadian_Shield.shp'
 lad_lr_pth = 'sample_data/HydroLAKESv10_Sweden.shp'
@@ -137,3 +139,23 @@ class TestLAD(unittest.TestCase):
         ax2.set_ylim([ymin / ymax, ymax / ymax])
         lad_lr_trunc.plot_extrap_lev(error_bars=False, color='green')
         plt.tight_layout()
+
+
+class TestUtils(unittest.TestCase):
+    ''' For utility functions'''
+
+    def test_getRequests(self):
+
+        # Define the latitude and longitude ranges
+        lat_range = [30, 40]
+        lon_range = [-120, -110]
+
+        # Call the getRequests function to generate the list of requests
+        requests = getRequests(lat_range, lon_range)
+
+        # Check the shape of the returned array
+        self.assertEquals(requests.shape, (400, 2))
+
+        # Check the values of the first and last few requests
+        self.assertListEqual(requests[0].tolist(), [30., -120.])
+        self.assertListEqual(requests[-1].tolist(), [39.5, -110.5])

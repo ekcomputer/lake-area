@@ -32,12 +32,26 @@ import pyogrio
 modN = 300000
 analysis_dir = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/vtest/'
 index_file = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-table_dir = os.path.join(analysis_dir, 'tables')
-ee_zones_pth = "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10"
+# "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10"
+ee_zones_pth = 'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_as'
 ee_value_raster_pth = "JRC/GSW1_4/GlobalSurfaceWater"
 nWorkers = 5
 crs_str = 'PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["Unknown",DATUM["D_unknown",SPHEROID["Unknown",6371007.181,0]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_origin",45.5],PARAMETER["central_meridian",-114.125],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["Meter",1]]'
-for dir in [analysis_dir, table_dir]:
+name_lat = 'Lat'  # 'Pour_lat'
+name_lon = 'Lon'  # 'Pour_long'
+# lat_range = [40, 84]
+# lon_range = [-180, 180]
+lat_range = [62, 64.5]  # for testing
+lon_range = [-105, -103]
+offset_lower = 0  # 0.25
+offset_upper = 0.5
+
+step = 0.5
+
+# Auto I/O
+table_dir = os.path.join(analysis_dir, 'tables')
+out_dir = os.path.join(analysis_dir, 'tiles')
+for dir in [analysis_dir, table_dir, out_dir]:
     os.makedirs(dir, exist_ok=True)
 
 ## Derived
@@ -47,20 +61,43 @@ for dir in [analysis_dir, table_dir]:
 # NOT 'https://earthengine.googleapis.com'
 ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com')
 
+# def getRequests(index_file):
+#     ''' Based on unique lat/long indexes in BAWLD'''
 
-def getRequests(index_file):
-    ''' Based on unique lat/long indexes in BAWLD'''
+#     ## Load shapefile to join
+#     index = gpd.read_file(index_file, engine='pyogrio')
 
-    ## Load shapefile to join
-    index = gpd.read_file(index_file)
+#     ## For testing
+#     index = index[:5]  # uncomment to test on only 5 features
 
-    ## For testing
-    index = index[:5]  # uncomment to test on only 5 features
+#     ## For test run: filter only a few tiles
+#     # gdf_bawld.query("(Lat > 59) and (Lat < 60) and (Long > -109) and (Long < -102)", inplace=True) # comment out
 
-    ## For test run: filter only a few tiles
-    # gdf_bawld.query("(Lat > 59) and (Lat < 60) and (Long > -109) and (Long < -102)", inplace=True) # comment out
+#     return index[['Long', 'Lat']].to_numpy()
 
-    return index[['Long', 'Lat']].to_numpy()
+
+def getRequests(lat_range, lon_range, step=0.5):
+    ''' 
+    Returns an N x 2 array of longitude, latitude pairs for all permutations of pairs from lat_range, lon_range.
+    Arguments:
+        lat_range: array-like
+            [min lat, max lat]
+        lon_range: array-like
+            [min long, max long]
+        setp: float
+            grid spacing
+    Returns:
+        items: numpy.Array
+    '''
+
+    # Create a meshgrid of all possible latitude and longitude values
+    lats, lons = np.meshgrid(
+        np.arange(lat_range[0], lat_range[1], step), np.arange(lon_range[0], lon_range[1], step))
+
+    # Reshape the arrays into a single array of latitude, longitude pairs
+    items = np.vstack([lons.ravel(), lats.ravel()]).T
+
+    return items
 
 ## testing
 # foo = getRequests()
@@ -81,8 +118,8 @@ def getResult(index, group, *args, **kwargs):
     group is an object that represents a unique value within a grouping (e.g. country name, grid cell longitude), and is not related to "group" in function geemap.zonal_statistics_by_group
     """
     ''' TODO: for real, filter to only Arctic X, change scale and tile scale X, change load gdf BB'''
+
     ## I/O
-    out_dir = os.path.join(analysis_dir, 'tiles')
     out_pth = os.path.join(
         out_dir, f'HL_zStats_Oc_Long{group[0]}_Lat{group[1]}.csv')
 
@@ -109,8 +146,8 @@ def getResult(index, group, *args, **kwargs):
     ## Filter based on bawld cell geometry (note: cells are unequal area)
     # vectF = vect.filter(ee.Filter.eq(modstr, group))
     # groupEE = [ee.Number.float(group[0]) , ee.Number.float(group[1])] # list(map(ee.Number.float, group)) # convert to server object
-    vectF = vect.filter(ee.Filter.And(ee.Filter.expression(f"(Pour_long > {group[0]-0.25}) && (Pour_long <= {group[0]+0.25})"),
-                                      ee.Filter.And(ee.Filter.expression(f"(Pour_lat > {group[1]-0.25}) && (Pour_lat <= {group[1]+0.25})"))))
+    vectF = vect.filter(ee.Filter.And(ee.Filter.expression(f"({name_lon} > {group[0]-offset_lower}) && ({name_lon} <= {group[0]+offset_upper})"),
+                                      ee.Filter.And(ee.Filter.expression(f"({name_lat} > {group[1]-offset_lower}) && ({name_lat} <= {group[1]+offset_upper})"))))
     nFeats = vectF.size().getInfo()
     print(f'Number of features in chunk: {nFeats}')
     # print(vect.size())
@@ -156,13 +193,13 @@ if __name__ == '__main__':
     # getResult(0, np.array([-104.25, 51.25]))
 
     ## View expected number of results
-    items = getRequests(index_file)
+    items = getRequests(lat_range, lon_range, step)  # index_file
     print(f'Number of items: {len(items)}')
 
     ## Run function
     # items = getRequests() # a list whose length is the number of groups to use for parallelizing # np.arange(modN) #
     print(f'Sending request in {len(items)} chunks...')
-    pool = multiprocessing.Pool(nWorkers)  # 25
+    pool = multiprocessing.Pool(nWorkers)
     pool.starmap(getResult, enumerate(items))  # , {
     #  'crs': crs_str, 'ee_zones_pth_input': ee_zones_pth})
     pool.close()
