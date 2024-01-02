@@ -1,15 +1,10 @@
-# %% [markdown]
-# __Batch run for zonal stats__ \
-# Tips from: https://gorelick.medium.com/fast-er-downloads-a2abd512aa26 \
-# Overlays Pekel GSW Occurrence values over HydroLAKES and computes zonal histogram for each lake in Google Earth Engine.\
-# \
-# TODO
-# * Remove original HL attributes before download from EE
 
-# %% [markdown]
-# ## I/O
+'''__Batch run for zonal stats__ \
+Tips from: https://gorelick.medium.com/fast-er-downloads-a2abd512aa26 \
+Overlays Pekel GSW Occurrence values over HydroLAKES and computes zonal histogram for each lake in Google Earth Engine.\
+TODO
+* Remove original HL attributes before download'''
 
-# %%
 import matplotlib.patches as mpatches
 from seaborn import objects as so
 import os
@@ -28,40 +23,34 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 import pyogrio
 
-
-# %%
-## I/O
 modN = 300000
-analysis_dir = '/mnt/g/Ch4/GSW_zonal_stats/HL/v4/'
+analysis_dir = '/mnt/g/Ch4/GSW_zonal_stats/HL/vtest/'
+index_file = '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
 table_dir = os.path.join(analysis_dir, 'tables')
+ee_zones_pth = "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10"
+ee_value_raster_pth = "JRC/GSW1_4/GlobalSurfaceWater"
+crs_str = 'PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["Unknown",DATUM["D_unknown",SPHEROID["Unknown",6371007.181,0]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_origin",45.5],PARAMETER["central_meridian",-114.125],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["Meter",1]]'
 for dir in [analysis_dir, table_dir]:
     os.makedirs(dir, exist_ok=True)
 
 ## Derived
 # modstr = 'mod'+str(modN)
 
-# %%
 ## Register with ee using high-valume (and high-latency) endpoint
 # NOT 'https://earthengine.googleapis.com'
 ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com')
 
-# %% [markdown]
-# ## Functions
 
-# %%
-
-
-def getRequests():
+def getRequests(index_file):
     ''' Based on unique lat/long indexes in BAWLD'''
 
     ## Load shapefile to join
-    gdf_bawld = gpd.read_file(
-        '/mnt/g/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip')
+    index = gpd.read_file(index_file)
 
     ## For test run: filter only a few tiles
     # gdf_bawld.query("(Lat > 59) and (Lat < 60) and (Long > -109) and (Long < -102)", inplace=True) # comment out
 
-    return gdf_bawld[['Long', 'Lat']].to_numpy()
+    return index[['Long', 'Lat']].to_numpy()
 
 ## testing
 # foo = getRequests()
@@ -70,12 +59,11 @@ def getRequests():
 
 # foo
 
-# %%
-
-
 # (tries=10, delay=1, backoff=2) # 7,1,3 causes max delay of 12 min, hopefully enough to clear "service unavailable errors."
+
+
 @retry(tries=7, delay=1, backoff=3)
-def getResult(index, group):
+def getResult(index, group, *args, **kwargs):
     """
     Handle the HTTP requests to download one result. index is python index and long is longitude, used for aggregation.
     index is placeholder
@@ -92,20 +80,19 @@ def getResult(index, group):
         return
 
     ## CRS (ist there a smarter way to do this?)
-    crs = 'PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["Unknown",DATUM["D_unknown",SPHEROID["Unknown",6371007.181,0]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_origin",45.5],PARAMETER["central_meridian",-114.125],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["Meter",1]]'
+    crs = crs_str
     # crs = 'PROJCS["WGS 84 / NSIDC EASE-Grid 2.0 North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_center",90],PARAMETER["longitude_of_center",0],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AUTHORITY["EPSG","6931"]]'
 
     ## Load vect and compute mod of ID variable to use for grouping, filtering to high latitudes
     # .filter("Pour_lat > 45.0") #.map(addMod)
-    vect = ee.FeatureCollection(
-        "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10")
+    vect = ee.FeatureCollection(ee_zones_pth)
 
     # For testing: Filter  to reduce size of operation
     # vectF = vectF.filter("Pour_lat > 59.55").filter("Pour_lat < 59.56") #.filter("Long == -126.25")
     # vect = vect.filter("Hylak_id < 500").filter("Lake_area < 1000")
 
     ## Load GSW
-    gsw = ee.Image("JRC/GSW1_4/GlobalSurfaceWater")
+    gsw = ee.Image(ee_value_raster_pth)
     occurrence = gsw.select('occurrence').unmask()
 
     ## Filter based on bawld cell geometry (note: cells are unequal area)
@@ -133,15 +120,13 @@ def getResult(index, group):
             # default is 1, increase number to reduce chunking tile size (it won't affect results, but will take longer and use less mem)
             tile_scale=2
         )
-        print("Done with group: ", group)
+        print(f'Done with group {index}: {group}')
     else:
         print('No features within region filtered by group.')
         Path(out_pth + '.txt').touch()
 
-# %% [markdown]
-# ## Apply functions via GEE calls in parallel
+########### Apply functions via GEE calls in parallel
 
-# %%
 ## Testing
 # vect = ee.FeatureCollection("projects/sat-io/open-datasets/HydroLakes/lake_poly_v10").map(addMod)
 # print(vect.filter("Hylak_id < 500").filter("Lake_area < 1000").size().getInfo())
@@ -151,29 +136,24 @@ def getResult(index, group):
 # vect.first().propertyNames() # to actually print the result!
 # vect.get('mod50')
 
-# %%
 ## Test on single (Error: property 'element' is required means some filter returned zero. )
 # getResult(3, 1)
 # getResult(0, np.array([-104.25, 51.25]))
 
 
-# %%
 ## View expected number of results
 items = getRequests()
-# print(f'Number of items: {len(items)}')
-
-# %%
 print(f'Number of items: {len(items)}')
 
-# %%
 ## Run function
 # items = getRequests() # a list whose length is the number of groups to use for parallelizing # np.arange(modN) #
 print(f'Sending request in {len(items)} chunks...')
 pool = multiprocessing.Pool(30)  # 25
-pool.starmap(getResult, enumerate(items))
+pool.starmap(getResult, enumerate(items), {'arg1': value1, 'arg2': value2})
 pool.close()
 pool.join()
 
+## ............................
 # %% [markdown]
 # ## Load and piece together
 
@@ -570,120 +550,3 @@ def addMod(feature):
     modComputed = ee.Number(feature.get('Hylak_id')
                             ).mod(mod)  # ee.Number.parse(
     return feature.set('mod' + str(mod), modComputed)  # .double()
-
-# %% [markdown]
-# ## ERRORS
-
-# %% [markdown]
-# ```python
-# Computing (Hi Ethan!)...
-# Output exceeds the size limit. Open the full output data in a text editor
-# ---------------------------------------------------------------------------
-# HttpError                                 Traceback (most recent call last)
-# File ~/mambaforge/envs/geospatial/lib/python3.10/site-packages/ee/data.py:328, in _execute_cloud_call(call, num_retries)
-#     327 try:
-# --> 328   return call.execute(num_retries=num_retries)
-#     329 except googleapiclient.errors.HttpError as e:
-#
-# File ~/mambaforge/envs/geospatial/lib/python3.10/site-packages/googleapiclient/_helpers.py:130, in positional.<locals>.positional_decorator.<locals>.positional_wrapper(*args, **kwargs)
-#     129         logger.warning(message)
-# --> 130 return wrapped(*args, **kwargs)
-#
-# File ~/mambaforge/envs/geospatial/lib/python3.10/site-packages/googleapiclient/http.py:938, in HttpRequest.execute(self, http, num_retries)
-#     937 if resp.status >= 300:
-# --> 938     raise HttpError(resp, content, uri=self.uri)
-#     939 return self.postproc(resp, content)
-#
-# HttpError: <HttpError 400 when requesting https://earthengine-highvolume.googleapis.com/v1alpha/projects/earthengine-legacy/value:compute?prettyPrint=false&alt=json returned "User memory limit exceeded.". Details: "User memory limit exceeded.">
-#
-# During handling of the above exception, another exception occurred:
-#
-# EEException                               Traceback (most recent call last)
-# File ~/mambaforge/envs/geospatial/lib/python3.10/site-packages/geemap/common.py:6961, in zonal_stats_by_group(in_value_raster, in_zone_vector, out_file_path, statistics_type, decimal_places, denominator, scale, crs, tile_scale, return_fc, verbose, timeout, proxies, **kwargs)
-#    6960     else:
-# -> 6961         ee_export_vector(final_result, filename, timeout=timeout, proxies=proxies)
-#    6963 except Exception as e:
-# ...
-#    6961         ee_export_vector(final_result, filename, timeout=timeout, proxies=proxies)
-#    6963 except Exception as e:
-# -> 6964     raise Exception(e)
-#
-# Exception: User memory limit exceeded.
-
-# %% [markdown]
-# ```python
-# Output exceeds the size limit. Open the full output data in a text editor
-# ---------------------------------------------------------------------------
-# RemoteTraceback                           Traceback (most recent call last)
-# RemoteTraceback:
-# """
-# Traceback (most recent call last):
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/ee/data.py", line 328, in _execute_cloud_call
-#     return call.execute(num_retries=num_retries)
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/googleapiclient/_helpers.py", line 130, in positional_wrapper
-#     return wrapped(*args, **kwargs)
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/googleapiclient/http.py", line 938, in execute
-#     raise HttpError(resp, content, uri=self.uri)
-# googleapiclient.errors.HttpError: <HttpError 429 when requesting https://earthengine-highvolume.googleapis.com/v1alpha/projects/earthengine-legacy/value:compute?prettyPrint=false&alt=json returned "Too Many Requests: Request was rejected because the request rate or concurrency limit was exceeded.". Details: "Too Many Requests: Request was rejected because the request rate or concurrency limit was exceeded.">
-#
-# During handling of the above exception, another exception occurred:
-#
-# Traceback (most recent call last):
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/multiprocessing/pool.py", line 125, in worker
-#     result = (True, func(*args, **kwds))
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/multiprocessing/pool.py", line 51, in starmapstar
-#     return list(itertools.starmap(args[0], args[1]))
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/decorator.py", line 232, in fun
-#     return caller(func, *(extras + args), **kw)
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/retry/api.py", line 73, in retry_decorator
-#     return __retry_internal(partial(f, *args, **kwargs), exceptions, tries, delay, max_delay, backoff, jitter,
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/retry/api.py", line 33, in __retry_internal
-# ...
-#     772     return self._value
-#     773 else:
-# --> 774     raise self._value
-#
-# EEException: Too Many Requests: Request was rejected because the request rate or concurrency limit was exceeded.
-
-# %% [markdown]
-# Some error about element has a missing property. I treated it like an error caused by returning an empty table/feature collection and it seemed to resolve it.
-
-# %% [markdown]
-# This happened after 7 hrs of running (with 22,065 files generated)
-# ```python
-# Downloading data from https://earthengine-highvolume.googleapis.com/v1alpha/projects/earthengine-legacy/tables/356e1d94dc202d39f9c68cc224730aa3-c7c5ab24b3d58dd6aa199d1a90b902e0:getFeatures
-# Please wait ...
-# Data downloaded to /mnt/g/Ch4/GSW_zonal_stats/HL/v2/tiles/HL_zStats_Oc_Long-159.75_Lat55.75.csv
-# Done with group:  [-159.75   55.75]
-# Output exceeds the size limit. Open the full output data in a text editor
-# ---------------------------------------------------------------------------
-# RemoteTraceback                           Traceback (most recent call last)
-# RemoteTraceback:
-# """
-# Traceback (most recent call last):
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/ee/data.py", line 328, in _execute_cloud_call
-#     return call.execute(num_retries=num_retries)
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/googleapiclient/_helpers.py", line 130, in positional_wrapper
-#     return wrapped(*args, **kwargs)
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/googleapiclient/http.py", line 938, in execute
-#     raise HttpError(resp, content, uri=self.uri)
-# googleapiclient.errors.HttpError: <HttpError 503 when requesting https://earthengine-highvolume.googleapis.com/v1alpha/projects/earthengine-legacy/value:compute?prettyPrint=false&alt=json returned "The service is currently unavailable.". Details: "The service is currently unavailable.">
-#
-# During handling of the above exception, another exception occurred:
-#
-# Traceback (most recent call last):
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/geemap/common.py", line 6962, in zonal_stats_by_group
-#     ee_export_vector(final_result, filename, timeout=timeout, proxies=proxies)
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/geemap/common.py", line 1523, in ee_export_vector
-#     selectors = ee_object.first().propertyNames().getInfo()
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/ee/computedobject.py", line 98, in getInfo
-#     return data.computeValue(self)
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/ee/data.py", line 764, in computeValue
-#     return _execute_cloud_call(
-#   File "/home/ekyzivat/mambaforge/envs/geospatial/lib/python3.10/site-packages/ee/data.py", line 330, in _execute_cloud_call
-# ...
-#    6962         ee_export_vector(final_result, filename, timeout=timeout, proxies=proxies)
-#    6964 except Exception as e:
-# -> 6965     raise Exception(e)
-#
-# Exception: The service is currently unavailable.
