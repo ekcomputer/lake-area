@@ -10,13 +10,15 @@ TODO
 * Remove original HL attributes before download
 * Check that all features are present in downloads, after merging
 * 0-pad "Class_n" in output
+* Add kwd args for batchZonalHist and threadPoolExecutor
 '''
 
 import matplotlib.patches as mpatches
 from seaborn import objects as so
 import os
 from pathlib import Path
-import multiprocessing
+# import multiprocessing
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from scipy.stats import binned_statistic
 
@@ -29,6 +31,7 @@ import geemap
 from matplotlib import pyplot as plt
 import seaborn as sns
 import pyogrio
+from tqdm import tqdm
 
 ## Register with ee using high-valume (and high-latency) endpoint
 # NOT 'https://earthengine.googleapis.com'
@@ -246,11 +249,29 @@ if __name__ == '__main__':
                                   ee_zones_pth,
                                   ee_value_raster_pth,
                                   out_dir)
-    pool = multiprocessing.Pool(nWorkers)
-    pool.starmap(batchZonalHist, data_for_starmap)
-    pool.close()
-    pool.join()
 
+    ## Multiprocessing
+    # pool = multiprocessing.Pool(nWorkers)
+    # pool.starmap(batchZonalHist, data_for_starmap)
+    # pool.close()
+    # pool.join()
+
+    ## Multithreading
+    # Could also use ProcessPoolExecutor for multiprocessing
+    with ThreadPoolExecutor(max_workers=nWorkers) as executor:
+        # Submit tasks with keyword arguments
+        # futures = [executor.submit(batchZonalHist, **args)
+        #            for args in data_for_starmap]
+        # Submit tasks with standard arguments
+        # futures = executor.submit(batchZonalHist, data_for_starmap)
+        futures = [executor.submit(batchZonalHist, *args)
+                   for args in data_for_starmap]
+
+        # Wrap as_completed with tqdm for a progress bar
+        for future in tqdm(as_completed(futures), total=len(futures)):
+            pass  # Each iteration represents one completed task
+
+    pass
 # ## ............................
 # # %% [markdown]
 # # ## Load and piece together
