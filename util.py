@@ -9,6 +9,7 @@ First, authenticate to ee using:
 TODO
 * Remove original HL attributes before download
 * Check that all features are present in downloads, after merging
+* 0-pad "Class_n" in output
 '''
 
 import matplotlib.patches as mpatches
@@ -29,14 +30,16 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 import pyogrio
 
-modN = 300000
+# modN = 300000
 analysis_dir = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/vtest/'
 index_file = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
 # ee_zones_pth = "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10"
 ee_zones_pth = 'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_na1'
 ee_value_raster_pth = "JRC/GSW1_4/GlobalSurfaceWater"
 nWorkers = 5
-crs_str = 'PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["Unknown",DATUM["D_unknown",SPHEROID["Unknown",6371007.181,0]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_origin",45.5],PARAMETER["central_meridian",-114.125],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["Meter",1]]'
+# crs_str = 'PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["Unknown",DATUM["D_unknown",SPHEROID["Unknown",6371007.181,0]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_origin",45.5],PARAMETER["central_meridian",-114.125],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["Meter",1]]'
+crs_str = 'PROJCS["ProjWiz_Custom_Lambert_Azimuthal", GEOGCS["GCS_WGS_1984", DATUM["D_WGS_1984", SPHEROID["WGS_1984",6378137.0,298.257223563]], PRIMEM["Greenwich",0.0], UNIT["Degree",0.0174532925199433]], PROJECTION["Lambert_Azimuthal_Equal_Area"], PARAMETER["False_Easting",0.0], PARAMETER["False_Northing",0.0], PARAMETER["Central_Meridian",0], PARAMETER["Latitude_Of_Origin",65], UNIT["Meter",1.0]]'
+
 # name_lat = 'Pour_lat'
 # name_lon = 'Pour_long'
 name_lat = 'Lat'
@@ -131,7 +134,6 @@ def getResult(index, group, *args, **kwargs):
 
     ## CRS (ist there a smarter way to do this?)
     crs = crs_str
-    # crs = 'PROJCS["WGS 84 / NSIDC EASE-Grid 2.0 North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_center",90],PARAMETER["longitude_of_center",0],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AUTHORITY["EPSG","6931"]]'
 
     ## Load vect and compute mod of ID variable to use for grouping, filtering to high latitudes
     # .filter("Pour_lat > 45.0") #.map(addMod)
