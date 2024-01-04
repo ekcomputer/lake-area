@@ -30,38 +30,6 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 import pyogrio
 
-# modN = 300000
-analysis_dir = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/vtest/'
-index_file = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-# ee_zones_pth = "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10"
-ee_zones_pth = 'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_na1'
-ee_value_raster_pth = "JRC/GSW1_4/GlobalSurfaceWater"
-nWorkers = 5
-# crs_str = 'PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["Unknown",DATUM["D_unknown",SPHEROID["Unknown",6371007.181,0]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_origin",45.5],PARAMETER["central_meridian",-114.125],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["Meter",1]]'
-crs_str = 'PROJCS["ProjWiz_Custom_Lambert_Azimuthal", GEOGCS["GCS_WGS_1984", DATUM["D_WGS_1984", SPHEROID["WGS_1984",6378137.0,298.257223563]], PRIMEM["Greenwich",0.0], UNIT["Degree",0.0174532925199433]], PROJECTION["Lambert_Azimuthal_Equal_Area"], PARAMETER["False_Easting",0.0], PARAMETER["False_Northing",0.0], PARAMETER["Central_Meridian",0], PARAMETER["Latitude_Of_Origin",65], UNIT["Meter",1.0]]'
-
-# name_lat = 'Pour_lat'
-# name_lon = 'Pour_long'
-name_lat = 'Lat'
-name_lon = 'Lon'
-# lat_range = [40, 84]
-# lon_range = [-180, 180]
-lat_range = [62, 64.5]  # for testing
-lon_range = [-105, -103]
-offset_lower = 0  # 0.25
-offset_upper = 0.5
-
-step = 0.5
-
-# Auto I/O
-table_dir = os.path.join(analysis_dir, 'tables')
-out_dir = os.path.join(analysis_dir, 'tiles')
-for dir in [analysis_dir, table_dir, out_dir]:
-    os.makedirs(dir, exist_ok=True)
-
-## Derived
-# modstr = 'mod'+str(modN)
-
 ## Register with ee using high-valume (and high-latency) endpoint
 # NOT 'https://earthengine.googleapis.com'
 ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com')
@@ -89,10 +57,10 @@ def getRequests(lat_range, lon_range, step=0.5):
             [min lat, max lat]
         lon_range: array-like
             [min long, max long]
-        setp: float
+        step: float
             grid spacing
     Returns:
-        items: numpy.Array
+        coord_list: numpy.Array
     '''
 
     # Create a meshgrid of all possible latitude and longitude values
@@ -100,9 +68,9 @@ def getRequests(lat_range, lon_range, step=0.5):
         np.arange(lat_range[0], lat_range[1], step), np.arange(lon_range[0], lon_range[1], step))
 
     # Reshape the arrays into a single array of latitude, longitude pairs
-    items = np.vstack([lons.ravel(), lats.ravel()]).T
+    coord_list = np.vstack([lons.ravel(), lats.ravel()]).T
 
-    return items
+    return coord_list
 
 ## testing
 # foo = getRequests()
@@ -116,7 +84,33 @@ def getRequests(lat_range, lon_range, step=0.5):
 
 
 @retry(tries=3, delay=2, backoff=10)
-def getResult(index, group, *args, **kwargs):
+def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper, crs, ee_zones_pth, ee_value_raster_pth, out_dir):
+    '''
+    getResult _summary_
+
+    Parameters
+    ----------
+    index : int
+        _description_
+    coords : list(float)
+        _description_
+    name_lat : str
+        variable name for latitude in ee zones FeatureCollection
+    name_lon : str
+        variable name for longitude in ee zones FeatureCollection
+    offset_lower : float
+        subtract from values in lat/lon range to determine lower bound for each range. offset_lower + offset_upper should sum to the step size used to make the coords list, or else there will be gapas in the domain.
+    offset_upper : float
+        add from values in lat/lon range to determine upper bound for each range.
+    crs : str
+        crs WKT to define projection
+    ee_zones_pth : str
+        GEE zones FeatureCollection path 
+    ee_value_raster_pth : str
+        _description_
+    out_dir : str
+        _description_
+    '''
     """
     Handle the HTTP requests to download one result. index is python index and long is longitude, used for aggregation.
     index is placeholder
@@ -126,14 +120,11 @@ def getResult(index, group, *args, **kwargs):
 
     ## I/O
     out_pth = os.path.join(
-        out_dir, f'HL_zStats_Oc_Long{group[0]}_Lat{group[1]}.csv')
+        out_dir, f'HL_zStats_Oc_Long{coords[0]}_Lat{coords[1]}.csv')
 
     ## Don't overwrite if starting again
     if os.path.exists(out_pth) or os.path.exists(out_pth + '.txt'):
         return
-
-    ## CRS (ist there a smarter way to do this?)
-    crs = crs_str
 
     ## Load vect and compute mod of ID variable to use for grouping, filtering to high latitudes
     # .filter("Pour_lat > 45.0") #.map(addMod)
@@ -150,8 +141,8 @@ def getResult(index, group, *args, **kwargs):
     ## Filter based on bawld cell geometry (note: cells are unequal area)
     # vectF = vect.filter(ee.Filter.eq(modstr, group))
     # groupEE = [ee.Number.float(group[0]) , ee.Number.float(group[1])] # list(map(ee.Number.float, group)) # convert to server object
-    vectF = vect.filter(ee.Filter.And(ee.Filter.expression(f"({name_lon} > {group[0]-offset_lower}) && ({name_lon} <= {group[0]+offset_upper})"),
-                                      ee.Filter.And(ee.Filter.expression(f"({name_lat} > {group[1]-offset_lower}) && ({name_lat} <= {group[1]+offset_upper})"))))
+    vectF = vect.filter(ee.Filter.And(ee.Filter.expression(f"({name_lon} > {coords[0]-offset_lower}) && ({name_lon} <= {coords[0]+offset_upper})"),
+                                      ee.Filter.And(ee.Filter.expression(f"({name_lat} > {coords[1]-offset_lower}) && ({name_lat} <= {coords[1]+offset_upper})"))))
     nFeats = vectF.size().getInfo()
     print(f'Number of features in chunk: {nFeats}')
     # print(vect.size())
@@ -166,22 +157,64 @@ def getResult(index, group, *args, **kwargs):
             statistics_type='SUM',
             denominator=1000000,
             decimal_places=3,
-            crs=crs,  # crs_str
+            crs=crs,
             # meters, specifiy to compute at native res (default would be 300m)
             scale=30,
             # default is 1, increase number to reduce chunking tile size (it won't affect results, but will take longer and use less mem)
             tile_scale=2
         )
-        print(f'Done with group {index}: {group}')
+        print(f'Done with group {index}: {coords}')
     else:
         print('No features within region filtered by group.')
         Path(out_pth + '.txt').touch()
 
 
+def genStarmap(coord_list, name_lat, name_lon, offset_lower, offset_upper, crs_wkt, ee_zones_pth, ee_value_raster_pth, out_dir):
+    '''Helper function to prepare a list with all the required arguments to run batchZonalHist() in parallel. See batchZonalHist for arguments docstring.'''
+    data_for_starmap = [(i,
+                        coord_list[i],
+                        name_lat,
+                        name_lon,
+                        offset_lower,
+                        offset_upper,
+                        crs_wkt,
+                        ee_zones_pth,
+                        ee_value_raster_pth,
+                        out_dir)
+                        for i in range(len(coord_list))]
+    return data_for_starmap
+
 ########### Apply functions via GEE calls in parallel
 
 if __name__ == '__main__':
-    # freeze_support()
+    ## I/O
+    # modN = 300000
+    analysis_dir = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/vtest/'
+    index_file = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    # ee_zones_pth = "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10"
+    ee_zones_pth = 'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_na1'
+    ee_value_raster_pth = "JRC/GSW1_4/GlobalSurfaceWater"
+    nWorkers = 18
+    # crs_str = 'PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["Unknown",DATUM["D_unknown",SPHEROID["Unknown",6371007.181,0]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_origin",45.5],PARAMETER["central_meridian",-114.125],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["Meter",1]]'
+    crs_wkt = 'PROJCS["ProjWiz_Custom_Lambert_Azimuthal", GEOGCS["GCS_WGS_1984", DATUM["D_WGS_1984", SPHEROID["WGS_1984",6378137.0,298.257223563]], PRIMEM["Greenwich",0.0], UNIT["Degree",0.0174532925199433]], PROJECTION["Lambert_Azimuthal_Equal_Area"], PARAMETER["False_Easting",0.0], PARAMETER["False_Northing",0.0], PARAMETER["Central_Meridian",0], PARAMETER["Latitude_Of_Origin",65], UNIT["Meter",1.0]]'
+
+    # name_lat = 'Pour_lat'
+    # name_lon = 'Pour_long'
+    name_lat = 'Lat'
+    name_lon = 'Lon'
+    # lat_range = [40, 84]
+    # lon_range = [-180, 180]
+    lat_range = [62, 64.5]  # for testing
+    lon_range = [-105, -103]
+    step = 0.5
+    offset_lower = 0  # 0.25
+
+    # Auto I/O
+    table_dir = os.path.join(analysis_dir, 'tables')
+    out_dir = os.path.join(analysis_dir, 'tiles')
+    for dir in [analysis_dir, table_dir, out_dir]:
+        os.makedirs(dir, exist_ok=True)
+    offset_upper = step
 
     ## Testing
     # vect = ee.FeatureCollection("projects/sat-io/open-datasets/HydroLakes/lake_poly_v10").map(addMod)
@@ -197,15 +230,24 @@ if __name__ == '__main__':
     # getResult(0, np.array([-104.25, 51.25]))
 
     ## View expected number of results
-    items = getRequests(lat_range, lon_range, step)  # index_file
-    print(f'Number of items: {len(items)}')
+    coord_list = getRequests(lat_range, lon_range, step)  # index_file
+    print(f'Number of items: {len(coord_list)}')
 
     ## Run function
-    # items = getRequests() # a list whose length is the number of groups to use for parallelizing # np.arange(modN) #
-    print(f'Sending request in {len(items)} chunks...')
+    print(f'Sending request in {len(coord_list)} chunks...')
+
+    # Prepare enumerate-like object for starmap, instead of  # pool.starmap(getResult, enumerate(coord_list))
+    data_for_starmap = genStarmap(coord_list,
+                                  name_lat,
+                                  name_lon,
+                                  offset_lower,
+                                  offset_upper,
+                                  crs_wkt,
+                                  ee_zones_pth,
+                                  ee_value_raster_pth,
+                                  out_dir)
     pool = multiprocessing.Pool(nWorkers)
-    pool.starmap(getResult, enumerate(items))  # , {
-    #  'crs': crs_str, 'ee_zones_pth_input': ee_zones_pth})
+    pool.starmap(batchZonalHist, data_for_starmap)
     pool.close()
     pool.join()
 
