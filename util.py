@@ -32,13 +32,15 @@ import pyogrio
 modN = 300000
 analysis_dir = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/vtest/'
 index_file = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-# "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10"
-ee_zones_pth = 'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_as'
+ee_zones_pth = "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10"
+# ee_zones_pth = 'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_as'
 ee_value_raster_pth = "JRC/GSW1_4/GlobalSurfaceWater"
 nWorkers = 5
 crs_str = 'PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["Unknown",DATUM["D_unknown",SPHEROID["Unknown",6371007.181,0]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_origin",45.5],PARAMETER["central_meridian",-114.125],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["Meter",1]]'
-name_lat = 'Lat'  # 'Pour_lat'
-name_lon = 'Lon'  # 'Pour_long'
+name_lat = 'Pour_lat'
+name_lon = 'Pour_long'
+# name_lat = 'Lat'
+# name_lon = 'Lon'
 # lat_range = [40, 84]
 # lon_range = [-180, 180]
 lat_range = [62, 64.5]  # for testing
