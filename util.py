@@ -123,7 +123,7 @@ def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper
 
     ## I/O
     out_pth = os.path.join(
-        out_dir, f'HL_zStats_Oc_Long{coords[0]}_Lat{coords[1]}.csv')
+        out_dir, f'GL_zStats_Oc_Long{coords[0]}_Lat{coords[1]}.csv')
 
     ## Don't overwrite if starting again
     if os.path.exists(out_pth) or os.path.exists(out_pth + '.txt'):
@@ -192,12 +192,13 @@ def genStarmap(coord_list, name_lat, name_lon, offset_lower, offset_upper, crs_w
 if __name__ == '__main__':
     ## I/O
     # modN = 300000
-    analysis_dir = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/vtest/'
-    index_file = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+    # analysis_dir = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/vtest/'
+    analysis_dir = '/Volumes/metis/Datasets/Liu_aq_veg/Zonal-hist'
+    # index_file = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
     # ee_zones_pth = "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10"
     ee_zones_pth = 'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_na1'
     ee_value_raster_pth = "JRC/GSW1_4/GlobalSurfaceWater"
-    nWorkers = 18
+    nWorkers = 38
     # crs_str = 'PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["Unknown",DATUM["D_unknown",SPHEROID["Unknown",6371007.181,0]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_origin",45.5],PARAMETER["central_meridian",-114.125],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["Meter",1]]'
     crs_wkt = 'PROJCS["ProjWiz_Custom_Lambert_Azimuthal", GEOGCS["GCS_WGS_1984", DATUM["D_WGS_1984", SPHEROID["WGS_1984",6378137.0,298.257223563]], PRIMEM["Greenwich",0.0], UNIT["Degree",0.0174532925199433]], PROJECTION["Lambert_Azimuthal_Equal_Area"], PARAMETER["False_Easting",0.0], PARAMETER["False_Northing",0.0], PARAMETER["Central_Meridian",0], PARAMETER["Latitude_Of_Origin",65], UNIT["Meter",1.0]]'
 
@@ -205,10 +206,10 @@ if __name__ == '__main__':
     # name_lon = 'Pour_long'
     name_lat = 'Lat'
     name_lon = 'Lon'
-    # lat_range = [40, 84]
-    # lon_range = [-180, 180]
-    lat_range = [62, 64.5]  # for testing
-    lon_range = [-105, -103]
+    lat_range = [40, 84]
+    lon_range = [-180, 180]
+    # lat_range = [62, 64.5]  # for testing
+    # lon_range = [-105, -103]
     step = 0.5
     offset_lower = 0  # 0.25
 
@@ -237,7 +238,8 @@ if __name__ == '__main__':
     print(f'Number of items: {len(coord_list)}')
 
     ## Run function
-    print(f'Sending request in {len(coord_list)} chunks...')
+    print(
+        f'Sending request in {len(coord_list)} chunks...\n----------------------------------\n')
 
     # Prepare enumerate-like object for starmap, instead of  # pool.starmap(getResult, enumerate(coord_list))
     data_for_starmap = genStarmap(coord_list,
@@ -271,7 +273,7 @@ if __name__ == '__main__':
         for future in tqdm(as_completed(futures), total=len(futures)):
             pass  # Each iteration represents one completed task
 
-    pass
+    print('\nFinished.\n---------------------------------')
 # ## ............................
 # # %% [markdown]
 # # ## Load and piece together
