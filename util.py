@@ -11,6 +11,7 @@ TODO
 * Check that all features are present in downloads, after merging
 * 0-pad "Class_n" in output
 * Add kwd args for batchZonalHist and threadPoolExecutor
+* add test for batchZonalHist using HydroLakes data
 '''
 
 import matplotlib.patches as mpatches
@@ -87,7 +88,7 @@ def getRequests(lat_range, lon_range, step=0.5):
 
 
 @retry(tries=3, delay=2, backoff=10)
-def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper, crs, ee_zones_pth, ee_value_raster_pth, out_dir):
+def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper, crs, scale, tile_scale, ee_zones_pth, ee_value_raster_pth, out_dir):
     '''
     getResult _summary_
 
@@ -107,6 +108,10 @@ def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper
         add from values in lat/lon range to determine upper bound for each range.
     crs : str
         crs WKT to define projection
+    scale : float
+        Passed to geemap.zonal_statistics_by_group(): A nominal scale in meters of the projection to work in. Use None to set default.
+    tile_scale : float
+        Passed to geemap.zonal_statistics_by_group(): A scaling factor used to reduce aggregation tile size; using a larger tileScale (e.g. 2 or 4) may enable computations that run out of memory with the default. Use 1.0 for default.
     ee_zones_pth : str
         GEE zones FeatureCollection path 
     ee_value_raster_pth : str
@@ -126,8 +131,16 @@ def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper
         out_dir, f'GL_zStats_Oc_Long{coords[0]}_Lat{coords[1]}.csv')
 
     ## Don't overwrite if starting again
-    if os.path.exists(out_pth) or os.path.exists(out_pth + '.txt'):
+    if os.path.exists(out_pth + '.txt'):
         return
+    # check if an error message was downloaded instead and thus renders the @retry useless
+    if os.path.exists(out_pth):
+        with open(out_pth, 'r') as file:
+            first_line = file.readline()
+            if first_line.startswith('{'):
+                pass  # proceed
+            else:
+                return  # skip file
 
     ## Load vect and compute mod of ID variable to use for grouping, filtering to high latitudes
     # .filter("Pour_lat > 45.0") #.map(addMod)
@@ -162,9 +175,9 @@ def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper
             decimal_places=3,
             crs=crs,
             # meters, specifiy to compute at native res (default would be 300m)
-            scale=30,
+            scale=scale,
             # default is 1, increase number to reduce chunking tile size (it won't affect results, but will take longer and use less mem)
-            tile_scale=2
+            tile_scale=tile_scale
         )
         print(f'Done with group {index}: {coords}')
     else:
@@ -172,7 +185,7 @@ def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper
         Path(out_pth + '.txt').touch()
 
 
-def genStarmap(coord_list, name_lat, name_lon, offset_lower, offset_upper, crs_wkt, ee_zones_pth, ee_value_raster_pth, out_dir):
+def genStarmap(coord_list, name_lat, name_lon, offset_lower, offset_upper, crs_wkt, scale, tile_scale, ee_zones_pth, ee_value_raster_pth, out_dir):
     '''Helper function to prepare a list with all the required arguments to run batchZonalHist() in parallel. See batchZonalHist for arguments docstring.'''
     data_for_starmap = [(i,
                         coord_list[i],
@@ -181,11 +194,49 @@ def genStarmap(coord_list, name_lat, name_lon, offset_lower, offset_upper, crs_w
                         offset_lower,
                         offset_upper,
                         crs_wkt,
+                        scale,
+                        tile_scale,
                         ee_zones_pth,
                         ee_value_raster_pth,
                         out_dir)
                         for i in range(len(coord_list))]
     return data_for_starmap
+
+
+def ensure_unique_ids(df: pd.DataFrame, id_var: str) -> pd.DataFrame:
+    """
+    Ensure that the DataFrame has unique values for the specified ID variable.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The DataFrame to check and modify.
+    id_var : str
+        The name of the column in `df` to be checked for unique values.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The original DataFrame, potentially with duplicates removed based on `id_var`.
+
+    Raises
+    ------
+    AssertionError
+        If duplicate values are found for `id_var`.
+
+    """
+    dups_exist = len(df) - len(df.drop_duplicates(subset=id_var)) != 0
+    assert not dups_exist, "Duplicate id values found..."
+
+    if dups_exist:
+        df = df.drop_duplicates(subset=id_var)
+        print('Duplicates removed arbitrarily.')
+
+    return df
+
+# Example usage:
+# df = pd.DataFrame(...)
+# df = ensure_unique_ids(df, 'your_id_column_name')
 
 ########### Apply functions via GEE calls in parallel
 
@@ -196,9 +247,12 @@ if __name__ == '__main__':
     analysis_dir = '/Volumes/metis/Datasets/Liu_aq_veg/Zonal-hist'
     # index_file = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
     # ee_zones_pth = "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10"
-    ee_zones_pth = 'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_na1'
+    ee_zones_pths = ['projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_na2',
+                     'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_as',
+                     'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_eu',
+                     'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_na1']  # 'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_na1'
     ee_value_raster_pth = "JRC/GSW1_4/GlobalSurfaceWater"
-    nWorkers = 38
+    nWorkers = 30
     # crs_str = 'PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["Unknown",DATUM["D_unknown",SPHEROID["Unknown",6371007.181,0]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_origin",45.5],PARAMETER["central_meridian",-114.125],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["Meter",1]]'
     crs_wkt = 'PROJCS["ProjWiz_Custom_Lambert_Azimuthal", GEOGCS["GCS_WGS_1984", DATUM["D_WGS_1984", SPHEROID["WGS_1984",6378137.0,298.257223563]], PRIMEM["Greenwich",0.0], UNIT["Degree",0.0174532925199433]], PROJECTION["Lambert_Azimuthal_Equal_Area"], PARAMETER["False_Easting",0.0], PARAMETER["False_Northing",0.0], PARAMETER["Central_Meridian",0], PARAMETER["Latitude_Of_Origin",65], UNIT["Meter",1.0]]'
 
@@ -206,18 +260,22 @@ if __name__ == '__main__':
     # name_lon = 'Pour_long'
     name_lat = 'Lat'
     name_lon = 'Lon'
-    lat_range = [40, 84]
-    lon_range = [-180, 180]
+    lat_ranges = [[40, 78.0], [40, 78.0], [40.0, 77.0], [40, 78.0]]
+    lon_ranges = [[-180, 180], [-180, 180], [-24.5, 69.0], [-180, 180]]
     # lat_range = [62, 64.5]  # for testing
     # lon_range = [-105, -103]
     step = 0.5
     offset_lower = 0  # 0.25
+    scale = None  # 30
+    tile_scale = 12  # 2
+
+    ## I/O for reading csvs
+    id_var = 'Lake_id'  # Hylak_id
+    area_var = 'Area_PW'  # Lake_area # km2
+    # '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10.shp'
+    lake_inventory_pth = '/Volumes/metis/Datasets/GLAKES/GLAKES.gdb'
 
     # Auto I/O
-    table_dir = os.path.join(analysis_dir, 'tables')
-    out_dir = os.path.join(analysis_dir, 'tiles')
-    for dir in [analysis_dir, table_dir, out_dir]:
-        os.makedirs(dir, exist_ok=True)
     offset_upper = step
 
     ## Testing
@@ -233,441 +291,443 @@ if __name__ == '__main__':
     # getResult(3, 1)
     # getResult(0, np.array([-104.25, 51.25]))
 
-    ## View expected number of results
-    coord_list = getRequests(lat_range, lon_range, step)  # index_file
-    print(f'Number of items: {len(coord_list)}')
-
-    ## Run function
-    print(
-        f'Sending request in {len(coord_list)} chunks...\n----------------------------------\n')
-
-    # Prepare enumerate-like object for starmap, instead of  # pool.starmap(getResult, enumerate(coord_list))
-    data_for_starmap = genStarmap(coord_list,
-                                  name_lat,
-                                  name_lon,
-                                  offset_lower,
-                                  offset_upper,
-                                  crs_wkt,
-                                  ee_zones_pth,
-                                  ee_value_raster_pth,
-                                  out_dir)
-
-    ## Multiprocessing
-    # pool = multiprocessing.Pool(nWorkers)
-    # pool.starmap(batchZonalHist, data_for_starmap)
-    # pool.close()
-    # pool.join()
-
-    ## Multithreading
-    # Could also use ProcessPoolExecutor for multiprocessing
-    with ThreadPoolExecutor(max_workers=nWorkers) as executor:
-        # Submit tasks with keyword arguments
-        # futures = [executor.submit(batchZonalHist, **args)
-        #            for args in data_for_starmap]
-        # Submit tasks with standard arguments
-        # futures = executor.submit(batchZonalHist, data_for_starmap)
-        futures = [executor.submit(batchZonalHist, *args)
-                   for args in data_for_starmap]
-
-        # Wrap as_completed with tqdm for a progress bar
-        for future in tqdm(as_completed(futures), total=len(futures)):
-            pass  # Each iteration represents one completed task
-
-    print('\nFinished.\n---------------------------------')
-# ## ............................
-# # %% [markdown]
-# # ## Load and piece together
-
-# # %%
-# # Load files using dask
-# # from https://mungingdata.com/pandas/read-multiple-csv-pandas-dataframe/
-# tile_dir = os.path.join(analysis_dir, 'tiles')
-# ddf = dd.read_csv(f"{tile_dir}/*.csv", assume_missing=True, on_bad_lines='skip', dtype={'system:index': 'object',
-#                   'Lake_name': 'object'})  # latter argument suggested by dask error and it fixes it!
-
-# # %%
-# ## convert to pandas df
-# df = ddf.compute()
-# df = df.drop_duplicates(subset='Hylak_id').reset_index().drop('index', axis=1)
-# df
-
-# # %%
-# ## Debugging LAD.py
-# np.any(df.Lake_area == 0)
-
-# # %%
-# ## ensure df has unique Hylak_id keys
-# df = df.drop_duplicates(subset='Hylak_id')
-
-# ## ensure df has unique Hylak_id keys
-# assert len(df) - len(df.drop_duplicates(subset='Hylak_id')) == 0
-
-# # %%
-# ## Save as excel as intermediate step
-# df_pth = os.path.join(analysis_dir, 'HL_zStats_Oc_full.csv.gz')
-# df.to_csv(df_pth, compression='gzip')
-
-# # %%
-# ## START HERE if not running GEE part
-# ## Load df
-# df_pth = os.path.join(analysis_dir, 'HL_zStats_Oc_full.csv.gz')
-# df = pd.read_csv(df_pth)
-
-# # %% [markdown]
-# # ## Bin GSW in 4 bins
-
-# # %%
-# ## Mask in occurence columns and change values to int
-# # occurrence columns positive mask. use map function, rather than for loop, for practice!
-# oc_columns = list(map(lambda c: ('Class_' in c)
-#                   and ('sum' not in c), df.columns))
-# # all relevant occurance fields converted to ints, as a list
-# oc_column_vals = list(
-#     map(lambda c: int(c.replace('Class_', '')), df.columns[oc_columns]))
-# # oc_column_vals
-
-# # %%
-# bStat = binned_statistic(
-#     oc_column_vals, values=df.iloc[:, oc_columns], statistic=np.nansum, bins=[0, 5, 50, 95, 100])
-# bStat
-
-# # %%
-# bin_labels = ['0-5', '5-50', '50-95', '95-100']
-# dfB = pd.DataFrame(bStat.statistic, columns=bin_labels) / pd.DataFrame(
-#     df.loc[:, 'Class_sum']).values * 100  # , index=df.index) # df binned
-# dfB['Hylak_id'] = df.Hylak_id
-# dfB['Class_sum'] = df.Class_sum
-# dfB
-
-# # %%
-# ## ensure dfB has unique Hylak_id keys
-# dfB = dfB.drop_duplicates(subset='Hylak_id')
-
-# ## ensure dfB has unique Hylak_id keys
-# len(dfB) - len(dfB.drop_duplicates(subset='Hylak_id'))
-
-# # %% [markdown]
-# # ## Load shapefile and join in GSW values (full and binned)
-
-# # %%
-# ## Load shapefile to join
-# gdf = gpd.read_file('/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10.shp',
-#                     engine='pyogrio')  # bbox=(-180, 40, 180, 90)) # bbox can speed loading
-
-
-# # %%
-# ## Filter columns
-# cols_to_keep = df.columns[[('Class' in c) or (
-#     'Hylak_id' in c) for c in df.columns]]
-
-# # %%
-
-# ## Merge files
-# gdf_join_full = gdf.merge(df[cols_to_keep], left_on='Hylak_id',
-#                           right_on='Hylak_id', how='inner', validate='one_to_one')
-
-# # %%
-# ## view
-# gdf_join_full.head(2)
-
-# # %%
-# ## Write out full shapefile (slowww...52 minutes, 3.4 GB [without pyogrio])
-# gdf_join_full_pth = os.path.join(analysis_dir, 'HL_zStats_Oc_full.shp')
-# gdf_join_full.to_file(gdf_join_full_pth, engine='pyogrio')
-
-# # %%
-# gdf.columns
-
-# # %%
-# ## Merge binned file to bawld gdf (only keep a few original attributes)
-# # ['Cell_ID', 'Long', 'Lat', 'Area_Pct', 'Shp_Area', 'WETSCAPE', 'geometry']
-# gdf_join_binned = gdf.merge(
-#     dfB, left_on='Hylak_id', right_on='Hylak_id', how='inner', validate='one_to_one')
-# gdf_join_binned
-
-# # %%
-# gdf_join_binned.columns
-# # gdf_join_binned.columns[-6:]
-# # gdf_join_binned[[-6:]]
-# # gdf_join_binned.iloc[:,[0, -6:]]
-# gdf_join_binned[['Hylak_id', 'geometry', '0-5',
-#                  '5-50', '50-95', '95-100', 'Class_sum']]
-
-# # %%
-# ## Write out binned shapefile (can join in remaining attributes later)
-# colsKeep = ['Hylak_id', 'geometry', '0-5',
-#             '5-50', '50-95', '95-100', 'Class_sum']
-# gdf_join_binned_pth = os.path.join(analysis_dir, 'HL_zStats_Oc_binned.shp')
-# gdf_join_binned[colsKeep].to_file(gdf_join_binned_pth)
-
-# # %% [markdown]
-# # ## Histogram plots
-
-# # %%
-# ## load if necessary (previously defined vars)
-# # print('Loading OC_full...')
-# # gdf_join_full_pth = os.path.join(analysis_dir, 'HL_zStats_Oc_full.shp')
-# # gdf_join_full = pyogrio.read_dataframe(gdf_join_full_pth, use_arrow=True)
-
-# print('Loading OC_binned...')
-# gdf_join_binned_pth = os.path.join(analysis_dir, 'HL_zStats_Oc_binned.shp')
-# gdf_join_binned = pyogrio.read_dataframe(gdf_join_binned_pth, use_arrow=True)
-
-# bin_labels = ['0-5', '5-50', '50-95', '95-100']
-
-
-# # %%
-# ## Preprocess to remove any nan's in important columns
-# gdf_join_binnedF = gdf_join_binned.dropna(subset=bin_labels)  # filtered
-# print(
-#     f'Dropped {gdf_join_binned.shape[0] - gdf_join_binnedF.shape[0]} rows with nans.')
-
-# ## Averaging method 1: Take weighted average
-# try:
-#     weightAvg = np.average(
-#         gdf_join_binnedF[bin_labels], weights=gdf_join_binnedF['Lake_area'], axis=0)
-# except:
-#     try:
-#         weightAvg = np.average(
-#             gdf_join_binnedF[bin_labels], weights=gdf_join_binnedF['Shp_Area'], axis=0)
-#     except:
-#         gdf_join_binnedF = gdf_join_binnedF.merge(gdf[['Hylak_id', 'Lake_area']], left_on='Hylak_id',
-#                                                   right_on='Hylak_id', how='left', validate='one_to_one')  # Add in HL lake area if not present
-#         # weightAvg = np.average(gdf_join_binnedF[bin_labels], weights = gdf_join_binnedF['Class_sum'], axis=0) # If I was sloppy and didn't save HL area
-#         weightAvg = np.average(
-#             gdf_join_binnedF[bin_labels], weights=gdf_join_binnedF['Lake_area'], axis=0)
-# # weightAvg = np.average(gdf_join_binned[bin_labels], axis=0)
-
-# weightAvg
-
-# # %%
-# # Add Area <50% Oc
-# gdf_join_binnedF['Area_lt_50'] = (
-#     gdf_join_binnedF['0-5'] + gdf_join_binnedF['5-50']) / 100 * gdf_join_binnedF.Lake_area  # Units: km2
-# gdf_join_binnedF.head(3)
-
-# # %%
-# ## Averaging option B: Sum and then average
-# dfS = gdf_join_binnedF[bin_labels] / 100 * pd.DataFrame(
-#     gdf_join_binnedF.loc[:, 'Class_sum']).values  # convert percentages back to sums
-# dfS['Hylak_id'] = gdf_join_binnedF.Hylak_id
-
-# ## Add area bin
-# # gdf_join_binnedF['area_bin'] = pd.cut(gdf_join_binnedF.Class_sum, area_bins, labels=area_bins_labels)
-
-# ## Melt for plotting
-# # 'area_bin' # melted data frame where Occurrence bins represent unweighted MEANS
-# dfsM = dfS.melt(id_vars=['Hylak_id'], var_name='Occurrence bin')
-
-# ## Get sums for normalizing second axis
-# # areaSum = gdf_join_binnedF[bin_labels].sum()
-
-# ## view
-# dfS.head(2)
-
-# # %%
-# ## Reshape (melt) and plot as grouped bar plot (very slow to plot)
-# "Within all of one occurrence bin, what was the contribution of LEV values"
-# g = sns.catplot(dfsM,  # .iloc[:1000,:],
-#                 hue='Occurrence bin', y='value', x='Occurrence bin', kind='bar', palette='cividis_r', errorbar=('ci', 95))
-# # Weighted percentage of pixels within bin (%)
-# g.set_axis_labels('Occurrence bin', 'Proportion')
-# g.set(title=f'Hydrolakes: GSW Occurrence breakdown for each bin')
-
-# ## Add second y-scale
-# # ax2 = g.ax.twinx()
-# # ax2.set_yticklabels()
-
-# # %% [markdown]
-# # ## Stacked bar plot showing lake size
-
-# # %%
-# # 3 Very Hydrolakes minimum lake size
-# assert not (np.any(gdf_join_binnedF.Lake_area < 0.1))
-# assert np.all(gdf_join_binnedF['Area_lt_50'] <= gdf_join_binnedF.Lake_area)
-
-# # %%
-# ## Bin data by lake area
-# area_bins = pd.IntervalIndex.from_breaks(
-#     [0.1, 1, 10, 100, 1e3, 1e4, 1e5], closed='left')
-# area_bins_labels = ['0.1-1', '1-10', '10-100',
-#                     '100-1000', '1000-10000', '10000-100000']
-# gdf_join_binnedF['area_bin'] = pd.cut(
-#     gdf_join_binnedF.Lake_area, area_bins, right=False, labels=area_bins_labels)
-# gdf_join_binnedF.head(3)
-
-# # %%
-# ## Melt for plotting
-# # Melted data frame where occurrence categories are MEAN, not SUM
-# dfsM2 = gdf_join_binnedF.drop(columns='geometry').melt(
-#     id_vars=['Hylak_id', 'area_bin'], var_name='Occurrence bin')
-
-# ## group for later on
-# grouped = dfsM2.groupby(['area_bin', 'Occurrence bin']).mean().reset_index()
-
-# ## view
-# # easier to view than the variable grouped, due to og index
-# table = dfsM2.groupby(['area_bin', 'Occurrence bin']).sum()
-# table
-
-# # %%
-# ## Save this table
-# table.to_csv(os.path.join(table_dir, 'breakdown-size-oc.csv'))
-
-# # %%
-# ## Plot lakes by double breakdown
-
-# ## plot colors
-# plot_colors = ['r', 'g', 'b', 'orange']
-
-# ## Try stacked bar plots... problem is that I can't add averages, and I can't easily divide dataframes with sum columns and also categorical columns...
-# # bar3 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['95-100','50-95','5-50', '0-5'])], x="area_bin",  y="value", errorbar=None, color=plot_colors[3]) # .query("`Occurrence bin` == '0-5'" #"@np.isin(`Occurrence bin`, ['0-5', '5-50'])"
-# # bar2 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['50-95','5-50', '0-5'])], x="area_bin",  y="value", errorbar=None, color=plot_colors[2])
-# # bar1 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['5-50', '0-5'])], x="area_bin",  y="value", errorbar=None, color=plot_colors[1])
-# # bar0 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['0-5'])], x="area_bin",  y="value", errorbar=None, color=plot_colors[0])
-
-# ## Try again (I verified each group sums to 1), can also use barplot or catplot(..., kind='bar')
-# bar0 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['95-100', '50-95', '5-50', '0-5'])], x="area_bin",
-#                    y="value", hue='Occurrence bin', errorbar=('ci', 95), color=plot_colors[0], palette='cividis_r')
-# # bar0.set_axis_labels('Proportion (%)', 'Area ($km^2$) bin')
-# bar0.axes.set_xlabel('Lake area ($km^2$) bin')
-# bar0.axes.set_ylabel('Proportion (%)')
-# bar0.axes.set_title('HydroLAKES breakdown')
-# plt.show()
-
-# # %%
-# ## Actual stacked plot using new sns objects API.
-# sns.set_palette('cividis_r')  # doesn't st color map... not sure why...
-# g = so.Plot(grouped[np.isin(grouped['Occurrence bin'], ['95-100', '50-95', '5-50', '0-5'])],
-#             x="area_bin", y="value", color='Occurrence bin').add(so.Bar(), so.Agg(), so.Stack())
-# # g. ax.set_xlabels(bin_labels)
-# g.label(x='Area bin ($km^2$)', y='Percentage')
-# # g.show()
-
-# # %% [markdown]
-# # ## Scrap
-
-# # %%
-# ## Plot
-# ## Reshape (melt) and plot as grouped bar plot
-# "Within all of one occurrence bin, what was the contribution of LEV values"
-# g = sns.catplot(gdf_join_binned[['Hylak_id'] + bin_labels].melt(id_vars='Hylak_id', var_name='Occurrence bin'),
-#                 hue='Occurrence bin', y='value', x='Occurrence bin', kind='bar', palette='cividis_r', errorbar=('ci', 95))
-# g.set_axis_labels('', 'Unweighted percentage of pixels within bin (%)')
-# g.set(title=f'Hydrolakes: GSW Occurrence breakdown for each bin')
-
-# # %%
-# ## Weighted average histogram/barplot without conf intervals
-# dfWA = pd.DataFrame([weightAvg, bin_labels], index=['value', 'bin']).T
-# g = sns.catplot(dfWA, hue='bin', y='value', x='bin',
-#                 kind='bar', palette='cividis_r')
-# g.set_axis_labels('', 'Area-weighted percentage of pixels within bin (%)')
-# g.set(title=f'Hydrolakes: GSW Occurrence breakdown for each bin')
-
-# # %%
-# ## Weighted average histogram/barplot (alternate using MPL)
-
-# plt.bar(x=np.arange(4), height=weightAvg)
-# plt.ylabel('Unweighted percentage of pixels within bin (%)')
-
-
-# # %%
-# ## Now plot as stacked bar plot (from https://www.python-graph-gallery.com/stacked-and-percent-stacked-barplot)
-
-# # set plot style: grey grid in the background:
-# # sns.set(style="darkgrid")
-
-# # set the figure size
-# # plt.figure(figsize=(14, 14))
-
-# ## plot colors
-# plot_colors = ['r', 'g', 'b', 'orange']
-
-# ## small dataset for testing
-# dfsM2_sub = dfsM2  # .iloc[1::80,:]
-
-# # top bar -> sum all values(smoker=No and smoker=Yes) to find y position of the bars
-# total = dfsM2_sub.groupby('area_bin')['value'].mean().reset_index()
-
-# # bar chart 1 -> top bars (group of 'smoker=No')
-# # bar_total = sns.barplot(x="area_bin",  y="value", data=total, color=plot_colors[0])
-# bar_total = dfsM2_sub[np.isin(dfsM2_sub['Occurrence bin'], [
-#                               '95-100', '50-95', '5-50', '0-5'])]
-
-# # bottom bar ->  take only smoker=Yes values from the data
-# bin1 = dfsM2_sub[dfsM2_sub['Occurrence bin'] == '0-5']
-# bin2 = dfsM2_sub[np.isin(dfsM2_sub['Occurrence bin'], ['5-50', '0-5'])]
-# bin3 = dfsM2_sub[np.isin(dfsM2_sub['Occurrence bin'],
-#                          ['50-95', '5-50', '0-5'])]
-# # bin4 = dfsM2_sub[dfsM2_sub['Occurrence bin']=='95-100'] # not needed
-
-# # bar chart 2 -> bottom bars (group of 'smoker=Yes')
-# # bar2 = sns.barplot(x="area_bin", y="value", data=bin1, estimator='mean', errorbar=None,  color=plot_colors[1])
-# # bar3 = sns.barplot(x="area_bin", y="value", data=bin2, estimator='mean', errorbar=None,  color=plot_colors[2])
-# # bar4 = sns.barplot(x="area_bin", y="value", data=bin3, estimator='mean', errorbar=None,  color=plot_colors[3])
-
-# # simple way of computing remaining bars by addition
-# total_bin1 = bin1.groupby('area_bin')['value'].mean().reset_index()
-# total_bin2 = bin2.groupby('area_bin')['value'].mean().reset_index()
-# total_bin3 = bin3.groupby('area_bin')['value'].mean().reset_index()
-
-# # add bar plots for sub totals
-# bar3 = sns.barplot(x="area_bin", y="value",
-#                    data=total_bin3, color=plot_colors[2])
-# bar2 = sns.barplot(x="area_bin", y="value",
-#                    data=total_bin2, color=plot_colors[1])
-# bar1 = sns.barplot(x="area_bin", y="value",
-#                    data=total_bin1, color=plot_colors[0])
-
-# # add legend
-# bars = [mpatches.Patch(color=j, label=bin_labels[i])
-#         for i, j in enumerate(plot_colors)]
-# # top_bar = mpatches.Patch(color='darkblue', label=bin_labels[0])
-# # bottom_bar = mpatches.Patch(color='lightblue', label='smoker = Yes')
-# plt.legend(handles=bars)
-
-# # show the graph
-# plt.show()
-
-# # %%
-# ## Now dubplicate unweighted mean
-# bar0 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['95-100', '50-95', '5-50', '0-5'])],
-#                    x="Occurrence bin", y="value", errorbar=('ci', 95), color=plot_colors[0], palette='cividis_r')
-
-# # %% [markdown]
-# # ## Scrap functions
-
-# # %%
-
-
-# def getRequests():
-#     """Generates a list of work items to be downloaded. Should be dquivalent to 'return modN', where modN is mod number.
-#     """
-#     ## Load vector dataset
-#     vect = ee.FeatureCollection(
-#         "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10").map(addMod)
-
-#     # For testing: Filter  to reduce size of operation
-#     # vectv = vect.filter("Pour_lat > 59.5").filter("Pour_lat < 59.6") #.filter("Long == -126.25")
-
-#     ## Aggregate by Hylak_id mod
-#     # return np.unique(vectF.aggregate_array('Country').getInfo()) # change to vect not vectF for real run
-#     # change to vect not vectF for real run
-#     return np.unique(vect.aggregate_array(modstr).getInfo())
-
-# # %%
-
-
-# def getRequests():
-#     ''' shortcut function that doesn't take 2.5 minutes.'''
-#     return range(modN)
-
-# # %%
-
-
-# def addMod(feature):
-#     '''Adds a new mod[n] column to FeatureCollection'''
-#     mod = modN  # defined at beginning
-#     modComputed = ee.Number(feature.get('Hylak_id')
-#                             ).mod(mod)  # ee.Number.parse(
-#     return feature.set('mod' + str(mod), modComputed)  # .double()
+    #####################
+    for j, ee_zones_pth in enumerate(ee_zones_pths):
+        lat_range, lon_range = lat_ranges[j], lon_ranges[j]
+        region = os.path.basename(ee_zones_pth).split('/')[-1]
+        table_dir = os.path.join(analysis_dir, region, 'tables')
+        tile_dir = os.path.join(analysis_dir, region, 'tiles')
+        for dir in [analysis_dir, table_dir, tile_dir]:
+            os.makedirs(dir, exist_ok=True)
+        ## View expected number of results
+        coord_list = getRequests(lat_range, lon_range, step)  # index_file
+        print(f'Number of items: {len(coord_list)}')
+
+        ## Run function
+        print(
+            f'Sending request in {len(coord_list)} chunks...\n----------------------------------\n')
+
+        # Prepare enumerate-like object for starmap, instead of  # pool.starmap(getResult, enumerate(coord_list))
+        data_for_starmap = genStarmap(coord_list,
+                                      name_lat,
+                                      name_lon,
+                                      offset_lower,
+                                      offset_upper,
+                                      crs_wkt,
+                                      scale,
+                                      tile_scale,
+                                      ee_zones_pth,
+                                      ee_value_raster_pth,
+                                      tile_dir)
+
+        ## Multiprocessing
+        # pool = multiprocessing.Pool(nWorkers)
+        # pool.starmap(batchZonalHist, data_for_starmap)
+        # pool.close()
+        # pool.join()
+
+        ## Multithreading
+        # Could also use ProcessPoolExecutor for multiprocessing
+        with ThreadPoolExecutor(max_workers=nWorkers) as executor:
+            # Submit tasks with keyword arguments
+            # futures = [executor.submit(batchZonalHist, **args)
+            #            for args in data_for_starmap]
+            # Submit tasks with standard arguments
+            # futures = executor.submit(batchZonalHist, data_for_starmap)
+            futures = [executor.submit(batchZonalHist, *args)
+                       for args in data_for_starmap]
+
+            # Wrap as_completed with tqdm for a progress bar
+            for future in tqdm(as_completed(futures), total=len(futures)):
+                pass  # Each iteration represents one completed task
+
+        print(
+            f'\nFinished region: {region}.\n---------------------------------')
+    print('\nFinished all regions.\n---------------------------------')
+
+    ###################################
+    # ## Load and piece together with dask (START HERE if not running GEE part)
+    # # latter argument suggested by dask error and it fixes it! # usecols=[id_var]
+    # ddf = dd.read_csv(f"{analysis_dir}/*/tiles/*.csv", assume_missing=True,
+    #                   on_bad_lines='skip', dtype={'system:index': 'object'})
+
+    # ## convert to pandas df
+    # df = ddf.compute()
+    # df = df.drop_duplicates(subset=id_var).reset_index().drop(
+    #     ['index', 'system:index'], axis=1)
+
+    # # %%
+    # ## Debugging LAD.py
+    # # np.any(df[area_var] == 0)
+
+    # # %%
+
+    # ## ensure df has unique Hylak_id keys
+    # df = ensure_unique_ids(df, id_var)
+
+    # # %%
+    # # ## Save as excel as intermediate step (optional)
+    # # df_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.csv.gz')
+    # # df.to_csv(df_pth, compression='gzip')
+
+    # # %%
+    # # ## Load df
+    # # df_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.csv.gz')
+    # # df = pd.read_csv(df_pth)
+
+    # # %% [markdown]
+    # # ## Bin GSW in 4 bins
+
+    # # %%
+    # ## Mask in occurence columns and change values to int
+    # # occurrence columns positive mask. use map function, rather than for loop, for practice!
+    # oc_columns = list(map(lambda c: ('Class_' in c)
+    #                       and ('sum' not in c), df.columns))
+    # # all relevant occurance fields converted to ints, as a list
+    # oc_column_vals = list(
+    #     map(lambda c: int(c.replace('Class_', '')), df.columns[oc_columns]))
+    # # oc_column_vals
+
+    # # %%
+    # bStat = binned_statistic(
+    #     oc_column_vals, values=df.iloc[:, oc_columns], statistic=np.nansum, bins=[0, 5, 50, 95, 100])
+    # bStat
+
+    # # %%
+    # bin_labels = ['0-5', '5-50', '50-95', '95-100']
+    # dfB = pd.DataFrame(bStat.statistic, columns=bin_labels) / pd.DataFrame(
+    #     df.loc[:, 'Class_sum']).values * 100  # , index=df.index) # df binned
+    # dfB[id_var] = df[id_var]
+    # dfB['Class_sum'] = df.Class_sum
+    # dfB
+
+    # # %%
+    # dfB = ensure_unique_ids(dfB, id_var)
+
+    # # %% [markdown]
+    # # ## Load shapefile and join in GSW values (full and binned)
+
+    # # %%
+    # ## Load shapefile to join
+    # lake_inventory = gpd.read_file(lake_inventory_pth,
+    #                                engine='pyogrio')  # bbox=(-180, 40, 180, 90)) # bbox can speed loading
+
+    # # %%
+    # ## Filter columns
+    # cols_to_keep = df.columns[[('Class' in c) or (
+    #     id_var in c) for c in df.columns]]
+
+    # # %%
+
+    # ## Merge files
+    # # gdf_join_full = lake_inventory.merge(df[cols_to_keep], left_on='Hylak_id',
+    # #                           right_on='Hylak_id', how='inner', validate='one_to_one')
+
+    # # Merge the GLAKES data with the dataframe 'df' based on the common attribute 'id_var'
+    # gdf_join_full = lake_inventory.merge(df[cols_to_keep], on=id_var,
+    #                                      how='outer', validate='one_to_one')
+    # gdf_join_binned = lake_inventory.merge(dfB, on=id_var,
+    #                                        how='outer', validate='one_to_one')
+    # # %%
+    # ## Write out full shapefile (slowww...52 minutes, 3.4 GB [without pyogrio])
+    # # gdf_join_full_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.shp')
+    # # gdf_join_full.to_file(gdf_join_full_pth, engine='pyogrio')
+
+    # # Save the merged data to a new geodatabase in the same location
+    # gdf_join_full_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.gdb')
+    # gdf_join_full.to_file(
+    #     gdf_join_full_pth, driver='OpenFileGDB', engine='pyogrio')
+
+    # gdf_join_binned_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_binned.gdb')
+    # gdf_join_binned.to_file(gdf_join_binned_pth,
+    #                         driver='OpenFileGDB', engine='pyogrio')
+
+    ########################
+    # # %%
+    # ## Merge binned file to bawld gdf (only keep a few original attributes)
+    # # ['Cell_ID', 'Long', 'Lat', 'Area_Pct', 'Shp_Area', 'WETSCAPE', 'geometry']
+    # gdf_join_binned = gdf.merge(
+    #     dfB, left_on='Hylak_id', right_on='Hylak_id', how='inner', validate='one_to_one')
+    # gdf_join_binned
+
+    # # %%
+    # gdf_join_binned.columns
+    # # gdf_join_binned.columns[-6:]
+    # # gdf_join_binned[[-6:]]
+    # # gdf_join_binned.iloc[:,[0, -6:]]
+    # gdf_join_binned[['Hylak_id', 'geometry', '0-5',
+    #                  '5-50', '50-95', '95-100', 'Class_sum']]
+
+    # # %%
+    # ## Write out binned shapefile (can join in remaining attributes later)
+    # colsKeep = ['Hylak_id', 'geometry', '0-5',
+    #             '5-50', '50-95', '95-100', 'Class_sum']
+    # gdf_join_binned_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_binned.shp')
+    # gdf_join_binned[colsKeep].to_file(gdf_join_binned_pth)
+
+    # # %% [markdown]
+    # # ## Histogram plots
+
+    # # %%
+    # ## load if necessary (previously defined vars)
+    # # print('Loading OC_full...')
+    # # gdf_join_full_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.shp')
+    # # gdf_join_full = pyogrio.read_dataframe(gdf_join_full_pth, use_arrow=True)
+
+    # print('Loading OC_binned...')
+    # gdf_join_binned_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_binned.shp')
+    # gdf_join_binned = pyogrio.read_dataframe(gdf_join_binned_pth, use_arrow=True)
+
+    # bin_labels = ['0-5', '5-50', '50-95', '95-100']
+
+    # # %%
+    # ## Preprocess to remove any nan's in important columns
+    # gdf_join_binnedF = gdf_join_binned.dropna(subset=bin_labels)  # filtered
+    # print(
+    #     f'Dropped {gdf_join_binned.shape[0] - gdf_join_binnedF.shape[0]} rows with nans.')
+
+    # ## Averaging method 1: Take weighted average
+    # try:
+    #     weightAvg = np.average(
+    #         gdf_join_binnedF[bin_labels], weights=gdf_join_binnedF['Lake_area'], axis=0)
+    # except:
+    #     try:
+    #         weightAvg = np.average(
+    #             gdf_join_binnedF[bin_labels], weights=gdf_join_binnedF['Shp_Area'], axis=0)
+    #     except:
+    #         gdf_join_binnedF = gdf_join_binnedF.merge(gdf[['Hylak_id', 'Lake_area']], left_on='Hylak_id',
+    #                                                   right_on='Hylak_id', how='left', validate='one_to_one')  # Add in HL lake area if not present
+    #         # weightAvg = np.average(gdf_join_binnedF[bin_labels], weights = gdf_join_binnedF['Class_sum'], axis=0) # If I was sloppy and didn't save HL area
+    #         weightAvg = np.average(
+    #             gdf_join_binnedF[bin_labels], weights=gdf_join_binnedF['Lake_area'], axis=0)
+    # # weightAvg = np.average(gdf_join_binned[bin_labels], axis=0)
+
+    # weightAvg
+
+    # # %%
+    # # Add Area <50% Oc
+    # gdf_join_binnedF['Area_lt_50'] = (
+    #     gdf_join_binnedF['0-5'] + gdf_join_binnedF['5-50']) / 100 * gdf_join_binnedF.Lake_area  # Units: km2
+    # gdf_join_binnedF.head(3)
+
+    # # %%
+    # ## Averaging option B: Sum and then average
+    # dfS = gdf_join_binnedF[bin_labels] / 100 * pd.DataFrame(
+    #     gdf_join_binnedF.loc[:, 'Class_sum']).values  # convert percentages back to sums
+    # dfS['Hylak_id'] = gdf_join_binnedF.Hylak_id
+
+    # ## Add area bin
+    # # gdf_join_binnedF['area_bin'] = pd.cut(gdf_join_binnedF.Class_sum, area_bins, labels=area_bins_labels)
+
+    # ## Melt for plotting
+    # # 'area_bin' # melted data frame where Occurrence bins represent unweighted MEANS
+    # dfsM = dfS.melt(id_vars=['Hylak_id'], var_name='Occurrence bin')
+
+    # ## Get sums for normalizing second axis
+    # # areaSum = gdf_join_binnedF[bin_labels].sum()
+
+    # ## view
+    # dfS.head(2)
+
+    # # %%
+    # ## Reshape (melt) and plot as grouped bar plot (very slow to plot)
+    # "Within all of one occurrence bin, what was the contribution of LEV values"
+    # g = sns.catplot(dfsM,  # .iloc[:1000,:],
+    #                 hue='Occurrence bin', y='value', x='Occurrence bin', kind='bar', palette='cividis_r', errorbar=('ci', 95))
+    # # Weighted percentage of pixels within bin (%)
+    # g.set_axis_labels('Occurrence bin', 'Proportion')
+    # g.set(title=f'Hydrolakes: GSW Occurrence breakdown for each bin')
+
+    # ## Add second y-scale
+    # # ax2 = g.ax.twinx()
+    # # ax2.set_yticklabels()
+
+    # # %% [markdown]
+    # # ## Stacked bar plot showing lake size
+
+    # # %%
+    # # 3 Very Hydrolakes minimum lake size
+    # assert not (np.any(gdf_join_binnedF.Lake_area < 0.1))
+    # assert np.all(gdf_join_binnedF['Area_lt_50'] <= gdf_join_binnedF.Lake_area)
+
+    # # %%
+    # ## Bin data by lake area
+    # area_bins = pd.IntervalIndex.from_breaks(
+    #     [0.1, 1, 10, 100, 1e3, 1e4, 1e5], closed='left')
+    # area_bins_labels = ['0.1-1', '1-10', '10-100',
+    #                     '100-1000', '1000-10000', '10000-100000']
+    # gdf_join_binnedF['area_bin'] = pd.cut(
+    #     gdf_join_binnedF.Lake_area, area_bins, right=False, labels=area_bins_labels)
+    # gdf_join_binnedF.head(3)
+
+    # # %%
+    # ## Melt for plotting
+    # # Melted data frame where occurrence categories are MEAN, not SUM
+    # dfsM2 = gdf_join_binnedF.drop(columns='geometry').melt(
+    #     id_vars=['Hylak_id', 'area_bin'], var_name='Occurrence bin')
+
+    # ## group for later on
+    # grouped = dfsM2.groupby(['area_bin', 'Occurrence bin']).mean().reset_index()
+
+    # ## view
+    # # easier to view than the variable grouped, due to og index
+    # table = dfsM2.groupby(['area_bin', 'Occurrence bin']).sum()
+    # table
+
+    # # %%
+    # ## Save this table
+    # table.to_csv(os.path.join(table_dir, 'breakdown-size-oc.csv'))
+
+    # # %%
+    # ## Plot lakes by double breakdown
+
+    # ## plot colors
+    # plot_colors = ['r', 'g', 'b', 'orange']
+
+    # ## Try stacked bar plots... problem is that I can't add averages, and I can't easily divide dataframes with sum columns and also categorical columns...
+    # # bar3 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['95-100','50-95','5-50', '0-5'])], x="area_bin",  y="value", errorbar=None, color=plot_colors[3]) # .query("`Occurrence bin` == '0-5'" #"@np.isin(`Occurrence bin`, ['0-5', '5-50'])"
+    # # bar2 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['50-95','5-50', '0-5'])], x="area_bin",  y="value", errorbar=None, color=plot_colors[2])
+    # # bar1 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['5-50', '0-5'])], x="area_bin",  y="value", errorbar=None, color=plot_colors[1])
+    # # bar0 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['0-5'])], x="area_bin",  y="value", errorbar=None, color=plot_colors[0])
+
+    # ## Try again (I verified each group sums to 1), can also use barplot or catplot(..., kind='bar')
+    # bar0 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['95-100', '50-95', '5-50', '0-5'])], x="area_bin",
+    #                    y="value", hue='Occurrence bin', errorbar=('ci', 95), color=plot_colors[0], palette='cividis_r')
+    # # bar0.set_axis_labels('Proportion (%)', 'Area ($km^2$) bin')
+    # bar0.axes.set_xlabel('Lake area ($km^2$) bin')
+    # bar0.axes.set_ylabel('Proportion (%)')
+    # bar0.axes.set_title('HydroLAKES breakdown')
+    # plt.show()
+
+    # # %%
+    # ## Actual stacked plot using new sns objects API.
+    # sns.set_palette('cividis_r')  # doesn't st color map... not sure why...
+    # g = so.Plot(grouped[np.isin(grouped['Occurrence bin'], ['95-100', '50-95', '5-50', '0-5'])],
+    #             x="area_bin", y="value", color='Occurrence bin').add(so.Bar(), so.Agg(), so.Stack())
+    # # g. ax.set_xlabels(bin_labels)
+    # g.label(x='Area bin ($km^2$)', y='Percentage')
+    # # g.show()
+
+    # # %% [markdown]
+    # # ## Scrap
+
+    # # %%
+    # ## Plot
+    # ## Reshape (melt) and plot as grouped bar plot
+    # "Within all of one occurrence bin, what was the contribution of LEV values"
+    # g = sns.catplot(gdf_join_binned[['Hylak_id'] + bin_labels].melt(id_vars='Hylak_id', var_name='Occurrence bin'),
+    #                 hue='Occurrence bin', y='value', x='Occurrence bin', kind='bar', palette='cividis_r', errorbar=('ci', 95))
+    # g.set_axis_labels('', 'Unweighted percentage of pixels within bin (%)')
+    # g.set(title=f'Hydrolakes: GSW Occurrence breakdown for each bin')
+
+    # # %%
+    # ## Weighted average histogram/barplot without conf intervals
+    # dfWA = pd.DataFrame([weightAvg, bin_labels], index=['value', 'bin']).T
+    # g = sns.catplot(dfWA, hue='bin', y='value', x='bin',
+    #                 kind='bar', palette='cividis_r')
+    # g.set_axis_labels('', 'Area-weighted percentage of pixels within bin (%)')
+    # g.set(title=f'Hydrolakes: GSW Occurrence breakdown for each bin')
+
+    # # %%
+    # ## Weighted average histogram/barplot (alternate using MPL)
+
+    # plt.bar(x=np.arange(4), height=weightAvg)
+    # plt.ylabel('Unweighted percentage of pixels within bin (%)')
+
+    # # %%
+    # ## Now plot as stacked bar plot (from https://www.python-graph-gallery.com/stacked-and-percent-stacked-barplot)
+
+    # # set plot style: grey grid in the background:
+    # # sns.set(style="darkgrid")
+
+    # # set the figure size
+    # # plt.figure(figsize=(14, 14))
+
+    # ## plot colors
+    # plot_colors = ['r', 'g', 'b', 'orange']
+
+    # ## small dataset for testing
+    # dfsM2_sub = dfsM2  # .iloc[1::80,:]
+
+    # # top bar -> sum all values(smoker=No and smoker=Yes) to find y position of the bars
+    # total = dfsM2_sub.groupby('area_bin')['value'].mean().reset_index()
+
+    # # bar chart 1 -> top bars (group of 'smoker=No')
+    # # bar_total = sns.barplot(x="area_bin",  y="value", data=total, color=plot_colors[0])
+    # bar_total = dfsM2_sub[np.isin(dfsM2_sub['Occurrence bin'], [
+    #                               '95-100', '50-95', '5-50', '0-5'])]
+
+    # # bottom bar ->  take only smoker=Yes values from the data
+    # bin1 = dfsM2_sub[dfsM2_sub['Occurrence bin'] == '0-5']
+    # bin2 = dfsM2_sub[np.isin(dfsM2_sub['Occurrence bin'], ['5-50', '0-5'])]
+    # bin3 = dfsM2_sub[np.isin(dfsM2_sub['Occurrence bin'],
+    #                          ['50-95', '5-50', '0-5'])]
+    # # bin4 = dfsM2_sub[dfsM2_sub['Occurrence bin']=='95-100'] # not needed
+
+    # # bar chart 2 -> bottom bars (group of 'smoker=Yes')
+    # # bar2 = sns.barplot(x="area_bin", y="value", data=bin1, estimator='mean', errorbar=None,  color=plot_colors[1])
+    # # bar3 = sns.barplot(x="area_bin", y="value", data=bin2, estimator='mean', errorbar=None,  color=plot_colors[2])
+    # # bar4 = sns.barplot(x="area_bin", y="value", data=bin3, estimator='mean', errorbar=None,  color=plot_colors[3])
+
+    # # simple way of computing remaining bars by addition
+    # total_bin1 = bin1.groupby('area_bin')['value'].mean().reset_index()
+    # total_bin2 = bin2.groupby('area_bin')['value'].mean().reset_index()
+    # total_bin3 = bin3.groupby('area_bin')['value'].mean().reset_index()
+
+    # # add bar plots for sub totals
+    # bar3 = sns.barplot(x="area_bin", y="value",
+    #                    data=total_bin3, color=plot_colors[2])
+    # bar2 = sns.barplot(x="area_bin", y="value",
+    #                    data=total_bin2, color=plot_colors[1])
+    # bar1 = sns.barplot(x="area_bin", y="value",
+    #                    data=total_bin1, color=plot_colors[0])
+
+    # # add legend
+    # bars = [mpatches.Patch(color=j, label=bin_labels[i])
+    #         for i, j in enumerate(plot_colors)]
+    # # top_bar = mpatches.Patch(color='darkblue', label=bin_labels[0])
+    # # bottom_bar = mpatches.Patch(color='lightblue', label='smoker = Yes')
+    # plt.legend(handles=bars)
+
+    # # show the graph
+    # plt.show()
+
+    # # %%
+    # ## Now dubplicate unweighted mean
+    # bar0 = sns.barplot(grouped[np.isin(grouped['Occurrence bin'], ['95-100', '50-95', '5-50', '0-5'])],
+    #                    x="Occurrence bin", y="value", errorbar=('ci', 95), color=plot_colors[0], palette='cividis_r')
+
+    # # %% [markdown]
+    # # ## Scrap functions
+
+    # # %%
+
+    # def getRequests():
+    #     """Generates a list of work items to be downloaded. Should be dquivalent to 'return modN', where modN is mod number.
+    #     """
+    #     ## Load vector dataset
+    #     vect = ee.FeatureCollection(
+    #         "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10").map(addMod)
+
+    #     # For testing: Filter  to reduce size of operation
+    #     # vectv = vect.filter("Pour_lat > 59.5").filter("Pour_lat < 59.6") #.filter("Long == -126.25")
+
+    #     ## Aggregate by Hylak_id mod
+    #     # return np.unique(vectF.aggregate_array('Country').getInfo()) # change to vect not vectF for real run
+    #     # change to vect not vectF for real run
+    #     return np.unique(vect.aggregate_array(modstr).getInfo())
+
+    # # %%
+
+    # def getRequests():
+    #     ''' shortcut function that doesn't take 2.5 minutes.'''
+    #     return range(modN)
+
+    # # %%
+
+    # def addMod(feature):
+    #     '''Adds a new mod[n] column to FeatureCollection'''
+    #     mod = modN  # defined at beginning
+    #     modComputed = ee.Number(feature.get('Hylak_id')
+    #                             ).mod(mod)  # ee.Number.parse(
+    #     return feature.set('mod' + str(mod), modComputed)  # .double()
