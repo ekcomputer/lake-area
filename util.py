@@ -225,12 +225,14 @@ def ensure_unique_ids(df: pd.DataFrame, id_var: str) -> pd.DataFrame:
         If duplicate values are found for `id_var`.
 
     """
-    dups_exist = len(df) - len(df.drop_duplicates(subset=id_var)) != 0
-    assert not dups_exist, "Duplicate id values found..."
+    len0 = len(df)
+    len1 = len(df.drop_duplicates(subset=id_var))
+    dups_exist = len0 - len1 != 0
 
     if dups_exist:
         df = df.drop_duplicates(subset=id_var)
-        print('Duplicates removed arbitrarily.')
+        print(
+            f'Found {len0 - len1} duplicate id values and removed duplicates arbitrarily.')
 
     return df
 
@@ -291,156 +293,156 @@ if __name__ == '__main__':
     # getResult(3, 1)
     # getResult(0, np.array([-104.25, 51.25]))
 
-    #####################
-    for j, ee_zones_pth in enumerate(ee_zones_pths):
-        lat_range, lon_range = lat_ranges[j], lon_ranges[j]
-        region = os.path.basename(ee_zones_pth).split('/')[-1]
-        table_dir = os.path.join(analysis_dir, region, 'tables')
-        tile_dir = os.path.join(analysis_dir, region, 'tiles')
-        for dir in [analysis_dir, table_dir, tile_dir]:
-            os.makedirs(dir, exist_ok=True)
-        ## View expected number of results
-        coord_list = getRequests(lat_range, lon_range, step)  # index_file
-        print(f'Number of items: {len(coord_list)}')
+    ######################
+    # for j, ee_zones_pth in enumerate(ee_zones_pths):
+    #     lat_range, lon_range = lat_ranges[j], lon_ranges[j]
+    #     region = os.path.basename(ee_zones_pth).split('/')[-1]
+    #     table_dir = os.path.join(analysis_dir, region, 'tables')
+    #     tile_dir = os.path.join(analysis_dir, region, 'tiles')
+    #     for dir in [analysis_dir, table_dir, tile_dir]:
+    #         os.makedirs(dir, exist_ok=True)
+    #     ## View expected number of results
+    #     coord_list = getRequests(lat_range, lon_range, step)  # index_file
+    #     print(f'Number of items: {len(coord_list)}')
 
-        ## Run function
-        print(
-            f'Sending request in {len(coord_list)} chunks...\n----------------------------------\n')
+    #     ## Run function
+    #     print(
+    #         f'Sending request in {len(coord_list)} chunks...\n----------------------------------\n')
 
-        # Prepare enumerate-like object for starmap, instead of  # pool.starmap(getResult, enumerate(coord_list))
-        data_for_starmap = genStarmap(coord_list,
-                                      name_lat,
-                                      name_lon,
-                                      offset_lower,
-                                      offset_upper,
-                                      crs_wkt,
-                                      scale,
-                                      tile_scale,
-                                      ee_zones_pth,
-                                      ee_value_raster_pth,
-                                      tile_dir)
+    #     # Prepare enumerate-like object for starmap, instead of  # pool.starmap(getResult, enumerate(coord_list))
+    #     data_for_starmap = genStarmap(coord_list,
+    #                                   name_lat,
+    #                                   name_lon,
+    #                                   offset_lower,
+    #                                   offset_upper,
+    #                                   crs_wkt,
+    #                                   scale,
+    #                                   tile_scale,
+    #                                   ee_zones_pth,
+    #                                   ee_value_raster_pth,
+    #                                   tile_dir)
 
-        ## Multiprocessing
-        # pool = multiprocessing.Pool(nWorkers)
-        # pool.starmap(batchZonalHist, data_for_starmap)
-        # pool.close()
-        # pool.join()
+    #     ## Multiprocessing
+    #     # pool = multiprocessing.Pool(nWorkers)
+    #     # pool.starmap(batchZonalHist, data_for_starmap)
+    #     # pool.close()
+    #     # pool.join()
 
-        ## Multithreading
-        # Could also use ProcessPoolExecutor for multiprocessing
-        with ThreadPoolExecutor(max_workers=nWorkers) as executor:
-            # Submit tasks with keyword arguments
-            # futures = [executor.submit(batchZonalHist, **args)
-            #            for args in data_for_starmap]
-            # Submit tasks with standard arguments
-            # futures = executor.submit(batchZonalHist, data_for_starmap)
-            futures = [executor.submit(batchZonalHist, *args)
-                       for args in data_for_starmap]
+    #     ## Multithreading
+    #     # Could also use ProcessPoolExecutor for multiprocessing
+    #     with ThreadPoolExecutor(max_workers=nWorkers) as executor:
+    #         # Submit tasks with keyword arguments
+    #         # futures = [executor.submit(batchZonalHist, **args)
+    #         #            for args in data_for_starmap]
+    #         # Submit tasks with standard arguments
+    #         # futures = executor.submit(batchZonalHist, data_for_starmap)
+    #         futures = [executor.submit(batchZonalHist, *args)
+    #                    for args in data_for_starmap]
 
-            # Wrap as_completed with tqdm for a progress bar
-            for future in tqdm(as_completed(futures), total=len(futures)):
-                pass  # Each iteration represents one completed task
+    #         # Wrap as_completed with tqdm for a progress bar
+    #         for future in tqdm(as_completed(futures), total=len(futures)):
+    #             pass  # Each iteration represents one completed task
 
-        print(
-            f'\nFinished region: {region}.\n---------------------------------')
-    print('\nFinished all regions.\n---------------------------------')
+    #     print(
+    #         f'\nFinished region: {region}.\n---------------------------------')
+    # print('\nFinished all regions.\n---------------------------------')
 
     ###################################
-    # ## Load and piece together with dask (START HERE if not running GEE part)
-    # # latter argument suggested by dask error and it fixes it! # usecols=[id_var]
-    # ddf = dd.read_csv(f"{analysis_dir}/*/tiles/*.csv", assume_missing=True,
-    #                   on_bad_lines='skip', dtype={'system:index': 'object'})
+    ## Load and piece together with dask (START HERE if not running GEE part)
+    # latter argument suggested by dask error and it fixes it! # usecols=[id_var]
+    ddf = dd.read_csv(f"{analysis_dir}/*/tiles/*.csv", assume_missing=True,
+                      on_bad_lines='skip', dtype={'system:index': 'object'})
 
-    # ## convert to pandas df
-    # df = ddf.compute()
-    # df = df.drop_duplicates(subset=id_var).reset_index().drop(
-    #     ['index', 'system:index'], axis=1)
+    ## convert to pandas df
+    df = ddf.compute()
+    df = df.drop_duplicates(subset=id_var).reset_index().drop(
+        ['index', 'system:index'], axis=1)
 
-    # # %%
-    # ## Debugging LAD.py
-    # # np.any(df[area_var] == 0)
+    # %%
+    ## Debugging LAD.py
+    # np.any(df[area_var] == 0)
 
-    # # %%
+    # %%
 
-    # ## ensure df has unique Hylak_id keys
-    # df = ensure_unique_ids(df, id_var)
+    ## ensure df has unique Hylak_id keys
+    df = ensure_unique_ids(df, id_var)
 
-    # # %%
-    # # ## Save as excel as intermediate step (optional)
-    # # df_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.csv.gz')
-    # # df.to_csv(df_pth, compression='gzip')
+    # %%
+    # ## Save as excel as intermediate step (optional)
+    # df_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.csv.gz')
+    # df.to_csv(df_pth, compression='gzip')
 
-    # # %%
-    # # ## Load df
-    # # df_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.csv.gz')
-    # # df = pd.read_csv(df_pth)
+    # %%
+    # ## Load df
+    # df_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.csv.gz')
+    # df = pd.read_csv(df_pth)
 
-    # # %% [markdown]
-    # # ## Bin GSW in 4 bins
+    # %% [markdown]
+    # ## Bin GSW in 4 bins
 
-    # # %%
-    # ## Mask in occurence columns and change values to int
-    # # occurrence columns positive mask. use map function, rather than for loop, for practice!
-    # oc_columns = list(map(lambda c: ('Class_' in c)
-    #                       and ('sum' not in c), df.columns))
-    # # all relevant occurance fields converted to ints, as a list
-    # oc_column_vals = list(
-    #     map(lambda c: int(c.replace('Class_', '')), df.columns[oc_columns]))
-    # # oc_column_vals
+    # %%
+    ## Mask in occurence columns and change values to int
+    # occurrence columns positive mask. use map function, rather than for loop, for practice!
+    oc_columns = list(map(lambda c: ('Class_' in c)
+                          and ('sum' not in c), df.columns))
+    # all relevant occurance fields converted to ints, as a list
+    oc_column_vals = list(
+        map(lambda c: int(c.replace('Class_', '')), df.columns[oc_columns]))
+    # oc_column_vals
 
-    # # %%
-    # bStat = binned_statistic(
-    #     oc_column_vals, values=df.iloc[:, oc_columns], statistic=np.nansum, bins=[0, 5, 50, 95, 100])
-    # bStat
+    # %%
+    bStat = binned_statistic(
+        oc_column_vals, values=df.iloc[:, oc_columns], statistic=np.nansum, bins=[0, 5, 50, 95, 100])
+    bStat
 
-    # # %%
-    # bin_labels = ['0-5', '5-50', '50-95', '95-100']
-    # dfB = pd.DataFrame(bStat.statistic, columns=bin_labels) / pd.DataFrame(
-    #     df.loc[:, 'Class_sum']).values * 100  # , index=df.index) # df binned
-    # dfB[id_var] = df[id_var]
-    # dfB['Class_sum'] = df.Class_sum
-    # dfB
+    # %%
+    bin_labels = ['0-5', '5-50', '50-95', '95-100']
+    dfB = pd.DataFrame(bStat.statistic, columns=bin_labels) / pd.DataFrame(
+        df.loc[:, 'Class_sum']).values * 100  # , index=df.index) # df binned
+    dfB[id_var] = df[id_var]
+    dfB['Class_sum'] = df.Class_sum
+    dfB
 
-    # # %%
-    # dfB = ensure_unique_ids(dfB, id_var)
+    # %%
+    dfB = ensure_unique_ids(dfB, id_var)
 
-    # # %% [markdown]
-    # # ## Load shapefile and join in GSW values (full and binned)
+    # %% [markdown]
+    # ## Load shapefile and join in GSW values (full and binned)
 
-    # # %%
-    # ## Load shapefile to join
-    # lake_inventory = gpd.read_file(lake_inventory_pth,
-    #                                engine='pyogrio')  # bbox=(-180, 40, 180, 90)) # bbox can speed loading
+    # %%
+    ## Load shapefile to join
+    lake_inventory = gpd.read_file(lake_inventory_pth,
+                                   engine='pyogrio')  # bbox=(-180, 40, 180, 90)) # bbox can speed loading
 
-    # # %%
-    # ## Filter columns
-    # cols_to_keep = df.columns[[('Class' in c) or (
-    #     id_var in c) for c in df.columns]]
+    # %%
+    ## Filter columns
+    cols_to_keep = df.columns[[('Class' in c) or (
+        id_var in c) for c in df.columns]]
 
-    # # %%
+    # %%
 
-    # ## Merge files
-    # # gdf_join_full = lake_inventory.merge(df[cols_to_keep], left_on='Hylak_id',
-    # #                           right_on='Hylak_id', how='inner', validate='one_to_one')
+    ## Merge files
+    # gdf_join_full = lake_inventory.merge(df[cols_to_keep], left_on='Hylak_id',
+    #                           right_on='Hylak_id', how='inner', validate='one_to_one')
 
-    # # Merge the GLAKES data with the dataframe 'df' based on the common attribute 'id_var'
-    # gdf_join_full = lake_inventory.merge(df[cols_to_keep], on=id_var,
-    #                                      how='outer', validate='one_to_one')
-    # gdf_join_binned = lake_inventory.merge(dfB, on=id_var,
-    #                                        how='outer', validate='one_to_one')
-    # # %%
-    # ## Write out full shapefile (slowww...52 minutes, 3.4 GB [without pyogrio])
-    # # gdf_join_full_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.shp')
-    # # gdf_join_full.to_file(gdf_join_full_pth, engine='pyogrio')
+    # Merge the GLAKES data with the dataframe 'df' based on the common attribute 'id_var'
+    gdf_join_full = lake_inventory.merge(df[cols_to_keep], on=id_var,
+                                         how='outer', validate='one_to_one')
+    gdf_join_binned = lake_inventory.merge(dfB, on=id_var,
+                                           how='outer', validate='one_to_one')
+    # %%
+    ## Write out full shapefile (slowww...52 minutes, 3.4 GB [without pyogrio])
+    # gdf_join_full_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.shp')
+    # gdf_join_full.to_file(gdf_join_full_pth, engine='pyogrio')
 
-    # # Save the merged data to a new geodatabase in the same location
-    # gdf_join_full_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.gdb')
-    # gdf_join_full.to_file(
-    #     gdf_join_full_pth, driver='OpenFileGDB', engine='pyogrio')
+    # Save the merged data to a new geodatabase in the same location
+    gdf_join_full_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.gdb')
+    gdf_join_full.to_file(
+        gdf_join_full_pth, driver='OpenFileGDB', engine='pyogrio')
 
-    # gdf_join_binned_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_binned.gdb')
-    # gdf_join_binned.to_file(gdf_join_binned_pth,
-    #                         driver='OpenFileGDB', engine='pyogrio')
+    gdf_join_binned_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_binned.gdb')
+    gdf_join_binned.to_file(gdf_join_binned_pth,
+                            driver='OpenFileGDB', engine='pyogrio')
 
     ########################
     # # %%
