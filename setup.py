@@ -11,6 +11,8 @@ setup(
     packages=find_packages(),
     python_requires='>=3.3',
     install_requires=[
+            'dask',
+            'geemap',
             'geopandas',
             'matplotlib',
             'matplotlib-label-lines',
