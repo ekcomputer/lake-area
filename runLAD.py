@@ -11,7 +11,7 @@ import pyogrio
 import argparse
 from scipy.stats import pearsonr
 from sklearn.metrics import mean_squared_error
-from LAD import *
+from LAD.LAD import *
 
 ## Testing mode or no.
 parser = argparse.ArgumentParser()

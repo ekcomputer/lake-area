@@ -5,8 +5,8 @@ import unittest
 import numpy as np
 import pandas as pd
 import pyogrio
-from LAD import *
-from util import *
+from LAD.LAD import *
+from LAD.util import *
 
 lad_hr_pth = 'sample_data/CIR_Canadian_Shield.shp'
 lad_lr_pth = 'sample_data/HydroLAKESv10_Sweden.shp'

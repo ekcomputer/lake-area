@@ -17,7 +17,7 @@ from retry import retry
 # import seaborn as sns
 # import pyogrio
 # from tqdm import tqdm
-from util import *
+from LAD.util import *
 from runLAD_PLD import output_dir
 ## I/O
 # modN = 300000
