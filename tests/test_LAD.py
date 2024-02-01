@@ -143,9 +143,9 @@ class TestLAD(unittest.TestCase):
 
 class TestUtils(unittest.TestCase):
     ''' For utility functions'''
-
+    @unittest.skip("Skipping this test")
     def test_getRequests(self):
-
+        '''Requires Earth Engine authentication.'''
         # Define the latitude and longitude ranges
         lat_range = [30, 40]
         lon_range = [-120, -110]
