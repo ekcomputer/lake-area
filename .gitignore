@@ -6,3 +6,4 @@ LEV_zonal_EE_batch copy.ipynb
 debug*
 *.pyc
 .DS_Store
+*.egg-info/

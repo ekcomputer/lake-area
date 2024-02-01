@@ -48,7 +48,7 @@ $ mamba activate my_env
 Access the classes and functions by importing the package. Enter the `LAD` project directory and run:
 
 ```python
-from LAD import LAD, BinnedLAD
+from LAD.LAD import LAD, BinnedLAD
 ```
 
 To run other functions, you can import them individually or import everything with `from LAD import *`.
