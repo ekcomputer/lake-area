@@ -21,7 +21,8 @@ setup(
             'seaborn',
             'openpyxl',
             'statsmodels',
-            'scikit-learn'
+            'scikit-learn',
+            'retry'
     ],
     url='https://github.com/ekcomputer/lake-area',
     license='MIT',
