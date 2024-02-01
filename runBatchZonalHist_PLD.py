@@ -31,7 +31,7 @@ ee_zones_pths = [
     # 'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
     # 'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
     # 'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
-    'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
+    # 'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
     'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN'
 ]
 regions = [
@@ -57,7 +57,7 @@ lat_ranges = [
     # [46, 52],
     # [52, 58],
     # [58, 64],
-    [64, 70],
+    # [64, 70],
     [72, 78]
 ]
 lon_ranges = [
@@ -65,7 +65,7 @@ lon_ranges = [
     # [-180, 180],
     # [-180, 180],
     # [-180, 180],
-    [-180, 180],
+    # [-180, 180],
     [-180, 180]
 ]
 # lat_range = [62, 64.5]  # for testing
