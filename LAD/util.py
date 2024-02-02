@@ -17,6 +17,7 @@ TODO
 * Write test for HydroLAKES.
 * Auto re-run when GEE downloads have error message
 * Check for corrupted error csvs after each download instead of seperately in own function.
+* Run in dask instead of using binned_statistic
 '''
 
 import matplotlib.patches as mpatches
@@ -140,7 +141,7 @@ def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper
 
     ## I/O
     out_pth = os.path.join(
-        out_dir, f'GL_zStats_Oc_Long{coords[0]}_Lat{coords[1]}.csv')
+        out_dir, f'lake_zstats_Oc_Long{coords[0]}_Lat{coords[1]}.csv')
 
     ## Don't overwrite if starting again
     if os.path.exists(out_pth + '.txt'):
@@ -236,7 +237,7 @@ def ensure_unique_ids(df: pd.DataFrame, id_var: str) -> pd.DataFrame:
     ------
     AssertionError
         If duplicate values are found for `id_var`.
-    
+
     Example usage:
     ------
     df = pd.DataFrame(...)
@@ -349,11 +350,19 @@ def cleanCSVs(analysis_dir):
                             f"Error opening file: {pth}")
 
 
-def CombineProcessLakes(analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoined, id_var, lat_min=40):
-    '''Load and piece together with dask, write out .gdb files with new binned Occurrence attributes. (START HERE if not running GEE part).'''
+def MakeUniqueIndex(df, idxs):
+    '''Pandas can only merge on a single columns'''
+
+
+def CombineProcessLakes(analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoined, id_var, lat_min=40, join_how='left'):
+    '''
+    Load and piece together with dask, write out .gdb files with new binned Occurrence attributes. (START HERE if not running GEE part).
+    id_var
+        can be str or list
+    '''
     # latter argument suggested by dask error and it fixes it! # usecols=[id_var]
     gdf_join_binned_pth = os.path.join(
-        analysis_dir, 'GL_zStats_Oc_binned.gdb')
+        analysis_dir, 'lake_zstats_Oc_binned.gdb')
     if not loadJoined:
         gdfs = []  # init
         for j, ee_zones_pth in enumerate(ee_zones_pths):
@@ -363,8 +372,11 @@ def CombineProcessLakes(analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoi
                                            engine='pyogrio', bbox=(-180, lat_min, 180, 80))
             table_dir = os.path.join(analysis_dir, region, 'tables')
             tile_dir = os.path.join(analysis_dir, region, 'tiles')
-            ddf = dd.read_csv(f"{tile_dir}/*.csv", assume_missing=True,
-                              on_bad_lines='skip', dtype={'system:index': 'object'})
+            print(f'Loading tiles...')
+            # ddf = dd.read_csv(f"{tile_dir}/*.csv", assume_missing=True,
+            #                   on_bad_lines='skip', dtype={'system:index': 'object'})
+            ddf = dd.read_csv(f"{tile_dir}/*Lat45.0.csv", assume_missing=True,
+                              on_bad_lines='skip', dtype={'system:index': 'object'})  # Testing
 
             ## convert to pandas df
             df = ddf.compute()
@@ -392,11 +404,14 @@ def CombineProcessLakes(analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoi
                 df.loc[:, 'Class_sum']).values * 100  # , index=df.index) # df binned
             dfB[id_var] = df[id_var]
             dfB['Class_sum'] = df.Class_sum
+            if isinstance(id_var, list):
+                for var in id_var:
+                    dfB[var] = df[var]
             dfB = ensure_unique_ids(dfB, id_var)
 
             ## Filter columns
             cols_to_keep = df.columns[[('Class' in c) or (
-                id_var in c) for c in df.columns]]
+                c in id_var) for c in df.columns]]
 
             ## Join files
             # gdf_join_full = lake_inventory.merge(df[cols_to_keep], left_on='Hylak_id',
@@ -406,20 +421,20 @@ def CombineProcessLakes(analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoi
             # gdf_join_full = lake_inventory.merge(df[cols_to_keep], on=id_var,
             #                                     how='inner', validate='one_to_one')
             gdf_join_binned = lake_inventory.merge(dfB, on=id_var,
-                                                   how='left', validate='one_to_one')
-            gdf_join_binned.query('Lat > 40', inplace=True)
+                                                   how=join_how, validate='one_to_one')
+            gdf_join_binned.query(f'Lat > {lat_min}', inplace=True)
 
             ## Write out full shapefile (slowww...52 minutes, 3.4 GB [without pyogrio])
-            # gdf_join_full_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.shp')
+            # gdf_join_full_pth = os.path.join(analysis_dir, 'lake_zstats_Oc_full.shp')
             # gdf_join_full.to_file(gdf_join_full_pth, engine='pyogrio')
 
             # Save the merged data to a new geodatabase in the same location
-            # gdf_join_full_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.gdb')
+            # gdf_join_full_pth = os.path.join(analysis_dir, 'lake_zstats_Oc_full.gdb')
             # gdf_join_full.to_file(
             #     gdf_join_full_pth, driver='OpenFileGDB', engine='pyogrio')
 
             gdf_join_binned_pth = os.path.join(
-                table_dir, f"GL_zStats_Oc_binned_{region.replace('GLAKES_','')}.gdb")
+                table_dir, f"lake_zstats_Oc_binned_{region.replace('GLAKES_','')}.gdb")  # TODO rm GLAKES
             gdf_join_binned.to_file(gdf_join_binned_pth,
                                     driver='OpenFileGDB', engine='pyogrio')
             gdfs.append(gdf_join_binned)
@@ -450,4 +465,3 @@ def CombineProcessLakes(analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoi
     print(means)
     print(f"Mean double-counting: {means[:2].sum():0.3} %")
     pass
-

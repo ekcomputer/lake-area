@@ -37,12 +37,12 @@ ee_zones_pths = [
     'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN'
 ]
 regions = [
-    'SWOT_PLD_v103_beta_1simpl_40',
-    'SWOT_PLD_v103_beta_1simpl_46',
-    'SWOT_PLD_v103_beta_1simpl_52',
-    'SWOT_PLD_v103_beta_1simpl_58',
-    'SWOT_PLD_v103_beta_1simpl_64',
-    'SWOT_PLD_v103_beta_1simpl_70',
+    'SWOT_PLD_v103_beta_1simpl_40degN',
+    'SWOT_PLD_v103_beta_1simpl_46degN',
+    'SWOT_PLD_v103_beta_1simpl_52degN',
+    'SWOT_PLD_v103_beta_1simpl_58degN',
+    'SWOT_PLD_v103_beta_1simpl_64degN',
+    'SWOT_PLD_v103_beta_1simpl_70degN',
 ]
 
 ee_value_raster_pth = "JRC/GSW1_4/GlobalSurfaceWater"
@@ -80,10 +80,11 @@ scale = 360  # None  # 30
 tile_scale = 8  # 12  # 2
 
 ## I/O for reading csvs
-id_var = 'lake_num'  # Hylak_id
+id_var = ['lat', 'lon', 'lake_num']  # 'lake_num'  # Hylak_id
 area_var = 'Shape_Area'  # Lake_area # km2
 # '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10.shp'
-lake_inventory_pth = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/SWOT_PLD_v103_beta.gdb'
+# lake_inventory_pth = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/SWOT_PLD_v103_beta.gdb'
+lake_inventory_pth = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/edk_out/SWOT_PLD_v103_beta_1simpl_40degN.shp'
 loadJoined = False
 
 # Auto I/O
@@ -109,8 +110,9 @@ offset_upper = step
 
 # cleanCSVs(analysis_dir)
 
-runLakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir, name_lat, name_lon,
-                  offset_upper, offset_lower, crs_wkt, scale, tile_scale, ee_value_raster_pth, nWorkers, regions)
+# runLakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir, name_lat, name_lon,
+#                   offset_upper, offset_lower, crs_wkt, scale, tile_scale, ee_value_raster_pth, nWorkers, regions)
 
 # loadJoined = True
-# CombineProcessLakes(analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoined, id_var)
+CombineProcessLakes(analysis_dir, lake_inventory_pth,
+                    ee_zones_pths, loadJoined, id_var, join_how='right')  # right join because each subset dataset is identical and the joined ds varies based on lat
