@@ -14,7 +14,9 @@ TODO
 * add test for batchZonalHist using HydroLakes data
 * Use dask for more steps
 * Put last bits in functions
-* Test on HydroLAKES.
+* Write test for HydroLAKES.
+* Auto re-run when GEE downloads have error message
+* Check for corrupted error csvs after each download instead of seperately in own function.
 '''
 
 import matplotlib.patches as mpatches
@@ -27,6 +29,7 @@ import numpy as np
 from scipy.stats import binned_statistic
 
 from retry import retry
+# import timeout_decorator
 import geopandas as gpd
 import pandas as pd
 import dask.dataframe as dd
@@ -35,11 +38,15 @@ import geemap
 from matplotlib import pyplot as plt
 import seaborn as sns
 import pyogrio
+from warnings import warn
 from tqdm import tqdm
-
-## Register with ee using high-valume (and high-latency) endpoint
-# NOT 'https://earthengine.googleapis.com'
-ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com')
+try:  # if no internet connection
+    ## Register with ee using high-valume (and high-latency) endpoint
+    # NOT 'https://earthengine.googleapis.com'
+    ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com')
+except:
+    warn(UserWarning("EE not initialized."))
+    pass
 
 # def getRequests(index_file):
 #     ''' Based on unique lat/long indexes in BAWLD'''
@@ -90,7 +97,9 @@ def getRequests(lat_range, lon_range, step=0.5):
 # (tries=7, delay=1, backoff=3)
 
 
+# @timeout_decorator.timeout(6, use_signals=False)
 @retry(tries=3, delay=2, backoff=10)
+# Skip files that take too long to run. Re-run later wiwth different scale.
 def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper, crs, scale, tile_scale, ee_zones_pth, ee_value_raster_pth, out_dir):
     '''
     getResult _summary_
@@ -136,7 +145,8 @@ def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper
     ## Don't overwrite if starting again
     if os.path.exists(out_pth + '.txt'):
         return
-    # check if an error message was downloaded instead and thus renders the @retry useless
+
+    # check if an error message was downloaded instead and thus renders the file useless
     if os.path.exists(out_pth):
         with open(out_pth, 'r') as file:
             first_line = file.readline()
@@ -245,7 +255,7 @@ def ensure_unique_ids(df: pd.DataFrame, id_var: str) -> pd.DataFrame:
     return df
 
 
-def runGlakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir, name_lat, name_lon, offset_upper, offset_lower, crs_wkt, scale, tile_scale, ee_value_raster_pth, nWorkers, regions=None):
+def runLakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir, name_lat, name_lon, offset_upper, offset_lower, crs_wkt, scale, tile_scale, ee_value_raster_pth, nWorkers, regions=None):
     '''Custom I/O operations to load four GLAKES files in .gdb format, clipping by 40 degN latitude.
     Calls functions via GEE in parallel using geemap toolbox.'''
     for j, ee_zones_pth in enumerate(ee_zones_pths):
@@ -260,7 +270,6 @@ def runGlakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir,
             os.makedirs(dir, exist_ok=True)
         ## View expected number of results
         coord_list = getRequests(lat_range, lon_range, step)  # index_file
-        print(f'Number of items: {len(coord_list)}')
 
         ## Run function
         print(
@@ -305,24 +314,53 @@ def runGlakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir,
     print('\nFinished all regions.\n---------------------------------')
 
 
-def CombineProcessGlakes(analysis_dir, ee_zones_pths, loadJoined, id_var):
+def cleanCSVs(analysis_dir):
+    """
+    Clean CSV files in a directory.
+
+    This function walks through the specified directory and its subdirectories, and attempts to open and read each CSV file using pandas.
+    If an error occurs while opening a file, the filename is printed.
+    If the first line of a file starts with '{', it indicates that the file is not in a valid CSV format and it is deleted.
+
+    Parameters:
+    analysis_dir: str
+        Root directory (with possible subdirs) to check
+
+    Returns:
+    None
+    """
+    for root, dirs, files in os.walk(analysis_dir):
+        for file in files:
+            if file.endswith('.csv'):
+                try:
+                    # Try opening the file using pandas
+                    pth = os.path.join(root, file)
+                    pd.read_csv(pth)
+                except Exception as e:
+                    # Print the filename if there is an error
+                    with open(pth, 'r') as file:
+                        first_line = file.readline()
+                    if first_line.startswith('{'):  # 401 error in JSON format
+                        os.remove(file.name)
+                        print(
+                            f"Deleted error file: {pth}")
+                    else:
+                        print(
+                            f"Error opening file: {pth}")
+
+
+def CombineProcessLakes(analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoined, id_var, lat_min=40):
     '''Load and piece together with dask, write out .gdb files with new binned Occurrence attributes. (START HERE if not running GEE part).'''
     # latter argument suggested by dask error and it fixes it! # usecols=[id_var]
     gdf_join_binned_pth = os.path.join(
         analysis_dir, 'GL_zStats_Oc_binned.gdb')
     if not loadJoined:
         gdfs = []  # init
-
-        ## Load shapefile to join
-        # lake_inventory = gpd.read_file(lake_inventory_pth,
-        #                                engine='pyogrio')  # bbox=(-180, 40, 180, 90)) # bbox can speed loading
-
         for j, ee_zones_pth in enumerate(ee_zones_pths):
             region = os.path.basename(ee_zones_pth).split('/')[-1]
             print(f'Loading region: {region}.')
-
-            lake_inventory = gpd.read_file(f"/Volumes/metis/Datasets/GLAKES/GLAKES/GLAKES_{region.replace('GLAKES_','')}.shp",
-                                           engine='pyogrio', bbox=(-180, 40, 180, 80))
+            lake_inventory = gpd.read_file(lake_inventory_pth,
+                                           engine='pyogrio', bbox=(-180, lat_min, 180, 80))
             table_dir = os.path.join(analysis_dir, region, 'tables')
             tile_dir = os.path.join(analysis_dir, region, 'tiles')
             ddf = dd.read_csv(f"{tile_dir}/*.csv", assume_missing=True,

@@ -1,3 +1,4 @@
+import pandas as pd
 import matplotlib.patches as mpatches
 from seaborn import objects as so
 import os
@@ -19,6 +20,7 @@ from retry import retry
 # from tqdm import tqdm
 from LAD.util import *
 from runLAD_PLD import output_dir
+
 ## I/O
 # modN = 300000
 # analysis_dir = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/vtest/'
@@ -27,18 +29,18 @@ analysis_dir = os.path.join(output_dir, 'Zonal-hist')
 # ee_zones_pth = "projects/sat-io/open-datasets/HydroLakes/lake_poly_v10"
 # 'projects/ee-ekyzivat/assets/Shapes/GLAKES/GLAKES_na1'
 ee_zones_pths = [
-    # 'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
-    # 'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
-    # 'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
-    # 'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
-    # 'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
+    'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
+    'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
+    'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
+    'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
+    'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN',
     'projects/ee-ekyzivat/assets/Shapes/SWOT_PLD_v103_beta_1simpl_40degN'
 ]
 regions = [
-    # 'SWOT_PLD_v103_beta_1simpl_40',
-    # 'SWOT_PLD_v103_beta_1simpl_46',
-    # 'SWOT_PLD_v103_beta_1simpl_52',
-    # 'SWOT_PLD_v103_beta_1simpl_58',
+    'SWOT_PLD_v103_beta_1simpl_40',
+    'SWOT_PLD_v103_beta_1simpl_46',
+    'SWOT_PLD_v103_beta_1simpl_52',
+    'SWOT_PLD_v103_beta_1simpl_58',
     'SWOT_PLD_v103_beta_1simpl_64',
     'SWOT_PLD_v103_beta_1simpl_70',
 ]
@@ -53,19 +55,19 @@ crs_wkt = 'PROJCS["ProjWiz_Custom_Lambert_Azimuthal", GEOGCS["GCS_WGS_1984", DAT
 name_lat = 'lat'
 name_lon = 'lon'
 lat_ranges = [
-    # [40, 46],
-    # [46, 52],
-    # [52, 58],
-    # [58, 64],
-    # [64, 70],
-    [72, 78]
+    [40, 46],
+    [46, 52],
+    [52, 58],
+    [58, 64],
+    [64, 70],
+    [70, 78]
 ]
 lon_ranges = [
-    # [-180, 180],
-    # [-180, 180],
-    # [-180, 180],
-    # [-180, 180],
-    # [-180, 180],
+    [-180, 180],
+    [-180, 180],
+    [-180, 180],
+    [-180, 180],
+    [-180, 180],
     [-180, 180]
 ]
 # lat_range = [62, 64.5]  # for testing
@@ -74,8 +76,8 @@ step = 0.5
 offset_lower = 0  # 0.25
 
 ## Geemap zonal histogram parameters (note: start small and only increase them if API is hitting memory limits and not returning a CSV file)
-scale = 30  # None  # 30
-tile_scale = 4  # 12  # 2
+scale = 360  # None  # 30
+tile_scale = 8  # 12  # 2
 
 ## I/O for reading csvs
 id_var = 'lake_num'  # Hylak_id
@@ -102,9 +104,13 @@ offset_upper = step
 
 ######################
 #### Operations
+## Will likely need to iterate running runLakesByRegion and cleanCSVs, because geemap sometimes writes errors to a csv file instead of a proper csv
 ######################
-runGlakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir, name_lat, name_lon,
+
+# cleanCSVs(analysis_dir)
+
+runLakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir, name_lat, name_lon,
                   offset_upper, offset_lower, crs_wkt, scale, tile_scale, ee_value_raster_pth, nWorkers, regions)
 
 # loadJoined = True
-# CombineProcessGlakes(analysis_dir, ee_zones_pths, loadJoined, id_var)
+# CombineProcessLakes(analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoined, id_var)
