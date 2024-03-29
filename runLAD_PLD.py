@@ -32,8 +32,8 @@ v = 30  # Version number for file naming
 ds = 'PLD'  # dataset
 
 ## BAWLD domain
-dataset = 'HL'
-roi_region = 'BAWLD'
+dataset = 'PLD'
+roi_region = '40N'
 gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
 # above, but with all ocurrence values, not binned
 # main data source
