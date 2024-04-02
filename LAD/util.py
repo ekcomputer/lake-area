@@ -18,6 +18,8 @@ TODO
 * Auto re-run when GEE downloads have error message
 * Check for corrupted error csvs after each download instead of seperately in own function.
 * Run in dask instead of using binned_statistic
+* Fix interpolation using griddata
+* Vectorize pullTemp so it can operate on multiple locations at once
 '''
 
 import matplotlib.patches as mpatches
@@ -29,6 +31,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from scipy.stats import binned_statistic
 import xarray as xr
+import cdsapi
+import urllib3
+import subprocess
+import shutil
 
 from retry import retry
 # import timeout_decorator
@@ -510,8 +516,71 @@ def CombineProcessLakes(analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoi
     pass
 
 
+def list2strList(item):
+    if isinstance(item, int):  # single year
+        item = [item]
+    return list(map(str, item))
+
+
+def downloadERA5(cds_dir, yrs, vars, mnths, grid, bbox, dataset='reanalysis-era5-land-monthly-means', output_name='temperatures.nc'):
+    ## Need to register with CDS beforehand, and save login key to ~/.cdsapirc
+    # downloads dataset: https://cds.climate.copernicus.eu/cdsapp#!/dataset/reanalysis-era5-single-levels-monthly-means?tab=overview
+    # ['lake_bottom_temperature', 'skin_temperature', 'soil_temperature_level_4', 'soil_temperature_level_1', '2m_temperature']
+    # dataset you want to read
+    # reanalysis-era5-pressure-levels-monthly-means
+    # grid: [0.25, 0.25] is native res # lon lat
+    # bbxo: N,W,S,E
+
+    # parse output_name
+    if not output_name.endswith('.nc'):
+        output_name += '.nc'
+
+    # Suppress only InsecureRequestWarning
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    ## Use Climate Data Services API
+    cds = cdsapi.Client()
+    # test.grib causes xarray loading issues...
+    cds_pth = os.path.join(cds_dir, "download.netcdf.zip")
+
+    ## Convert to string format for API
+    years = list2strList(yrs)
+    months = list2strList(mnths)
+
+    # api parameters
+    params = {
+        "format": "netcdf",
+        "product_type": "monthly_averaged_reanalysis",
+        "variable": vars,  # K - 273.15
+        'year': years,
+        'month': months,
+        "time": "00:00",
+        'format': 'netcdf.zip',
+        "grid": grid,
+        "area": bbox,
+    }
+    # retrieves the path to the file (Can skip this cell)
+    fl = cds.retrieve(dataset, params, cds_pth)
+
+    # Unzip the file
+    subprocess.run(["unzip", cds_pth, "-d", cds_dir], check=True)
+
+    # Define the original and new file paths
+    original_file_path = os.path.join(cds_dir, 'data.nc')
+    new_file_path = os.path.join(cds_dir, output_name)
+
+    # Move (rename) the file
+    shutil.move(original_file_path, new_file_path)
+
+    return new_file_path
+
+
 def parseYearsMonths(years=None, months=None):
-    ''' Helper function that returns a list of years and months (as ints) based on the input format. Years are 4-digit numeric, and months are spelled out. Both can accept ranges or ','or'/'-sep lists.'''
+    ''' 
+    Helper function that returns a list of years and months (as ints) based on the input format.
+    
+    Years are 4-digit numeric, and months are spelled out. Both can accept ranges or ','or'/'-sep lists.
+    Used as argument to downloadERA5 and for joining in temps to a DataFrame.'''
 
     ## pre-parse months
     # years=years.replace('/', ',')
@@ -524,6 +593,8 @@ def parseYearsMonths(years=None, months=None):
     }
 
     if years is not None:
+        years = years.replace('/', ',').replace('–',
+                                                '-')  # fix weird characters
         for item in years.split(','):
             if '-' in item:
                 start, end = list(map(int, item.split('-')))
@@ -534,17 +605,27 @@ def parseYearsMonths(years=None, months=None):
         years_list = None
 
     if months is not None:
-        months = months.replace('/', ',')  # pre-parse
+        months = months.replace('/', ',').replace('–', '-')  # pre-parse
         months_list = []
         for item in months.split(','):
             if '-' in item:
                 start, end = item.split('-')
-                start_month = int(month_dict[start.strip()])
-                end_month = int(month_dict[end.strip()])
+                if start.strip().isnumeric():
+                    start_month = int(start.strip())
+                else:
+                    start_month = int(month_dict[start.strip()])
+                if end.strip().isnumeric():
+                    end_month = int(end.strip())
+                else:
+                    end_month = int(month_dict[end.strip()])
                 months_list.extend(
                     [i for i in range(start_month, end_month + 1)])
             else:
-                months_list.append(int(month_dict[item.strip()]))
+                if item.strip().isnumeric():
+                    month_entry = int(item.strip())
+                else:
+                    month_entry = int(month_dict[item.strip()])
+                months_list.append(month_entry)
     else:
         months_list = None
 
@@ -563,6 +644,8 @@ def pullTemp(df, da, lat_var='LAT', long_var='LONG', year_var='YEAR.S', month_va
     ----------
     df : pd.DataFrame 
         df with lat, long, year, month fields as named below
+    da : xarray.DataSet
+        ERA5 data
     lat : str
         Field name to use for latitude (called "latitude" in ERA5)
     long : str
@@ -571,8 +654,6 @@ def pullTemp(df, da, lat_var='LAT', long_var='LONG', year_var='YEAR.S', month_va
         Field name to use for year of observation (comes from "time" in ERA5)
     month : str
         Field namae to use for month of observation (comes from "time" in ERA5)
-    da : xarray.DataSet
-        ERA5 data
     var : str ('lblt)
         One of: 'lblt' 'skt', 'stl4', 'stl1', 't2m'
     
@@ -606,10 +687,11 @@ def pullTemp(df, da, lat_var='LAT', long_var='LONG', year_var='YEAR.S', month_va
     return tempr.values
 
 
-def AddReanalysisTemps(ds_pth, temps_pth, id_var, lat_var='lat', long_var='lon', tvar='stl1'):
+def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='stl1', fields_to_read=None, year_var='YEAR.S', month_var='MONTH', year=None, extension=None, **kwargs):
     '''
     AddReanalysisTemps Adds temperatures to ds_pth from temps_pth and writes out to input directory as new shapefile.
 
+    Writes out to file in same format as input. lat/lon vars refer to dataset in ds_pth (e.g. a shapefile or csv)
     Parameters
     ----------
     ds_pth : str
@@ -618,10 +700,35 @@ def AddReanalysisTemps(ds_pth, temps_pth, id_var, lat_var='lat', long_var='lon',
         .nc dataset
     '''
     print('Loading files...')
-    gdf_lakes = gpd.read_file(ds_pth,
-                              engine='pyogrio', read_geometry=True)  # , columns=[id_var, lat_var, lon_var])
-    da = xr.load_dataset(temps_pth)
+    if extension is None:
+        extension = Path(ds_pth).suffix
+    if fields_to_read is not None:
+        columns = fields_to_read
+    else:
+        columns = []
 
+    if Path(ds_pth).suffix == '.csv':
+        if columns == []:
+            columns = None  # reformat to use pandas default
+        gdf_lakes = pd.read_csv(ds_pth, usecols=columns, na_values=['-', '-'])
+    else:
+        gdf_lakes = gpd.read_file(ds_pth,
+                                  engine='pyogrio', read_geometry=True, columns=columns)  # , columns=[id_var, lat_var, lon_var])
+    gdf_lakes.dropna(
+        subset=[var for var in [year_var, month_var] if var is not None], inplace=True)
+    da = xr.load_dataset(temps_pth)
+    # #######
+    # da_filled = da.copy()
+    # valid = np.all(~np.isnan(values), 0)
+    # for i in range(len(da.shape[0])):
+    #     values = da[tvar][i, :, :]
+    #     values.data.flatten()[valid.data.flatten()]
+
+    # values_clean = values[valid]
+    # points_clean = np.append() points[valid]
+    # grid_z0 = griddata(points_clean, values_clean, (grid_x, grid_y), method='linear')
+    # TODO: try converting xarray to pd
+    # #######
     ## Fill NaNs in climate data (for coastal measurements) # TODO clean this up
     da_filled = da.interpolate_na(dim='longitude', method='nearest')
     da_sorted = da.sortby('latitude')
@@ -630,7 +737,8 @@ def AddReanalysisTemps(ds_pth, temps_pth, id_var, lat_var='lat', long_var='lon',
 
     print('Adding temperatures...')
     temps = gdf_lakes.apply(lambda row: pullTemp(row, da_filled, lat_var=lat_var,
-                                                 long_var=long_var, var=tvar, year=2022), axis=1)  # .astype('float')
+                                                 long_var=long_var, month_var=month_var,
+                                                 var=tvar, year_var=year_var, year=year), axis=1)  # .astype('float')
     gdf_lakes[f'ERA5_{tvar}'] = temps.astype('float')
 
     ## Fill nans with mean
@@ -638,6 +746,11 @@ def AddReanalysisTemps(ds_pth, temps_pth, id_var, lat_var='lat', long_var='lon',
         gdf_lakes[f'ERA5_{tvar}'].mean(), inplace=True)
 
     ## Write out
-    pth_out = ds_pth.replace('.shp', '_temp.shp')
-    gdf_lakes.to_file(pth_out, engine='pyogrio')
+    pth_out = ds_pth.replace(extension, f'_temps{extension}')
+    if isinstance(gdf_lakes, gpd.GeoDataFrame):
+        gdf_lakes.to_file(pth_out, **kwargs)  # , engine='pyogrio')
+    elif isinstance(gdf_lakes, pd.DataFrame):
+        gdf_lakes.to_csv(pth_out, **kwargs)
+    else:
+        raise ValueError('Unrecognized format.')
     print(f'Saved temps file to: {pth_out}')

@@ -18,7 +18,7 @@ from retry import retry
 # import seaborn as sns
 # import pyogrio
 # from tqdm import tqdm
-from LAD.util import *
+from LAD.util import CombineProcessLakes, AddReanalysisTemps, downloadERA5
 from runLAD_PLD import output_dir
 
 ## I/O
@@ -86,10 +86,13 @@ area_var = 'Shape_Area'  # Lake_area # km2
 # lake_inventory_pth = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/SWOT_PLD_v103_beta.gdb'
 lake_inventory_pth = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/edk_out/SWOT_PLD_v103_beta_1simpl_40degN.shp'
 loadJoined = False
+cds_dir = '/Volumes/thebe/Ch4/ERA5/cds'
+era5_output_name = 'ERA5_stl1_2022_global.nc'
 
 # Auto I/O
 offset_upper = step
-
+era5_pth = os.path.join(cds_dir, era5_output_name
+                        )
 ## Testing
 # vect = ee.FeatureCollection("projects/sat-io/open-datasets/HydroLakes/lake_poly_v10").map(addMod)
 # print(vect.filter("Hylak_id < 500").filter("Lake_area < 1000").size().getInfo())
@@ -114,5 +117,43 @@ offset_upper = step
 #                   offset_upper, offset_lower, crs_wkt, scale, tile_scale, ee_value_raster_pth, nWorkers, regions)
 
 # loadJoined = True
-CombineProcessLakes(analysis_dir, lake_inventory_pth,
-                    ee_zones_pths, loadJoined, id_var, join_how='right')  # right join because each subset dataset is identical and the joined ds varies based on lat
+# CombineProcessLakes(analysis_dir, lake_inventory_pth,
+#                     ee_zones_pths, loadJoined, id_var, join_how='right', lat_var='lat', regions=regions)  # right join because each subset dataset is identical and the joined ds varies based on lat
+
+# downloadERA5(
+#     cds_dir
+#     2022,
+#     'soil_temperature_level_1',
+#     [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+#     [0.25, 0.25],
+#     [78, -180, -56, 180],
+#     output_name=era5_output_name
+# )
+
+## Add temperatures to reference emissions dataset (Johnson dataset)
+# AddReanalysisTemps('/Volumes/thebe/Other/JohnsonGlobalMethane/edk_out/2022jg006793-sup-0002-data set si-s01_normalized.csv',
+#                    era5_pth,
+#                    lat_var='Latitude',
+#                    long_var='Longitude',
+#                    year_var='Obs. Year',
+#                    month_var='Obs. Month',
+#                    )
+
+## Rosentreter methane dataset instead
+AddReanalysisTemps('/Volumes/thebe/Other/Rosentreter2021/edk_out/Rosentreter_Aquatic_Ecosystems_lakes.csv',
+                   era5_pth,
+                   lat_var='lat',
+                   long_var='long',
+                   year_var=None,
+                   month_var=None,
+                   year=2022,
+                   )
+
+## Add temperatures to lakes database
+# AddReanalysisTemps('/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/SWOT_PLD_v103_beta.gdb',  # '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/edk_out/CH4/output/Zonal-hist/lake_zstats_Oc_binned.shp', # '/Volumes/thebe/Ch4/ERA5/cds/temperatures.nc'
+#                    era5_pth,  # '/Volumes/thebe/Ch4/ERA5/cds/temperatures.nc'
+#                    fields_to_read=['Shape', 'lake_id', 'lake_num', 'lon', 'lat', 'ref_area', 'pekel_water_frac'],
+#                    # extension='.gdb',
+#                    year=2022,
+#                    driver='OpenFileGDB',
+#                    )
