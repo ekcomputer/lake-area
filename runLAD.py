@@ -12,6 +12,7 @@ import argparse
 from scipy.stats import pearsonr
 from sklearn.metrics import mean_squared_error
 from LAD.LAD import *
+from LAD.util import loadBAWLD_CH4
 
 ## Testing mode or no.
 parser = argparse.ArgumentParser()

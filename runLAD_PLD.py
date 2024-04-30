@@ -1,5 +1,6 @@
 ## Imports
 from warnings import warn
+from pathlib import Path
 import os
 import numpy as np
 from matplotlib import pyplot as plt
@@ -12,6 +13,7 @@ import argparse
 from scipy.stats import pearsonr
 from sklearn.metrics import mean_squared_error
 from LAD.LAD import *
+from LAD.util import loadR21_CH4, loadBAWLD_CH4
 
 ## Testing mode or no.
 parser = argparse.ArgumentParser()
@@ -28,23 +30,35 @@ if args.test == 'True':
 tb_dir = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/edk_out/CH4/area_tables'
 # dir for output data, used for data archive
 output_dir = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/edk_out/CH4/output'
-v = 30  # Version number for file naming
+v = 31  # Version number for file naming
 ds = 'PLD'  # dataset
 
-## BAWLD domain
+# ## BAWLD domain
+# dataset = 'PLD'
+# roi_region = '40N'
+# gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+# # above, but with all ocurrence values, not binned
+# # main data source
+# # from utils.py - has water occurrence values
+# df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz'
+# # hl_area_var = 'Shp_Area'
+# inventory_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ERA5_stl1_v3.csv.gz'
+# bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+# # HL shapefile with ID of nearest BAWLD cell (still uses V3)
+# hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
+# bawld_hl_output = os.path.join(output_dir, f'BAWLD_V1_LEV_v{v}.shp')
+
+## Global domain
 dataset = 'PLD'
-roi_region = '40N'
-gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
+roi_region = 'glob'
 # above, but with all ocurrence values, not binned
 # main data source
 # from utils.py - has water occurrence values
-df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz'
-# hl_area_var = 'Shp_Area'
-hl_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ERA5_stl1_v3.csv.gz'
-bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
+# df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz'
+area_var = 'ref_area'
+temps_var = 'ERA5_stl1'
+inventory_join_clim_pth = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/SWOT_PLD_v103_beta_temps.gdb'
 # HL shapefile with ID of nearest BAWLD cell (still uses V3)
-hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
-bawld_hl_output = os.path.join(output_dir, f'BAWLD_V1_LEV_v{v}.shp')
 
 if __name__ == '__main__':
     ## Loading from CIR gdf
@@ -69,7 +83,7 @@ if __name__ == '__main__':
                                 name='Mullen', computeArea=True)  # '/Volumes/thebe/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/[A-Z][A-Z]_08*.zip'
 
     ## Combine PeRL and CIR and Mullen
-    lad = LAD.concat((lad_cir, lad_perl, lad_mullen),
+    lad_ref = LAD.concat((lad_cir, lad_perl, lad_mullen),
                      broadcast_name=True, ignore_index=True)
 
     # ## plot
@@ -95,180 +109,143 @@ if __name__ == '__main__':
     ## LEV Analysis
     ####################################
 
-    ## Load csv and shapefiles
-    ref_names = ['CSB', 'CSD', 'PAD', 'YF']
-    extreme_regions_lev_for_extrap = ['CSD', 'PAD']
-    lad_lev_cat, ref_dfs = loadUAVSAR(ref_names)
+    # ## Load csv and shapefiles
+    # ref_names = ['CSB', 'CSD', 'PAD', 'YF']
+    # extreme_regions_lev_for_extrap = ['CSD', 'PAD']
+    # lad_lev_cat, ref_dfs = loadUAVSAR(ref_names)
 
-    ## Create binned ref LEV distribution from UAVSAR
-    binned_lev = BinnedLAD(lad_lev_cat, 0.0001, 0.5, compute_ci_lev=True,
-                           extreme_regions_lev=extreme_regions_lev_for_extrap)  # 0.000125 is native
+    # ## Create binned ref LEV distribution from UAVSAR
+    # binned_lev = BinnedLAD(lad_lev_cat, 0.0001, 0.5, compute_ci_lev=True,
+    #                        extreme_regions_lev=extreme_regions_lev_for_extrap)  # 0.000125 is native
 
-    ## LEV estimate: Load UAVSAR/GSW overlay stats
-    print('Load HL with joined occurrence...')
-    # lad_hl_oc = pyogrio.read_dataframe('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values # outdated version
-    # read smaller csv gzip version of data.
-    lad_hl_oc = pd.read_csv(
-        df_HL_jn_full_pth, compression='gzip', low_memory=False)
-    lev = computeLAV(lad_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap,
-                     use_low_oc=use_low_oc)  # use same extreme regions for est as for extrap
+    # ## LEV estimate: Load UAVSAR/GSW overlay stats
+    # print('Load HL with joined occurrence...')
+    # # lad_hl_oc = pyogrio.read_dataframe('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v3/HL_zStats_Oc_full.shp', read_geometry=False, use_arrow=True) # load shapefile with full histogram of zonal stats occurrence values # outdated version
+    # # read smaller csv gzip version of data.
+    # lad_hl_oc = pd.read_csv(
+    #     df_HL_jn_full_pth, compression='gzip', low_memory=False)
+    # lev = computeLAV(lad_hl_oc, ref_dfs, ref_names, extreme_regions_lev=extreme_regions_lev_for_extrap,
+    #                  use_low_oc=use_low_oc)  # use same extreme regions for est as for extrap
 
-    ## Set high arctic lakes LEV to 0 (no GSW present above 78 degN)
-    lev.loc[lev.Pour_lat >= 78, ['LEV_MEAN',
-                                 'LEV_MIN', 'LEV_MAX']] = 0  # LEV_MEAN
+    # ## Set high arctic lakes LEV to 0 (no GSW present above 78 degN)
+    # lev.loc[lev.Pour_lat >= 78, ['LEV_MEAN',
+    #                              'LEV_MIN', 'LEV_MAX']] = 0  # LEV_MEAN
 
-    ## Turn into a LAD
-    # main dataset for analysis
-    lad_hl_lev = LAD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL')
+    # ## Turn into a LAD
+    # # main dataset for analysis
+    # lad = LAD(lev, area_var='Lake_area', idx_var='Hylak_id', name='HL')
 
-    # ## Plot LEV CDF by lake area (no extrap) and report mean LEV fraction
-    # lad_hl_lev.plot_lev_cdf_by_lake_area()
-    # lad_hl_lev.plot_lev_cdf_by_lake_area(normalized=False)
+    # # ## Plot LEV CDF by lake area (no extrap) and report mean LEV fraction
+    # # lad.plot_lev_cdf_by_lake_area()
+    # # lad.plot_lev_cdf_by_lake_area(normalized=False)
 
     ####################################
     ## Climate Analysis: join in temperature
     ####################################
-    print('Loading BAWLD and climate data...')
+    print('Loading lake inventory and climate data...')
     # Index(['Unnamed: 0', 'BAWLDCell_', 'Hylak_id', 'Shp_Area', 'geometry','index_right', 'id', 'area', 'perimeter', 'lat', 'lon', 'djf', 'mam', 'jja', 'son', 'ann'],
-    df_clim = pd.read_csv(hl_join_clim_pth, compression='gzip')
-    # df_clim = pd.read_csv(bawld_join_clim_pth)
-    # gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio')
-    # df_clim = df_clim.merge(
-    #     gdf_bawld[['Cell_ID', 'Shp_Area']], how='left', on='Cell_ID')
 
-    ## Next, load HL with nearest BAWLD:
-    # The 0-5 etc. columns refer to HL polygon, not BAWLD cell.
-    df_hl_nearest_bawld = pyogrio.read_dataframe(
-        hl_nearest_bawld_pth, read_geometry=False)
-    # take only first lake (for cases where lake is equidistant from multiple cells)
-    df_hl_nearest_bawld = df_hl_nearest_bawld.groupby(
-        'Hylak_id', observed=False).first().reset_index()
-    # Need to create new var because output of merge is not LAD
-    lad_hl_lev_m = lad_hl_lev.merge(df_hl_nearest_bawld[[
-        'Hylak_id', '0-5', '5-50', '50-95', '95-100']], left_on='idx_HL', right_on='Hylak_id', how='left')
+    inventory_join_clim_pth = Path(inventory_join_clim_pth)
+    if inventory_join_clim_pth.suffix == 'csv.gz':
+        df_clim = pd.read_csv(inventory_join_clim_pth, compression='gzip')
+    elif np.isin(inventory_join_clim_pth.suffix, ['.shp', '.gdb']):
+        df_clim = gpd.read_file(inventory_join_clim_pth,
+                                engine='pyogrio', read_geometry=True)
 
-    ## Join in ERA5 temperatures from previously-computed lookup table
-    temperatures = lad_hl_lev_m[['idx_HL', 'BAWLD_Cell']].merge(
-        df_clim, how='left', left_on='idx_HL', right_on='Hylak_id')
-    # Fill any missing data with mean
-    temperatures.fillna(temperatures.mean(), inplace=True)
-    lad_hl_lev['Temp_K'] = temperatures[temperature_metric]
-    lad_hl_lev['BAWLD_Cell'] = temperatures['BAWLD_Cell'].astype('int')
+    # ## Add binned occurrence values
+    # for var in ['0-5', '5-50', '50-95', '95-100']:
+    #     lad[var] = lad_m[var]
 
-    ## Add binned occurrence values
-    for var in ['0-5', '5-50', '50-95', '95-100']:
-        lad_hl_lev[var] = lad_hl_lev_m[var]
+    # ## Compute double-counting
+    # lad['d_counting_frac'] = (
+    #     lad['0-5'] + lad['5-50']) / 100
 
-    ## Compute double-counting
-    lad_hl_lev['d_counting_frac'] = (
-        lad_hl_lev['0-5'] + lad_hl_lev['5-50']) / 100
-
-    ## Compute cell-area-weighted average of climate as FYI
-    # print(f'Mean JJA temperature across {roi_region} domain: {np.average(df_clim.jja, weights=df_clim.Shp_Area)}')
-    # months = ['ann','djf','mam','jja','son']
-    # print(pd.DataFrame(np.average(df_clim[months], weights=df_clim.Shp_Area, axis=0), index=months))
+    # ## Compute cell-area-weighted average of climate as FYI
+    # # print(f'Mean JJA temperature across {roi_region} domain: {np.average(df_clim.jja, weights=df_clim.Shp_Area)}')
+    # # months = ['ann','djf','mam','jja','son']
+    # # print(pd.DataFrame(np.average(df_clim[months], weights=df_clim.Shp_Area, axis=0), index=months))
 
     ####################################
-    ## WBD Validation Analysis
+    ## Load and extrapolate inventory
     ####################################
 
-    ## Load WBD
-
-    if roi_region == 'WBD_BAWLD':
-        print('Load WBD...')
-        lad_wbd = LAD.from_shapefile(
-            '/Volumes/thebe/Other/Feng-High-res-inland-surface-water-tundra-boreal-NA/edk_out/fixed_geoms/WBD.shp', area_var='Area', name='WBD', idx_var='OBJECTID')
-        lad_wbd.truncate(0.001, inplace=True)
-
-    ## Plot WBD
-    # lad_wbd.plot_lad(reverse=False, all=False)
-
-    ## Combine WBD with HR dataset over small lakes for plotting comparison
-    # setattr(lad, 'name', 'HR datasets')
-    # lad['Region'] = 'NaN' # Hot fix to tell it not to plot a curve for each region # ***This is the buggy line!!!! Uncomment to get good curves, but no error bars if I haven't set compute_ci = False.
-    # lad_compare = LAD.concat((lad.truncate(0.001, 50), lad_wbd.truncate(0.001, 50)), broadcast_name=True, ignore_index=True)
-    # lad_compare.plot_lad(all=False, plotLegend=True, reverse=False, groupby_name=True)
-
-    ## Estimate area fraction
-    # lad_wbd.area_fraction(0.1)
-    # lad_wbd.area_fraction(0.01)
-    # lad_wbd.area_fraction(0.001)
-
-    # lad.area_fraction(0.1)
-    # lad.area_fraction(0.01)
-    # lad.area_fraction(0.001)
-
-    ## Load hydrolakes. if not using lad_hl_lev
+    ## Load hydrolakes. if not using LEV
     # print('Load HL...')
-    # lad_hl = LAD.from_shapefile(gdf_HL_jn_pth, area_var=hl_area_var, idx_var='Hylak_id', name='HL', region_var=None)
-
-    ## Load sheng
-    # print('Load Sheng...')
-    # lad_hl = LAD.from_shapefile(gdf_Sheng_pth, area_var=sheng_area_var, idx_var=None, name='Sheng', region_var=None)
+    lad = LAD.from_shapefile(inventory_join_clim_pth, area_var=area_var,
+                             idx_var=None, name=dataset, region_var=None, other_vars=[temps_var, 'lat', 'lon'])
 
     ## Extrapolate
-    # ['Tuktoyaktuk Peninsula', 'Peace-Athabasca Delta']
     extreme_regions_lad = [
         'Tuktoyaktuk Peninsula', 'sur00120130802_tsx_nplaea']
     # Truncation limits for ref LAD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
-    tmin, tmax = (0.0001, 5)
+    tmin, tmax = (0.0001, 0.5)
     # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-    emax = 0.5
-    binned_ref = BinnedLAD(lad.truncate(tmin, tmax), tmin, emax, compute_ci_lad=True,
+    emax = 0.05
+    binned_ref = BinnedLAD(lad_ref.truncate(tmin, tmax), tmin, emax, compute_ci_lad=True,
                            extreme_regions_lad=extreme_regions_lad)  # reference distrib (try 5, 0.5 as second args)
     # Beware chaining unless I return a new variable. # Try 0.1
-    lad_hl_trunc = lad_hl_lev.truncate(emax, np.inf)
-    lad_hl_trunc.extrapolate(binned_ref, binned_lev)
-    meas = lad_hl_lev.sumAreas(includeExtrap=False)
-    extrap = lad_hl_trunc.sumAreas()
+    lad_trunc = lad.truncate(emax, np.inf)
+    lad_trunc.extrapolate(binned_ref)
+
+    ## Select only Boreal-Arctic lakes (BAWLD domain)
+    # lad_trunc.query("lat >= 55", inplace=True)
+
+    meas = lad.sumAreas(includeExtrap=False)
+    extrap = lad_trunc.sumAreas()
 
     limit = 0.01
-    frac = lad_hl_trunc.extrapolated_area_fraction(lad, 0.0001, limit)
     print(f'Total measured lake area in {roi_region} domain: {meas:,.0f} km2')
     print(
         f'Total extrapolated lake area in {roi_region} domain: {extrap:,.0f} km2')
-    print(f'{1-(meas / extrap):.1%} of lake area is < 0.1 km2.')
-    print(f'{frac:.1%} of lake area is < {limit} km2.')
-    print(f'{lad_hl_trunc.extrapolated_area_fraction(lad, 0.0001, 0.001):.1%} of lake area is < 0.001 km2.')
+    print(f'{1-(meas / extrap):.1%} of lake area is < observation limit of {emax} km2.')
+    # frac = lad_trunc.extrapolated_area_fraction(lad, 0.0001, limit, emax=emax, tmax=tmax)
+    # print(f'{frac:.1%} of lake area is < {limit} km2.')
+    # print(f'{lad_trunc.extrapolated_area_fraction(lad_ref, 0.0001, 0.001, emax=emax, tmax=tmax):.1%} of lake area is < 0.001 km2.')
+    print(f'{lad_trunc.extrapolated_area_fraction(lad_ref, 0.0001, 0.01, emax=emax, tmax=tmax):.1%} of lake area is < 0.01 km2.')
 
-    ## Report extrapolated area fractions (need method for area fractions on extrapolatedLAD)
-    # print(f'Area fraction < 0.01 km2: {lad.area_fraction(0.01):,.2%}')
-    # print(f'Area fraction < 0.1 km2: {lad.area_fraction(0.1):,.2%}')
-
-    # ## Plot HL extrapolation
-    # # ax = lad_hl.plot_lad(all=False, reverse=False, normalized=False)
-    # ax = lad_hl_trunc.plot_extrap_lad(label='HL-extrapolated', error_bars=False, normalized=False)
-    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    ## Plot HL extrapolation
+    # ax = lad_hl.plot_lad(all=False, reverse=False, normalized=False)
+    ax = lad_trunc.plot_extrap_lad(
+        label='HL-extrapolated', error_bars=False, normalized=False)
+    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
 
     ####################################
     ## Compute CH4 emissions
     ####################################
 
     ## Flux prediction from observed and extrap lakes
-    model = loadBAWLD_CH4()
-    lad_hl_trunc.predictFlux(model, includeExtrap=True)
+    model = loadR21_CH4(temperature_metric=temps_var)
+    # model = loadBAWLD_CH4()
+
+    # correct variable name for flux prediction
+    lad_trunc['Temp_K'] = lad_trunc[temps_var]
+    del lad_trunc[temps_var]
+    lad_trunc.predictFlux(model, includeExtrap=True)
+    print(
+        f"Estimated annual flux: {np.sum(lad_trunc.est_g_day * 365.25 / 1e12):0.3} Tg/yr")
 
     ## Plot combined extrap LAD/LEV
     fig, ax = plt.subplots(2, 1, sharex=True)
-    lad_hl_trunc.plot_extrap_lad(
+    lad_trunc.plot_extrap_lad(
         ax=ax[0], label='Lake area', error_bars=True, normalized=False, color='blue', plotLegend=False)
     # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
     ax2 = ax[0].twinx()
-    lad_hl_trunc.plot_extrap_lev(
+    lad_trunc.plot_extrap_lev(
         ax=ax[0], error_bars=True, color='green', label='Lake vegetation area', plotLegend=False, )
     ymin, ymax = ax[0].get_ylim()
-    ax2.set_ylim([ymin, ymax / lad_hl_trunc.sumAreas()])
+    # ax2.set_ylim([ymin, ymax / lad_trunc.sumAreas()])
+    ax2.set_ylim([0, 1.1])
     ax[0].set_ylabel('Cumulative area (million $km^2$)')
     ax[0].set_xlabel('')
     ax2.set_ylabel('Cumulative area fraction')
     # plt.tight_layout()
 
     ## Plot extrapolated fluxes
-    lad_hl_trunc.plot_extrap_flux(
+    lad_trunc.plot_extrap_flux(
         ax=ax[1], reverse=False, normalized=False, error_bars=True, plotLegend=False, label='Emissions')
     ax2 = ax[1].twinx()
     ymin, ymax = ax[1].get_ylim()
-    ax2.set_ylim([ymin, ymax / lad_hl_trunc._total_flux_Tg_yr['mean']])
+    ax2.set_ylim([ymin, ymax / lad_trunc._total_flux_Tg_yr['mean']])
     ax2.set_ylabel('Cumulative emissions fraction')
     plt.tight_layout()
     [ax2.get_figure().savefig(
@@ -285,11 +262,11 @@ if __name__ == '__main__':
     ## Plot inset with just LEV, with normalized second axis
     sns.set_theme('poster', font='Ariel')
     sns.set_style('ticks')
-    ax = lad_hl_trunc.plot_extrap_lev(
+    ax = lad_trunc.plot_extrap_lev(
         error_bars=True, color='green', plotLegend=False)
     ax2 = ax.twinx()
     ymin, ymax = ax.get_ylim()
-    ax2.set_ylim([ymin, ymax / lad_hl_trunc.sumLev()['mean']])
+    ax2.set_ylim([ymin, ymax / lad_trunc.sumLev()['mean']])
     ax.set_ylabel('')  # 'Cumulative aquatic vegetation area (million $km^2$)')
     ax2.set_ylabel('')  # 'Cumulative aquatic vegetation area fraction')
     plt.tight_layout()
@@ -305,20 +282,20 @@ if __name__ == '__main__':
     # S_lev = np.concatenate((ax.get_lines()[1].get_ydata(), ax.get_lines()[0].get_ydata()))
 
     ## LEV fraction stats, without and with extrap
-    lev_est = lad_hl_trunc.sumLev(includeExtrap=False, asFraction=True)
+    lev_est = lad_trunc.sumLev(includeExtrap=False, asFraction=True)
     print(
         f"Mean inventoried-lake LEV: {lev_est['mean']:0.2%} ({lev_est['lower']:0.2%}, {lev_est['upper']:0.2%})")
-    lev_est = lad_hl_trunc.extrapLAD.sumLev(asFraction=True)
+    lev_est = lad_trunc.extrapLAD.sumLev(asFraction=True)
     print(
         f"Mean non-inventoried-lake LEV: {lev_est['mean']:0.2%} ({lev_est['lower']:0.2%}, {lev_est['upper']:0.2%})")
-    lev_est = lad_hl_trunc.sumLev(includeExtrap=True, asFraction=True)
+    lev_est = lad_trunc.sumLev(includeExtrap=True, asFraction=True)
     print(
         f"Mean total LEV: {lev_est['mean']:0.2%} ({lev_est['lower']:0.2%}, {lev_est['upper']:0.2%})")
 
     ## Area vs LEV plots (TODO: add extrap points)
     fig, ax = plt.subplots()
     # ax.scatter(lad_hl_trunc.Area_km2, lad_hl_trunc.LEV_MEAN)
-    sns.scatterplot(lad_hl_trunc, x='Area_km2', y='LEV_MEAN', ax=ax, alpha=0.1)
+    sns.scatterplot(lad_trunc, x='Area_km2', y='LEV_MEAN', ax=ax, alpha=0.1)
     ax.set_xscale('log')
     ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})')
     [ax.get_figure().savefig(
@@ -328,26 +305,33 @@ if __name__ == '__main__':
     ## Global lake area analysis
     ####################################
 
-    # ## Remake plot for LAD
-    # fig, ax = plt.subplots()
-    # lad_hl_trunc.plot_extrap_lad(ax=ax, label='Lake area', error_bars=True, normalized=True, color='grey', plotLegend=False)
-    # # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
-    # # ax2=ax.twinx()
-    # ax.set_ylabel('Cumulative area (normalized)')
-    # # ax.set_xlabel('')
-    # # ax2.set_ylabel('Cumulative area (normalized)')
+    ## Remake plot for LAD
+    fig, ax = plt.subplots()
+    lad_trunc.plot_extrap_lad(ax=ax, label='Lake area', error_bars=True,
+                              normalized=False, color='grey', plotLegend=False)
+    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    # ax2=ax.twinx()
+    ax.set_ylabel('Cumulative area (M$km^2$)')
+    # ax.set_xlabel('')
+    # ax2.set_ylabel('Cumulative area (normalized)')
 
-    # ## Compare to Downing 2016, re-using code snippet from BinnedLAD and plot over first plot
-    # btm = 0.001
-    # top = 100000
-    # nbins = 8
-    # bin_edges = np.concatenate((np.geomspace(btm, top, nbins+1), [np.inf])).round(6) # bins computed from nbins and edges
-    # area_bins = pd.IntervalIndex.from_breaks(bin_edges, closed='left')
-    # # X = np.array(list(map(interval_geometric_mean, area_bins))) # take geom mean of each interval to get X-val
-    # X = bin_edges[1:] # plot against right bin edge
-    # d06 = [692600, 602100, 523400, 455100, 392362, 329816, 257856, 607650, 378119]
-    # group_sums = pd.Series(d06, index=area_bins, name='Area_km2') # from Downing 2006 paper
-    # binnedAreas = confidence_interval_from_extreme_regions(group_sums, None, None, name='Area_km2') # # Why are lower/upper non NaN?? Ignore.
+    ## Compare to Downing 2016, re-using code snippet from BinnedLAD and plot over first plot
+    btm = 0.001
+    top = 100000
+    nbins = 8
+    # bins computed from nbins and edges
+    bin_edges = np.concatenate(
+        (np.geomspace(btm, top, nbins + 1), [np.inf])).round(6)
+    area_bins = pd.IntervalIndex.from_breaks(bin_edges, closed='left')
+    # X = np.array(list(map(interval_geometric_mean, area_bins))) # take geom mean of each interval to get X-val
+    X = bin_edges[1:]  # plot against right bin edge
+    d06 = [692600, 602100, 523400, 455100,
+           392362, 329816, 257856, 607650, 378119]
+    # from Downing 2006 paper
+    group_sums = pd.Series(d06, index=area_bins, name='Area_km2')
+    # Why are lower/upper non NaN?? Ignore.
+    binnedAreas = confidence_interval_from_extreme_regions(
+        group_sums, None, None, name='Area_km2')
 
     # ## Put Downing number into my BinnedLAD data structure, just to verify plot
     # lad_d06 = BinnedLAD(btm=btm, top=top, nbins=nbins, binned_areas=binnedAreas, compute_ci_lad=False) # give btm, top, nbins, compute_ci_lad and binnedAreas args
@@ -355,44 +339,50 @@ if __name__ == '__main__':
     # # lad_d06_extrap = BinnedLAD(btm=bin_edges[0], top=bin_edges[4], nbins=4, binned_areas=confidence_interval_from_extreme_regions(group_sums[:4], None, None, name='Area_km2'), compute_ci_lad=False) # give btm, top, nbins, compute_ci_lad and binnedAreas args
     # lad_d06.plot(ax=ax, show_rightmost=False, as_lineplot=True, as_cumulative=True) # plot as binnedLAD, skipping top bin with Caspian Sea
 
-    # # fig, ax = plt.subplots()
-    # # ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
-    # d06_canonical = d06[4:]
-    # d06_extrap = d06[:4]
-    # ax.plot(X[:-1], np.cumsum(d06[:-1])/np.sum(d06[:-1]), color='orange', marker='x',linestyle='dashed') # This time, exclude top bin to better compare with BAWLD domain
-    # ax.plot(X[4:-1], (np.cumsum(d06_canonical[:-1])+np.sum(d06_extrap))/(np.sum(d06_canonical[:-1]) + np.sum(d06_extrap)), color='orange') # Plot canonical
-    # # ax.plot(X[:4], np.cumsum(d06_extrap)/np.sum(d06[:-1]), color='orange', linestyle='dashed') # Plot extrap
-    # fig.tight_layout()
-    # ax.set_yscale('linear')
-    # # ax.set_xscale('log')
-    # # ax.set_xticks(X)
+    # fig, ax = plt.subplots()
+    # ax.plot(X, np.cumsum(d06)/np.sum(d06)) # units Mkm2 /1e6
+    d06_canonical = d06[4:]
+    d06_extrap = d06[:4]
+    # This time, exclude top bin to better compare with BAWLD domain
+    ax.plot(X[:-1], np.cumsum(d06[:-1]) / 1e6,
+            color='orange', marker='x', linestyle='dashed')
+    ax.plot(X[4:-1], (np.cumsum(d06_canonical[:-1]) +
+            np.sum(d06_extrap)) / 1e6, color='orange')  # Plot canonical
+    # ax.plot(X[:4], np.cumsum(d06_extrap)/np.sum(d06[:-1]), color='orange', linestyle='dashed') # Plot extrap
+    fig.tight_layout()
+    ax.set_yscale('linear')
+    ax.set_ylim([0, np.sum(d06) / 1e6 + 0.2])
+    # ax.set_xscale('log')
+    # ax.set_xticks(X)
 
-    # # print(f'Area in two smallest bins: {np.sum(d06[:2])/1e6}\nArea in three largest: {np.sum(d06[-3:])/1e6}')
+    # print(f'Area in two smallest bins: {np.sum(d06[:2])/1e6}\nArea in three largest: {np.sum(d06[-3:])/1e6}')
 
     ###########################
     ## Create Table
     ## Create extrap LAD with all bin edge lining up with powers of 10, for Table
-    ## All bins are from lad_hl_trunc_log10bins, derived from lad_hl_lev, the original data used to derive plot data
+    ## All bins are from lad_hl_trunc_log10bins, derived from lad, the original data used to derive plot data
     ## Bottom bins use different extrap bins than lad_hl_trunc, which is used for plots
     ###########################
 
     ## Extrapolate with log10 bins
-    log_bins_lower = [tmin, 0.001, 0.01, 0.1, emax]
+    log_bins_lower = [tmin, 0.001, 0.01, emax]
     # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-    binned_ref_log10bins = BinnedLAD(lad.truncate(tmin, tmax), bins=log_bins_lower, compute_ci_lad=True,
+    binned_ref_log10bins = BinnedLAD(lad.truncate(tmin, tmax), tmin, emax, bins=log_bins_lower, compute_ci_lad=False,
                                      extreme_regions_lad=extreme_regions_lad)  # reference distrib (try 5, 0.5 as second args)
-    binned_lev_log10bins = BinnedLAD(lad_lev_cat, bins=log_bins_lower, compute_ci_lev=True,
-                                     extreme_regions_lev=extreme_regions_lev_for_extrap)  # 0.000125 is native
+    # binned_lev_log10bins = BinnedLAD(lad_lev_cat, bins=log_bins_lower, compute_ci_lev=True,
+    #                                  extreme_regions_lev=extreme_regions_lev_for_extrap)  # 0.000125 is native
     # Beware chaining unless I return a new variable. # Try 0.1
-    lad_hl_trunc_log10bins = lad_hl_lev.truncate(emax, np.inf)
+    lad_hl_trunc_log10bins = lad.truncate(emax, np.inf)
     lad_hl_trunc_log10bins.extrapolate(
-        binned_ref_log10bins, binned_lev_log10bins)
+        binned_ref_log10bins)  # , binned_lev_log10bins)
 
     ## Predict flux on extrapolated part (re-computes for observed part)
+    lad_hl_trunc_log10bins['Temp_K'] = lad_hl_trunc_log10bins[temps_var]
+    del lad_hl_trunc_log10bins[temps_var]
     lad_hl_trunc_log10bins.predictFlux(model, includeExtrap=True)
 
     ## bin upper with log10 bins
-    log_bins_upper = [0.5, 1, 10, 100, 1000, 10000, 100000]
+    log_bins_upper = [emax, 0.1, 1, 10, 100, 1000, 10000, 100000]
     # now, bin upper values for Table estimate, use regions as placeholder to get dummy CI
     lad_hl_trunc_log10bins_binned = BinnedLAD(lad_hl_trunc_log10bins, bins=log_bins_upper, compute_ci_lad=False,
                                               compute_ci_lev=False, compute_ci_lev_existing=True, normalize=False)
@@ -419,8 +409,8 @@ if __name__ == '__main__':
     tb_comb.columns = ['Area_Mkm2', 'LEV_Mkm2', 'Tg_yr', 'DC_Mkm2', 'Count']
 
     ## Report double counting
-    # dummy = lad_hl_lev[~np.isnan(lad_hl_lev.d_counting)]
-    dummy = lad_hl_lev.fillna(0)  # assuming missing lakes have 0 LEV
+    # dummy = lad[~np.isnan(lad.d_counting)]
+    dummy = lad.fillna(0)  # assuming missing lakes have 0 LEV
     print(
         f"Double counting of inventoried lakes: {np.average(dummy.d_counting_frac, weights = dummy.Area_km2):0.3}%")
 
@@ -463,24 +453,24 @@ if __name__ == '__main__':
 
     ## Rescale to km2
     for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
-        lad_hl_lev[col + '_km2'] = lad_hl_lev[col] * \
-            lad_hl_lev['Area_km2']  # add absolute area units
-    # lad_hl_lev.to_csv('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
+        lad[col + '_km2'] = lad[col] * \
+            lad['Area_km2']  # add absolute area units
+    # lad.to_csv('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
 
     ## Rescale double-counting to km2 for data archival purposes
-    lad_hl_lev['d_counting_km2'] = lad_hl_lev.d_counting_frac * \
-        lad_hl_lev['Area_km2']
+    lad['d_counting_km2'] = lad.d_counting_frac * \
+        lad['Area_km2']
 
     ## Prep weighted avgs
-    lad_hl_lev.predictFlux(model, includeExtrap=False)
-    lad_hl_lev['Temp_K_wght_sum'] = lad_hl_lev.Temp_K * lad_hl_lev.Area_km2
+    lad.predictFlux(model, includeExtrap=False)
+    lad['Temp_K_wght_sum'] = lad.Temp_K * lad.Area_km2
 
     ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
-    df_bawld_sum_lev = lad_hl_lev.groupby('BAWLD_Cell', observed=False).sum(
+    df_bawld_sum_lev = lad.groupby('BAWLD_Cell', observed=False).sum(
         numeric_only=True)  # Could add Occ
 
     ## Lake count
-    df_bawld_sum_lev['lake_count'] = lad_hl_lev[['Area_km2', 'BAWLD_Cell']].groupby(
+    df_bawld_sum_lev['lake_count'] = lad[['Area_km2', 'BAWLD_Cell']].groupby(
         'BAWLD_Cell', observed=False).count().astype('int')
 
     ## Rescale back to LEV fraction (of lake) as well (equiv to lake area-weighted mean of LEV fraction within grid cell)
@@ -570,7 +560,7 @@ if __name__ == '__main__':
 
     # ## Compare HL extrapolation to WBD:
     # assert roi_region == 'WBD_BAWLD', f"Carefull, you are comparing to WBD, but roi_region is {roi_region}."
-    # ax = plotEmaxSens(lad_hl_lev, extreme_regions_lad, lad, lad_wbd, tmin=0.0001, tmax=5, emax=0.5, y_scaler=1e6*1.11)
+    # ax = plotEmaxSens(lad, extreme_regions_lad, lad, lad_wbd, tmin=0.0001, tmax=5, emax=0.5, y_scaler=1e6*1.11)
     # [ax.get_figure().savefig(f'/Volumes/thebe/pic/WBD_HL_compare_v{v}'+ext, transparent=False, dpi=300) for ext in ['.png','.pdf']]
 
     # ## Sensitivity test for emax
@@ -579,7 +569,7 @@ if __name__ == '__main__':
     # sns.set_context('poster')
     # sns.set_style('ticks')
     # for i, emax in enumerate(emax_vals):
-    #     plotEmaxSens(lad_hl_lev, extreme_regions_lad, lad, lad_wbd, tmin=0.0001, tmax=5, emax=emax, y_scaler=1e6*1.12, ax=axes.flatten()[i])
+    #     plotEmaxSens(lad, extreme_regions_lad, lad, lad_wbd, tmin=0.0001, tmax=5, emax=emax, y_scaler=1e6*1.12, ax=axes.flatten()[i])
     # fig.set_tight_layout(tight=True)
     # sns.set_theme('notebook', font='Ariel')
     # sns.set_style('ticks')
@@ -597,7 +587,7 @@ if __name__ == '__main__':
     # # lad_hl.truncate(0, 1000).plot_lad(all=False, reverse=False, normalized=False)
     # # lad_hl = LAD.from_shapefile(gdf_HL_jn_pth, area_var='Shp_Area', idx_var='Hylak_id', name='HL', region_var=None) # reload, if needed # don't truncate this time
     # ax = lad_wbd.truncate(0.1, 1000).plot_lad(all=False, reverse=False, normalized=False, color='r')
-    # lad_hl_lev.truncate(0.1, 1000).plot_lad(normalized=False, reverse=False, ax=ax, all=False) # need to have loaded proper lad hl bawld
+    # lad.truncate(0.1, 1000).plot_lad(normalized=False, reverse=False, ax=ax, all=False) # need to have loaded proper lad hl bawld
     # ax.set_title(f'[{roi_region}]')
     # ax.get_figure().tight_layout()
 
@@ -640,17 +630,17 @@ if __name__ == '__main__':
     rename_dict.update({'idx_HL': 'Hylak_id'})
 
     # Format data types
-    lad_hl_lev_save = lad_hl_lev.drop(columns=['Region', 'Temp_K_wght_sum', 'LEV_MAX_km2',
+    lad_save = lad.drop(columns=['Region', 'Temp_K_wght_sum', 'LEV_MAX_km2',
                                                'LEV_MEAN_km2', 'LEV_MIN_km2', 'd_counting_km2']).rename(columns=rename_dict)
-    lad_hl_lev_save['Hylak_id'] = lad_hl_lev_save['Hylak_id'].astype('int')
+    lad_save['Hylak_id'] = lad_save['Hylak_id'].astype('int')
     # Get a list of columns with float data type
-    float_columns = lad_hl_lev_save.select_dtypes(
+    float_columns = lad_save.select_dtypes(
         include=['float']).columns.tolist()
-    lad_hl_lev_save[float_columns] = lad_hl_lev_save[float_columns].round(
+    lad_save[float_columns] = lad_save[float_columns].round(
         4)  # Apply rounding to float columns to reduce output file size
 
     ## Write out
-    lad_hl_lev_save.to_csv(os.path.join(
+    lad_save.to_csv(os.path.join(
         output_dir, f'{ds}_emissions_v{v}.csv'))
 
     ## Version of BAWLD_HL for archive (continue from Map Analysis section)
@@ -681,7 +671,7 @@ if __name__ == '__main__':
         os.path.join(output_dir, 'BAWLD_V1_LAV.shp'), engine='pyogrio')  # Can ignore "value not written errors"
 
     ## Save extrapolations table
-    lad_hl_trunc.extrapLAD.to_df().to_csv(os.path.join(
+    lad_trunc.extrapLAD.to_df().to_csv(os.path.join(
         output_dir, f'{ds}_extrapolated_v{v}.csv'))
     pass
 

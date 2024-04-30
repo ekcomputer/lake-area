@@ -20,6 +20,9 @@ TODO
 * Run in dask instead of using binned_statistic
 * Fix interpolation using griddata
 * Vectorize pullTemp so it can operate on multiple locations at once
+* Add index region extrapolation graphics to readme (as gif?)
+* Test extrapolated_area_fraction- giving me answer of nearly 0 when I don't expect it.
+* Make sure Example notebooks still work.
 '''
 
 import matplotlib.patches as mpatches
@@ -35,6 +38,7 @@ import cdsapi
 import urllib3
 import subprocess
 import shutil
+from statsmodels.formula.api import ols
 
 from retry import retry
 # import timeout_decorator
@@ -754,3 +758,57 @@ def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='s
     else:
         raise ValueError('Unrecognized format.')
     print(f'Saved temps file to: {pth_out}')
+
+
+def loadBAWLD_CH4():
+    '''units are in mg CH4/m2/day'''  # TODO: add function args
+    ## Load
+    df = pd.read_csv('/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/BAWLD_CH4_Aquatic_ERA5.csv',
+                     encoding="ISO-8859-1", dtype={'CH4.E.FLUX ': 'float'}, na_values='-')
+    len0 = len(df)
+    temperature_metric = 'ERA5_stl1'
+    eb_scaling = 0.580
+    ## Add total open water flux column
+    df['CH4.E.FLUX'].fillna(df['CH4.D.FLUX'] * eb_scaling, inplace=True)
+    df['CH4.D.FLUX'].fillna(df['CH4.E.FLUX'] / eb_scaling, inplace=True)
+    df['CH4.DE.FLUX'] = df['CH4.D.FLUX'] + df['CH4.E.FLUX']
+
+    ## Filter and pre-process
+    # df.query("SEASON == 'Icefree' ", inplace=True)  # and `D.METHOD` == 'CH'
+    df.dropna(subset=['SA', 'CH4.DE.FLUX', temperature_metric],
+              inplace=True)  # 'TEMP'
+
+    ## if I want transformed y as its own var
+    # df['CH4.DE.FLUX.LOG'] = np.log10(df['CH4.DE.FLUX']+1)
+
+    ## print filtering
+    len1 = len(df)
+    print(f'Filtered out {len0-len1} BAWLD-CH4 values ({len1} remaining).')
+    # print(f'Variables: {df.columns}')
+
+    ## Linear models (regression)
+    # 'Seasonal.Diff.Flux' 'CH4.D.FLUX'
+    formula = f"np.log10(Q('CH4.DE.FLUX')+0.01) ~ np.log10(SA) + {temperature_metric}"
+    model = ols(formula=formula, data=df).fit()
+
+    return model
+
+
+def loadR21_CH4(pth='/Volumes/thebe/Other/Rosentreter2021/edk_out/Rosentreter_Aquatic_Ecosystems_lakes_temps.csv', flux_var='fch4_mgCH4m2d', surface_area_var='surface_area_km2', temperature_metric='ERA5_stl1'):
+    '''
+    Loads pre-formatted Rosentreter et al. 2021 emissions dataset and computes a regression model
+    
+    units are in mg CH4/m2/day
+    '''
+
+    ## Load
+    df = pd.read_csv(pth,  # encoding="ISO-8859-1",
+                     #  dtype={'CH4.E.FLUX ': 'float'},
+                     #    na_values='-'
+                     )
+    ## Linear models (regression)
+    # 'Seasonal.Diff.Flux' 'CH4.D.FLUX'
+    formula = f"np.log10(Q('{flux_var}')+0.01) ~ np.log10({surface_area_var}) + {temperature_metric}"
+    model = ols(formula=formula, data=df).fit()
+
+    return model
