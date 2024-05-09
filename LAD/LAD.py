@@ -1035,7 +1035,7 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         '''
         Predict methane flux based on area bins and temperature.
 
-        Units assume regression model gives flux in mg CH4 / m2 / day
+        The temperature for extrapolated lakes in unknown locations is approximated with the main temperature of the known lakes. Units assume regression model gives flux in mg CH4 / m2 / day
 
         TODO: 
             * Use temp as a df variable, not common attribute
@@ -1069,7 +1069,7 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         self['est_g_day'] = self.est_mg_m2_day * self.Area_km2 * \
             1e3  # * 1e6 / 1e3 # (convert km2 -> m2 and mg -> g)
 
-        self['_total_flux_Tg_yr'] = self['est_g_day'].sum(
+        self._total_flux_Tg_yr = self['est_g_day'].sum(
         ) * 365.25 / 1e12 + binned_total_flux_Tg_yr  # see Tg /yr
         # return self._Total_flux_Tg_yr
         return

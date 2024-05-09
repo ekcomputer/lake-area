@@ -13,7 +13,7 @@ import argparse
 from scipy.stats import pearsonr
 from sklearn.metrics import mean_squared_error
 from LAD.LAD import *
-from LAD.util import loadR21_CH4, loadBAWLD_CH4
+from LAD.IO import loadR21_CH4, loadBAWLD_CH4, load_HR_ABZ
 
 ## Testing mode or no.
 parser = argparse.ArgumentParser()
@@ -30,8 +30,14 @@ if args.test == 'True':
 tb_dir = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/edk_out/CH4/area_tables'
 # dir for output data, used for data archive
 output_dir = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/edk_out/CH4/output'
-v = 31  # Version number for file naming
+v = 32  # Version number for file naming
 ds = 'PLD'  # dataset
+extreme_regions_lad = [
+    'Tuktoyaktuk Peninsula', 'sur00120130802_tsx_nplaea']
+# Truncation limits for ref LAD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
+tmin, tmax = (0.0001, 0.5)
+# Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
+emax = 0.05
 
 # ## BAWLD domain
 # dataset = 'PLD'
@@ -63,47 +69,7 @@ inventory_join_clim_pth = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/S
 if __name__ == '__main__':
     ## Loading from CIR gdf
     print('Load HR...')
-    regions = ['Sagavanirktok River', 'Yukon Flats Basin', 'Old Crow Flats', 'Mackenzie River Delta',
-               'Mackenzie River Valley', 'Canadian Shield Margin', 'Canadian Shield', 'Slave River',
-               'Peace-Athabasca Delta', 'Athabasca River', 'Prairie Potholes North',
-               'Prairie Potholes South', 'Tuktoyaktuk Peninsula', 'All']
-    lad_cir = LAD.from_shapefile('/Volumes/thebe/Planet-SR-2/Classification/cir/dcs_fused_hydroLakes_buf_10_sum.shp',
-                                 area_var='Area', name='CIR', region_var='Region4', regions=regions, idx_var='OID_')
-
-    ## Loading PeRL LAD
-    perl_exclude = ['arg0022009xxxx', 'fir0022009xxxx', 'hbl00119540701', 'hbl00119740617',
-                    'hbl00120060706', 'ice0032009xxxx', 'rog00219740726', 'rog00220070707',
-                    'tav00119630831', 'tav00119750810', 'tav00120030702', 'yak0012009xxxx',
-                    'bar00120080730_qb_nplaea.shp']
-    lad_perl = LAD.from_paths('/Volumes/thebe/PeRL/PeRL_waterbodymaps/waterbodies/*.shp',
-                              area_var='AREA', name='perl', _areaConversionFactor=1000000, exclude=perl_exclude)
-
-    ## Loading from Mullen
-    lad_mullen = LAD.from_paths('/Volumes/thebe/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/*_3Y_lakes-and-ponds.zip', _areaConversionFactor=1000000,
-                                name='Mullen', computeArea=True)  # '/Volumes/thebe/Other/Mullen_AK_lake_pond_maps/Alaska_Lake_Pond_Maps_2134_working/data/[A-Z][A-Z]_08*.zip'
-
-    ## Combine PeRL and CIR and Mullen
-    lad_ref = LAD.concat((lad_cir, lad_perl, lad_mullen),
-                     broadcast_name=True, ignore_index=True)
-
-    # ## plot
-    # lad.truncate(0.0001, 10).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=True, plotLabels=False)
-    # lad.truncate(0.0001, 10).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
-
-    # ## Plot just CIR
-    # lad_cir.truncate(0.0001, 5).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=False)
-    # lad_cir.truncate(0.0001, 5).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
-
-    # ## Plot just PeRL
-    # lad_perl.truncate(0.0001, 5).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=False)
-    # lad_perl.truncate(0.0001, 5).plot_lad(all=True, plotLegend=False, reverse=False, groupby_name=False, plotLabels=True)
-
-    # ## Compute extreme regions and save to spreadsheet
-    # df_regions = regionStats(lad)
-    # df_regions.to_csv(os.path.join(tb_dir, 'region_stats.csv'))
-
-    # ## YF compare
-    # LAD(lad.query("Region=='YF_3Y_lakes-and-ponds' or Region=='Yukon Flats Basin'"), name='compare').plot_lad(all=False, plotLegend=True, reverse=False, groupby_name=False)
+    lad_ref = load_HR_ABZ()
 
     ####################################
     ## LEV Analysis
@@ -143,7 +109,6 @@ if __name__ == '__main__':
     ## Climate Analysis: join in temperature
     ####################################
     print('Loading lake inventory and climate data...')
-    # Index(['Unnamed: 0', 'BAWLDCell_', 'Hylak_id', 'Shp_Area', 'geometry','index_right', 'id', 'area', 'perimeter', 'lat', 'lon', 'djf', 'mam', 'jja', 'son', 'ann'],
 
     inventory_join_clim_pth = Path(inventory_join_clim_pth)
     if inventory_join_clim_pth.suffix == 'csv.gz':
@@ -175,12 +140,6 @@ if __name__ == '__main__':
                              idx_var=None, name=dataset, region_var=None, other_vars=[temps_var, 'lat', 'lon'])
 
     ## Extrapolate
-    extreme_regions_lad = [
-        'Tuktoyaktuk Peninsula', 'sur00120130802_tsx_nplaea']
-    # Truncation limits for ref LAD. tmax defines the right bound of the index region. tmin defines the leftmost bound to extrapolate to.
-    tmin, tmax = (0.0001, 0.5)
-    # Extrapolation limits. emax defines the left bound of the index region (and right bound of the extrapolation region).
-    emax = 0.05
     binned_ref = BinnedLAD(lad_ref.truncate(tmin, tmax), tmin, emax, compute_ci_lad=True,
                            extreme_regions_lad=extreme_regions_lad)  # reference distrib (try 5, 0.5 as second args)
     # Beware chaining unless I return a new variable. # Try 0.1
@@ -217,12 +176,16 @@ if __name__ == '__main__':
     model = loadR21_CH4(temperature_metric=temps_var)
     # model = loadBAWLD_CH4()
 
-    # correct variable name for flux prediction
-    lad_trunc['Temp_K'] = lad_trunc[temps_var]
+    # correct variable name for flux prediction with no harmonization
+    # lad_trunc['Temp_K'] = lad_trunc[temps_var]
+
+    ## Harmonize ERA5.stl1 with reported water temp by adding 2 K (if using Rosentreter)
+    lad_trunc['Temp_K'] = lad_trunc[temps_var] + 2
+
     del lad_trunc[temps_var]
     lad_trunc.predictFlux(model, includeExtrap=True)
     print(
-        f"Estimated annual flux: {np.sum(lad_trunc.est_g_day * 365.25 / 1e12):0.3} Tg/yr")
+        f"Estimated annual flux: {lad_trunc._total_flux_Tg_yr['mean']:.3} Tg/yr")
 
     ## Plot combined extrap LAD/LEV
     fig, ax = plt.subplots(2, 1, sharex=True)
@@ -676,35 +639,3 @@ if __name__ == '__main__':
     pass
 
     ################
-
-    # TODO:
-    '''
-    * make equivalence to hl_pond_frac_cir x
-    * [try using numba to accelerate?]
-    * save 1 vs. 0.3 cutoff as var 
-    * add std or CI x
-    * write out x
-    * find a way to relate to flux estimates
-    * Re-define LAD so if called with no args but proper column names it returns a LAD correctly.
-    * Use fid_as_index argument when loading with pyarrow
-    * Preserve og index when concatenating so I can look up lakes from raw file (combine with above re: fid)
-    * Branches for if there is no CI/error bars in binned distrib. Make sure there is still a second index called 'stat' with constant val 'mean'
-    * Rewrite sumLev() to output a series x
-    * Go back and add branches for no CI to the various methods. Make sure it still has a second index for 'stat' with constant val 'mean'
-    * Make predictFlux() calls consistent bw LAD and BinnedLAD, whether they return a value or add an attribute.
-    * Thorough testing of all function options
-    * Search for "TODO"
-    * Code in LEV flux calc from table-2-stats
-    * Most awkward part of the LAD class is that I can't use any builtin pandas function without returning a DataFrame, so I have developed ways to re-initiate a LAD from a DataFrame to use when needed.
-    *Possible solution: re-define LAD class to be a genric structre that has an LAD attribute that is simply a dataframe. Re-define operaters print/__repr__ and slicing operations so it still behaves like the base structure is a df.
-    * Add binnedLAD.truncate() method that removes bins
-    * Truncate CSV decimals when writing out data files
-    * Add confusion matrix output steps (in LEV_GSW_overlay.ipynb) to main script.
-    * replace sklearn 'mean_squared_error' function to make package easier to install.
-    * Fix runtime div by 0 warnings
-    * Publish to pypi
-    * install tests for mac - copy geospatial
-
-    NOTES:
-    * Every time a create an LAD() object in a function from an existing LAD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
-    '''

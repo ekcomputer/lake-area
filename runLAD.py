@@ -787,6 +787,7 @@ pass
 * Fix runtime div by 0 warnings
 * Publish to pypi
 * install tests for mac - copy geospatial
+* LAD.predictFlux(): if not using extrapolated, be sure to return output in same format with mean/low/high pandas structure
 
 NOTES:
 * Every time a create an LAD() object in a function from an existing LAD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
