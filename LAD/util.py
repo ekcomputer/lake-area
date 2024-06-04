@@ -25,6 +25,7 @@ TODO
 * Make sure Example notebooks still work.
 '''
 
+from scipy.interpolate import NearestNDInterpolator
 import matplotlib.patches as mpatches
 from seaborn import objects as so
 import os
@@ -50,6 +51,9 @@ import seaborn as sns
 import pyogrio
 from warnings import warn
 from tqdm import tqdm
+import pyproj
+from shapely.geometry import Polygon
+from shapely.ops import transform
 try:  # if no internet connection
     ## Register with ee using high-valume (and high-latency) endpoint
     # NOT 'https://earthengine.googleapis.com'
@@ -57,6 +61,8 @@ try:  # if no internet connection
 except:
     warn(UserWarning("EE not initialized."))
     pass
+
+mth_list = np.arange(1, 13)
 
 # def getRequests(index_file):
 #     ''' Based on unique lat/long indexes in BAWLD'''
@@ -638,9 +644,11 @@ def parseYearsMonths(years=None, months=None):
     return years_list, months_list
 
 
-def pullTemp(df, da, lat_var='LAT', long_var='LONG', year_var='YEAR.S', month_var='MONTH', var='lblt', year=None):
+def pullTemp(df, da, lat_var='LAT', long_var='LONG', year_var=None, month_var=None, var='lblt', year=None, annual_mean=True):
     '''
     Merges in ERA5 temperature to an array based on 'LAT' and 'LONG' fields.
+
+    Works for both lake inventory df or a specific list of lakes df (such as from a GHG emissions dataset) 
     
     Parameters
     ----------
@@ -658,6 +666,8 @@ def pullTemp(df, da, lat_var='LAT', long_var='LONG', year_var='YEAR.S', month_va
         Field namae to use for month of observation (comes from "time" in ERA5)
     var : str ('lblt)
         One of: 'lblt' 'skt', 'stl4', 'stl1', 't2m'
+    annual_mean : Bool (True)
+        Take the mean of all months. Otherwise, return individual monthly values.
     
     Returns
     -------
@@ -670,26 +680,28 @@ def pullTemp(df, da, lat_var='LAT', long_var='LONG', year_var='YEAR.S', month_va
     ln = df[long_var]
     if year is not None:  # manual year supplied
         yr_list = [year]
-        mth_list = np.arange(1, 13)
+        month_list = mth_list  # pull from global var
     else:
         # Get latitude, longitude, year, and month from the row
         # yr_list = parseYears(df[year_var]) # in case a range or list of years
         # mth_list = parseTimes(df[month_var]) # in case a range of months
-        yr_list, mth_list = parseYearsMonths(df[year_var], df[month_var])
+        yr_list, month_list = parseYearsMonths(df[year_var], df[month_var])
 
     # Select the temperature data from ERA5 using the given coordinates and time
     # da_tmp = da[var].where(da['time.year'].isin(yr), drop=True).sel(latitude=lt, longitude=ln, method='nearest')
 
     temprs = da[var].sel(latitude=lt, longitude=ln, method='nearest').sel(
-        time=(da['time.year'].isin(yr_list)) & (da['time.month'].isin(mth_list)))
+        time=(da['time.year'].isin(yr_list)) & (da['time.month'].isin(month_list)))
 
-    ## reduce
-    tempr = temprs.mean(dim='time')
-
+    ## reduce, if needed
+    if annual_mean:
+        tempr = temprs.mean(dim='time')
+    else:
+        tempr = temprs
     return tempr.values
 
 
-def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='stl1', fields_to_read=None, year_var='YEAR.S', month_var='MONTH', year=None, extension=None, **kwargs):
+def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='stl1', fields_to_read=None, year_var=None, month_var=None, year=None, extension=None, suffix='temps', annual_mean=True, read_kwargs=None, write_kwargs=None):
     '''
     AddReanalysisTemps Adds temperatures to ds_pth from temps_pth and writes out to input directory as new shapefile.
 
@@ -715,7 +727,7 @@ def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='s
         gdf_lakes = pd.read_csv(ds_pth, usecols=columns, na_values=['-', '-'])
     else:
         gdf_lakes = gpd.read_file(ds_pth,
-                                  engine='pyogrio', read_geometry=True, columns=columns)  # , columns=[id_var, lat_var, lon_var])
+                                  engine='pyogrio', read_geometry=True, columns=columns, **read_kwargs)  # , columns=[id_var, lat_var, lon_var])
     gdf_lakes.dropna(
         subset=[var for var in [year_var, month_var] if var is not None], inplace=True)
     da = xr.load_dataset(temps_pth)
@@ -740,19 +752,67 @@ def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='s
     print('Adding temperatures...')
     temps = gdf_lakes.apply(lambda row: pullTemp(row, da_filled, lat_var=lat_var,
                                                  long_var=long_var, month_var=month_var,
-                                                 var=tvar, year_var=year_var, year=year), axis=1)  # .astype('float')
-    gdf_lakes[f'ERA5_{tvar}'] = temps.astype('float')
+                                                 var=tvar, year_var=year_var, year=year,
+                                                 annual_mean=annual_mean), axis=1)  # .astype('float')
+    print('Filling NaNs...')
+    if annual_mean:
+        gdf_lakes[f'ERA5_{tvar}'] = temps.astype('float')
 
-    ## Fill nans with mean
-    gdf_lakes[f'ERA5_{tvar}'].fillna(
-        gdf_lakes[f'ERA5_{tvar}'].mean(), inplace=True)
+        ## Fill nans with mean
+        gdf_lakes[f'ERA5_{tvar}'].fillna(
+            gdf_lakes[f'ERA5_{tvar}'].mean(), inplace=True)
+    else:
+
+        # Convert to a nx12 array
+        n_rows = temps.shape[0]
+        n_cols = len(temps[0])
+        gdf_lakes[[f'ERA5_{tvar}_{mnth:02}' for mnth in mth_list]
+                  ] = np.vstack(temps).reshape((n_rows, n_cols))
+
+        ## Fill any nans with mean
+        for mnth in mth_list:
+            gdf_lakes[f'ERA5_{tvar}_{mnth:02}'].fillna(
+                gdf_lakes[f'ERA5_{tvar}_{mnth:02}'].mean(), inplace=True)
+
 
     ## Write out
-    pth_out = ds_pth.replace(extension, f'_temps{extension}')
+    pth_out = ds_pth.replace(extension, f'_{suffix}{extension}')
+    print(f'Writing out...')
     if isinstance(gdf_lakes, gpd.GeoDataFrame):
-        gdf_lakes.to_file(pth_out, **kwargs)  # , engine='pyogrio')
+        gdf_lakes.to_file(pth_out, **write_kwargs)  # , engine='pyogrio')
     elif isinstance(gdf_lakes, pd.DataFrame):
-        gdf_lakes.to_csv(pth_out, **kwargs)
+        gdf_lakes.to_csv(pth_out, **write_kwargs)
     else:
         raise ValueError('Unrecognized format.')
     print(f'Saved temps file to: {pth_out}')
+
+    # def grid_area(lon, lat, width=0.5, epsg=6931):
+    #     src_crs = pyproj.CRS.from_epsg(4326)
+    #     tgt_crs = pyproj.CRS.from_epsg(epsg)  # NSIDC EASE GRID
+    #     w = width / 2
+    #     polygon = Polygon([
+    #         [lon - w, lat - w],
+    #         [lon + w, lat - w],
+    #         [lon + w, lat + w],
+    #         [lon - w, lat + w],
+    #         [lon - w, lat - w],
+    #     ])
+    #     project = pyproj.Transformer.from_crs(
+    #         src_crs, tgt_crs, always_xy=True).transform
+    #     ea_polygon = transform(project, polygon)
+    #     return ea_polygon.area
+
+
+def grid_area(lat, width=0.5):
+    '''
+    in m2
+
+    Only works for one hemisphere at a time (cells can't cross equator)
+    
+    '''
+    Re = 6371000  # m
+    ## check against online calculator https://www.engr.scu.edu/~emaurer/tools/calc_cell_area_cgi.pl
+    return width / 360 * (np.sin(np.deg2rad(lat + width / 2)) - np.sin(np.deg2rad(lat - width / 2))) / 2 * (4 * np.pi * Re**2)
+
+
+pass

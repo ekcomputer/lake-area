@@ -21,6 +21,7 @@ from sklearn.metrics import mean_squared_error
 import xarray as xr
 from LAD.LAD import *
 from LAD.IO import loadR21_CH4, loadBAWLD_CH4, load_HR_ABZ
+from LAD.util import grid_area
 
 ## I/O
 # tables output dir
@@ -29,37 +30,25 @@ tb_dir = os.path.join(output_base_dir, 'area_tables')
 # dir for output data, used for data archive
 output_dir = os.path.join(output_base_dir, 'output')
 pic_dir = os.path.join(output_base_dir, 'pic')
-
-v = 32  # Version number for file naming
-ds = 'PLD'  # dataset
 extreme_regions_lad = [
     'Tuktoyaktuk Peninsula', 'sur00120130802_tsx_nplaea']
+areas_netcdf = os.path.join(output_dir, 'gridarea.nc')
 
-# ## BAWLD domain
-# dataset = 'PLD'
-# roi_region = '40N'
-# gdf_bawld_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/BAWLD_V1___Shapefile.zip'
-# # above, but with all ocurrence values, not binned
-# # main data source
-# # from utils.py - has water occurrence values
-# df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz'
-# # hl_area_var = 'Shp_Area'
-# inventory_join_clim_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/out/joined_ERA5/HL_ERA5_stl1_v3.csv.gz'
-# bawld_join_clim_pth = '/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD/edk_out/BAWLD_V1___Shapefile_jn_clim.csv'
-# # HL shapefile with ID of nearest BAWLD cell (still uses V3)
-# hl_nearest_bawld_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_binned_jnBAWLD.shp'
-# bawld_hl_output = os.path.join(output_dir, f'BAWLD_V1_LEV_v{v}.shp')
-
-## Global domain
-dataset = 'PLD'
+## for output file name
+v = 33  # Version number for file naming
+ch4_ref = 'R21'
+# ch4_ref = 'BAWLD'
+ds = 'PLD'
 roi_region = 'glob'
-# above, but with all ocurrence values, not binned
-# main data source
-# from utils.py - has water occurrence values
-# df_HL_jn_full_pth = '/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v4/HL_zStats_Oc_full.csv.gz'
+year = 2017
+
+## params
 area_var = 'ref_area'
 temps_var = 'ERA5_stl1'
-inventory_join_clim_pth = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/SWOT_PLD_v103_beta_temps.gdb'
+trunc = 0.1
+# trunc = 0.01
+inventory_join_clim_pth = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/SWOT_PLD_v103_beta_temps2017.gdb'
+# inventory_join_clim_pth = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/SWOT_PLD_v103_beta_temps2017.gdb'
 # HL shapefile with ID of nearest BAWLD cell (still uses V3)
 
 if __name__ == '__main__':
@@ -131,8 +120,11 @@ if __name__ == '__main__':
     ####################################
 
     ## Load dataset (named 'trunc' for compatability purposes)
-    lad_trunc = LAD.from_shapefile(inventory_join_clim_pth, area_var=area_var,
-                                   idx_var=None, name=dataset, region_var=None, other_vars=[temps_var, 'lat', 'lon', 'lake_id', 'lake_num'])
+    lad = LAD.from_shapefile(inventory_join_clim_pth, area_var=area_var,
+                             idx_var=None,
+                             name=ds,
+                             region_var=None, other_vars=[temps_var, 'lat', 'lon', 'lake_id', 'lake_num'])
+    lad_trunc = lad.truncate(trunc)
 
     ## Plot LAD
     ax = lad_trunc.plot_lad(plotLegend=False)
@@ -144,8 +136,10 @@ if __name__ == '__main__':
     ####################################
 
     ## Flux prediction from observed and extrap lakes
-    model = loadR21_CH4(temperature_metric=temps_var)
-    # model = loadBAWLD_CH4()
+    if ch4_ref == 'R21':
+        model = loadR21_CH4(temperature_metric=temps_var)
+    elif ch4_ref == 'BAWLD':
+        model = loadBAWLD_CH4()
 
     ## Harmonize ERA5.stl1 with reported water temp by adding 2 K (if using Rosentreter)
     lad_trunc['Temp_K'] = lad_trunc[temps_var] + 2
@@ -167,89 +161,13 @@ if __name__ == '__main__':
         os.path.join(pic_dir, f'fluxes_v{v}' + ext), transparent=True, dpi=300) for ext in ['.png', '.pdf']]
 
     ####################################
-    ## Map Analysis
-    ####################################
-
-    ## Rescale to km2
-    for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
-        lad[col + '_km2'] = lad[col] * \
-            lad['Area_km2']  # add absolute area units
-    # lad.to_csv('/Volumes/thebe/Ch4/GSW_zonal_stats/HL/v5/HL_BAWLD_LEV.csv')
-
-    ## Rescale double-counting to km2 for data archival purposes
-    lad['d_counting_km2'] = lad.d_counting_frac * \
-        lad['Area_km2']
-
-    ## Prep weighted avgs
-    lad.predictFlux(model, includeExtrap=False)
-    lad['Temp_K_wght_sum'] = lad.Temp_K * lad.Area_km2
-
-    ## Groupby bawld cell and compute sum of LEV and weighted avg of LEV
-    df_bawld_sum_lev = lad.groupby('BAWLD_Cell', observed=False).sum(
-        numeric_only=True)  # Could add Occ
-
-    ## Lake count
-    df_bawld_sum_lev['lake_count'] = lad[['Area_km2', 'BAWLD_Cell']].groupby(
-        'BAWLD_Cell', observed=False).count().astype('int')
-
-    ## Rescale back to LEV fraction (of lake) as well (equiv to lake area-weighted mean of LEV fraction within grid cell)
-    for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
-        df_bawld_sum_lev[(col + '_km2').replace('_km2', '_frac')] = df_bawld_sum_lev[col +
-                                                                                     '_km2'] / df_bawld_sum_lev['Area_km2']  # add absolute area units
-        # remove summed means, which are meaningless
-        df_bawld_sum_lev.drop(columns=col, inplace=True)
-
-    ## add averages of T and est_mg_m2_day
-    df_bawld_sum_lev['Temp_K'] = df_bawld_sum_lev['Temp_K_wght_sum'] / \
-        df_bawld_sum_lev.Area_km2
-    df_bawld_sum_lev['est_mg_m2_day'] = df_bawld_sum_lev['est_g_day'] / \
-        1e3 / df_bawld_sum_lev.Area_km2
-
-    ## remove meaningless sums
-    df_bawld_sum_lev.drop(
-        columns=['idx_HL', 'Temp_K_wght_sum', 'd_counting_frac', '0-5', '5-50', '50-95', '95-100'], inplace=True)  # 'Hylak_id',
-
-    ## Join to BAWLD in order to query cell areas
-    gdf_bawld = gpd.read_file(gdf_bawld_pth, engine='pyogrio')
-    gdf_bawld_sum_lev = df_bawld_sum_lev.merge(
-        gdf_bawld, how='outer', right_on='Cell_ID', left_index=True)  # [['Cell_ID', 'Shp_Area']]
-
-    ## Rescale to LEV fraction and double counting fraction (of grid cell)
-    for col in ['LEV_MEAN', 'LEV_MIN', 'LEV_MAX']:
-        gdf_bawld_sum_lev[(col + '_km2').replace('_km2', '_grid_frac')] = gdf_bawld_sum_lev[col + '_km2'] / (
-            gdf_bawld_sum_lev['Shp_Area'] / 1e6)  # add cell LEV fraction (note BAWLD units are m2)
-    gdf_bawld_sum_lev['d_counting_grid_frac'] = gdf_bawld_sum_lev['d_counting_km2'] / \
-        (gdf_bawld_sum_lev['Shp_Area'] / 1e6)
-
-    ## Mask out high Glacier or barren grid cells with no lakes
-    gdf_bawld_sum_lev.loc[(gdf_bawld_sum_lev.GLA + gdf_bawld_sum_lev.ROC) > 75,
-                          ['LEV_MEAN_km2', 'LEV_MIN_km2', 'LEV_MAX_km2', 'LEV_MEAN_frac', 'LEV_MIN_frac', 'LEV_MAX_frac', 'LEV_MEAN_grid_frac', 'LEV_MIN_grid_frac', 'LEV_MAX_grid_frac']] = 0
-
-    ## and write out full geodataframe as shapefile with truncated field names
-    gdf_bawld_sum_lev['Shp_Area'] = gdf_bawld_sum_lev['Shp_Area'].astype(
-        'int')  # convert area to int
-    gpd.GeoDataFrame(gdf_bawld_sum_lev).to_file(
-        bawld_hl_output, engine='pyogrio')
-
-    ## Stats from BAWLD LEV
-    s = gdf_bawld_sum_lev.drop(columns=['geometry']).sum()
-    print(
-        f"BAWLD domain: {s.LEV_MEAN_km2/1e6:0.3} [{s.LEV_MIN_km2/1e6:0.3}-{s.LEV_MAX_km2/1e6:0.3}] Mkm2 lake vegetation (excluding non-inventoried lakes).")
-    print(
-        f"BAWLD domain is {s.LEV_MEAN_km2/(s.Shp_Area/1e6):0.4%} [{s.LEV_MIN_km2/(s.Shp_Area/1e6):0.4%}-{s.LEV_MAX_km2/(s.Shp_Area/1e6):0.4%}] lake vegetation (excluding non-inventoried lakes).")
-    print(
-        f"BAWLD domain: {np.dot(gdf_bawld_sum_lev.WET/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3} [{np.dot(gdf_bawld_sum_lev.WET_L/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}-{np.dot(gdf_bawld_sum_lev.WET_H/100,gdf_bawld_sum_lev.Shp_Area/1e6)/1e6:0.3}] Mkm2  wetlands.")
-    print(
-        f"BAWLD domain is {np.average(gdf_bawld_sum_lev.WET, weights=gdf_bawld_sum_lev.Shp_Area):0.4} [{np.average(gdf_bawld_sum_lev.WET_L, weights=gdf_bawld_sum_lev.Shp_Area):0.4}-{np.average(gdf_bawld_sum_lev.WET_H, weights=gdf_bawld_sum_lev.Shp_Area):0.4}%] wetlands.")
-
-    ####################################
     ## Write out datasets for archive
     ####################################
 
     ## Add temperatures to HL_lev dataset (don't use truncated, because data users can easily truncate by lake area)
-    # keys = [temps_var]
-    # values = ['Temp_' + key for key in keys]
-    # rename_dict = {k: v for k, v in zip(keys, values)}
+    keys = [temps_var]
+    values = ['Temp_' + key for key in keys]
+    rename_dict = {k: v for k, v in zip(keys, values)}
     # keys_oc = ['0-5', '5-50', '50-95', '95-100']
     # values_oc = ['Oc_' + key.replace('-', '_') for key in keys_oc]
     # oc_dict = {k: v for k, v in zip(keys_oc, values_oc)}
@@ -269,9 +187,13 @@ if __name__ == '__main__':
     lad_save[float_columns] = lad_save[float_columns].round(
         4)  # Apply rounding to float columns to reduce output file size
 
+    ## output name
+    output_name = f'{ds}_trunc{trunc}_ch4_emissions_{ch4_ref}_{year}_v{v}'
+
     ## Write out
-    lad_save.to_csv(os.path.join(
-        output_dir, f'{ds}_emissions_v{v}.csv'))
+    # print('Writing csv...')
+    # lad_save.to_csv(os.path.join(
+    #     output_dir, output_name + '.csv'))
 
     # TODO: merge to og gdf and write out spatially
     '''
@@ -279,6 +201,7 @@ if __name__ == '__main__':
     '''
 
     ## Regrid v1
+    print('Regrid...')
     grid_lon = np.arange(-179.75, 180, 0.5)
     grid_lat = np.arange(30.25, 90, 0.5)
     mg_lon, mg_lat = np.meshgrid(grid_lon, grid_lat)
@@ -298,19 +221,37 @@ if __name__ == '__main__':
     lat_edges = np.arange(28, 90.5, 0.5)
     lad_trunc['lat_idx'] = np.digitize(lad_trunc['lat'], lat_edges)
     lad_trunc['lon_idx'] = np.digitize(lad_trunc['lon'], lon_edges)
+    lad_trunc = lad_trunc[lad_trunc.lat_idx > 0]
+    lad_trunc = lad_trunc[lad_trunc.lon_idx > 0]
+    lad_trunc['bin_latitude'] = grid_lat[np.digitize(
+        lad_trunc['lat'], lat_edges) - 1]
+    lad_trunc['bin_longitude'] = grid_lon[np.digitize(
+        lad_trunc['lon'], lon_edges) - 1]
 
-    grouped = lad_trunc.groupby(['lat_idx', 'lon_idx'])
+    grouped = lad_trunc.groupby(['bin_latitude', 'bin_longitude'])
     summed_est_g_day = grouped['est_g_day'].sum()
-    df = pd.DataFrame(
-        {'lat_idx': mg_lat_idx.flatten(), 'lon_idx': mg_lon_idx.flatten(), 'time': 2022}).set_index(['lon_idx', 'lat_idx', 'time'])
+    # / grouped['Area_km2'].sum()
+    summed_mgC_day = (summed_est_g_day * 1000 * 12.011 / 16.04).astype('float')
+    summed_mgC_day.rename('CH4_mgC_day')
+    # mean_mgC_m2_day = summed_mgC_day / grid_area
+    # df = pd.DataFrame(
+    #     {'lat_idx': mg_lat_idx.flatten(), 'lon_idx': mg_lon_idx.flatten(), 'time': 2022}).set_index(['lon_idx', 'lat_idx', 'time'])
     # , left_on=['lon', 'lat'], right_on=['lon', 'lat'])
-    df_merge = pd.merge(df, summed_est_g_day, left_index=True,
-                        right_index=True, how='left')
+    df = pd.DataFrame(
+        {'bin_latitude': grid_lat[mg_lat_idx].flatten(), 'bin_longitude': grid_lon[mg_lon_idx].flatten(), 'time': 2022}).set_index(['bin_longitude', 'bin_latitude', 'time'])
 
+    df_merge = pd.merge(df, summed_mgC_day, left_index=True,
+                        right_index=True, how='left')
+    df_merge.index.names = ['longitude', 'latitude', 'time']
+    df_merge['area'] = grid_area(
+        df_merge.index.get_level_values('latitude').values, 0.5)
     # continue to xarray
     da = df_merge.to_xarray()
-    da = da.assign_coords({'lon': ('lon_idx', grid_lon),
-                          'lat': ('lat_idx', grid_lat)})
+    da['fch4'] = da.est_g_day / da.area
+    # da = da.assign_coords({'lon': ('lon_idx', grid_lon),
+    #                       'lat': ('lat_idx', grid_lat)})
+    # gridarea = xr.load_dataset(areas_netcdf)
+    # da['mean_mgC_m2_day'] = da.summed_mgC_day.data / gridarea.
 
     # da.set_index({0:'lon', 1:'lat'})
     # da.reset_coords(['lon_idx', 'lat_idx'], drop=True)
@@ -318,9 +259,16 @@ if __name__ == '__main__':
     # da.set_coords(['lon', 'lat'])
     # da = da.assign_coords({'time':[2022]})
     # da = da.transpose('lon_idx','lat_idx','time')
+
     da = da.assign_attrs({'Provider': 'Ethan Kyzivat',
-                          'Citation': 'Kyzivat, E. D., & Smith, L. C. (2023). A Closer Look at the Effects of Lake Area, Aquatic Vegetation, and Double - Counted Wetlands on Pan - Arctic Lake Methane Emissions Estimates. Geophysical Research Letters, 50(24), e2023GL104825. https://doi.org/10.1029/2023GL104825'})
-    da.to_netcdf(os.path.join(
-        output_dir, f'{ds}_emissions_v{v}.nc'))
+                          'Citation': 'Kyzivat, E. D., & Smith, L. C. (2023). A Closer Look at the Effects of Lake Area, Aquatic Vegetation, and Double - Counted Wetlands on Pan - Arctic Lake Methane Emissions Estimates. Geophysical Research Letters, 50(24), e2023GL104825. https://doi.org/10.1029/2023GL104825',
+                          'Data citation': 'Ethan D Kyzivat, & Laurence C Smith. (2023). Parameters and code for estimating methane emissions from Arctic-boreal lakes, 2022. Arctic Data Center. https://doi.org/10.18739/A27M04222.'})
+    da.fch4.attrs.update({'Description': 'CH4 flux per unit area due to lake emissions, averaged over a grid cell',
+                          'Units': 'mgC m-2 d-1'})
+    da.area.attrs.update({'Description': 'Grid cell area', 'Units': 'm2'})
+    nc_pth_out = os.path.join(
+        output_dir, output_name + '.nc')
+    da.to_netcdf(nc_pth_out)
+    print(f'Wrote file: {nc_pth_out}')
 
     pass
