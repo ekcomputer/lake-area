@@ -28,6 +28,7 @@ if args.test == 'True':
 ## I/O
 # tables output dir
 tb_dir = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/edk_out/CH4/area_tables'
+hydrolakes_pth = '/Volumes/thebe/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10_shp/HydroLAKES_polys_v10.shp'
 # dir for output data, used for data archive
 output_dir = '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/edk_out/CH4/output'
 v = 32  # Version number for file naming
@@ -187,32 +188,32 @@ if __name__ == '__main__':
     print(
         f"Estimated annual flux: {lad_trunc._total_flux_Tg_yr['mean']:.3} Tg/yr")
 
-    ## Plot combined extrap LAD/LEV
-    fig, ax = plt.subplots(2, 1, sharex=True)
-    lad_trunc.plot_extrap_lad(
-        ax=ax[0], label='Lake area', error_bars=True, normalized=False, color='blue', plotLegend=False)
-    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
-    ax2 = ax[0].twinx()
-    lad_trunc.plot_extrap_lev(
-        ax=ax[0], error_bars=True, color='green', label='Lake vegetation area', plotLegend=False, )
-    ymin, ymax = ax[0].get_ylim()
-    # ax2.set_ylim([ymin, ymax / lad_trunc.sumAreas()])
-    ax2.set_ylim([0, 1.1])
-    ax[0].set_ylabel('Cumulative area (million $km^2$)')
-    ax[0].set_xlabel('')
-    ax2.set_ylabel('Cumulative area fraction')
-    # plt.tight_layout()
+    # ## Plot combined extrap LAD/LEV
+    # fig, ax = plt.subplots(2, 1, sharex=True)
+    # lad_trunc.plot_extrap_lad(
+    #     ax=ax[0], label='Lake area', error_bars=True, normalized=False, color='blue', plotLegend=False)
+    # # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
+    # ax2 = ax[0].twinx()
+    # lad_trunc.plot_extrap_lev(
+    #     ax=ax[0], error_bars=True, color='green', label='Lake vegetation area', plotLegend=False, )
+    # ymin, ymax = ax[0].get_ylim()
+    # # ax2.set_ylim([ymin, ymax / lad_trunc.sumAreas()])
+    # ax2.set_ylim([0, 1.1])
+    # ax[0].set_ylabel('Cumulative area (million $km^2$)')
+    # ax[0].set_xlabel('')
+    # ax2.set_ylabel('Cumulative area fraction')
+    # # plt.tight_layout()
 
-    ## Plot extrapolated fluxes
-    lad_trunc.plot_extrap_flux(
-        ax=ax[1], reverse=False, normalized=False, error_bars=True, plotLegend=False, label='Emissions')
-    ax2 = ax[1].twinx()
-    ymin, ymax = ax[1].get_ylim()
-    ax2.set_ylim([ymin, ymax / lad_trunc._total_flux_Tg_yr['mean']])
-    ax2.set_ylabel('Cumulative emissions fraction')
-    plt.tight_layout()
-    [ax2.get_figure().savefig(
-        f'/Volumes/thebe/pic/BAWLD_areas_v{v}' + ext, transparent=True, dpi=300) for ext in ['.png', '.pdf']]
+    # ## Plot extrapolated fluxes
+    # lad_trunc.plot_extrap_flux(
+    #     ax=ax[1], reverse=False, normalized=False, error_bars=True, plotLegend=False, label='Emissions')
+    # ax2 = ax[1].twinx()
+    # ymin, ymax = ax[1].get_ylim()
+    # ax2.set_ylim([ymin, ymax / lad_trunc._total_flux_Tg_yr['mean']])
+    # ax2.set_ylabel('Cumulative emissions fraction')
+    # plt.tight_layout()
+    # [ax2.get_figure().savefig(
+    #     f'/Volumes/thebe/pic/BAWLD_areas_v{v}' + ext, transparent=True, dpi=300) for ext in ['.png', '.pdf']]
 
     # ## Plot combined extrap LAD/Flux
     # norm = True # False
@@ -222,21 +223,21 @@ if __name__ == '__main__':
     # lad_hl_trunc.plot_extrap_flux(ax=ax2, reverse=False, normalized=norm, error_bars=True)
     # plt.tight_layout()
 
-    ## Plot inset with just LEV, with normalized second axis
-    sns.set_theme('poster', font='Ariel')
-    sns.set_style('ticks')
-    ax = lad_trunc.plot_extrap_lev(
-        error_bars=True, color='green', plotLegend=False)
-    ax2 = ax.twinx()
-    ymin, ymax = ax.get_ylim()
-    ax2.set_ylim([ymin, ymax / lad_trunc.sumLev()['mean']])
-    ax.set_ylabel('')  # 'Cumulative aquatic vegetation area (million $km^2$)')
-    ax2.set_ylabel('')  # 'Cumulative aquatic vegetation area fraction')
-    plt.tight_layout()
-    [ax.get_figure().savefig(
-        f'/Volumes/thebe/pic/BAWLD_areas_inset_v{v}', transparent=True, dpi=300) for ext in ['.png', '.pdf']]
-    sns.set_theme('notebook', font='Ariel')
-    sns.set_style('ticks')
+    # ## Plot inset with just LEV, with normalized second axis
+    # sns.set_theme('poster', font='Ariel')
+    # sns.set_style('ticks')
+    # ax = lad_trunc.plot_extrap_lev(
+    #     error_bars=True, color='green', plotLegend=False)
+    # ax2 = ax.twinx()
+    # ymin, ymax = ax.get_ylim()
+    # ax2.set_ylim([ymin, ymax / lad_trunc.sumLev()['mean']])
+    # ax.set_ylabel('')  # 'Cumulative aquatic vegetation area (million $km^2$)')
+    # ax2.set_ylabel('')  # 'Cumulative aquatic vegetation area fraction')
+    # plt.tight_layout()
+    # [ax.get_figure().savefig(
+    #     f'/Volumes/thebe/pic/BAWLD_areas_inset_v{v}', transparent=True, dpi=300) for ext in ['.png', '.pdf']]
+    # sns.set_theme('notebook', font='Ariel')
+    # sns.set_style('ticks')
 
     # ## Retrieve data from plot
     # ax.get_lines()[0].get_ydata() # gives right part of LAD plot # [1] is left part
@@ -255,23 +256,36 @@ if __name__ == '__main__':
     print(
         f"Mean total LEV: {lev_est['mean']:0.2%} ({lev_est['lower']:0.2%}, {lev_est['upper']:0.2%})")
 
-    ## Area vs LEV plots (TODO: add extrap points)
-    fig, ax = plt.subplots()
-    # ax.scatter(lad_hl_trunc.Area_km2, lad_hl_trunc.LEV_MEAN)
-    sns.scatterplot(lad_trunc, x='Area_km2', y='LEV_MEAN', ax=ax, alpha=0.1)
-    ax.set_xscale('log')
-    ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})')
-    [ax.get_figure().savefig(
-        f'/Volumes/thebe/pic/{roi_region}_area_vs_lev_v{v}', transparent=True, dpi=300) for ext in ['.png', '.pdf']]
+    # ## Area vs LEV plots (TODO: add extrap points)
+    # fig, ax = plt.subplots()
+    # # ax.scatter(lad_hl_trunc.Area_km2, lad_hl_trunc.LEV_MEAN)
+    # sns.scatterplot(lad_trunc, x='Area_km2', y='LEV_MEAN', ax=ax, alpha=0.1)
+    # ax.set_xscale('log')
+    # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax})')
+    # [ax.get_figure().savefig(
+    #     f'/Volumes/thebe/pic/{roi_region}_area_vs_lev_v{v}', transparent=True, dpi=300) for ext in ['.png', '.pdf']]
 
     ####################################
     ## Global lake area analysis
     ####################################
 
-    ## Remake plot for LAD
     fig, ax = plt.subplots()
+
+    ## Load, process, and plot HydroLAKES
+    emaxH = 0.5
+    ladH = LAD.from_shapefile(hydrolakes_pth, area_var='Lake_area',
+                              idx_var='Hylak_id', name='hydrolakes', region_var=None, other_vars=['Pour_lat', 'Pour_long'])
+    binned_refH = BinnedLAD(lad_ref.truncate(tmin, 5), tmin, emaxH, compute_ci_lad=True,
+                            extreme_regions_lad=extreme_regions_lad)  # reference distrib (try 5, 0.5 as second args)
+    ladH_trunc = ladH.truncate(emaxH, 300000)  # exclude Caspian sea
+    # ladH_trunc = ladH.truncate(emaxH, np.inf)
+    ladH_trunc.extrapolate(binned_refH)
+    ladH_trunc.plot_extrap_lad(ax=ax, label='Lake area', error_bars=True,
+                               normalized=False, color='grey', plotLegend=False)
+
+    ## Remake plot for LAD
     lad_trunc.plot_extrap_lad(ax=ax, label='Lake area', error_bars=True,
-                              normalized=False, color='grey', plotLegend=False)
+                              normalized=False, color='cyan', plotLegend=False)
     # ax.set_title(f'[{roi_region}] truncate: ({tmin}, {tmax}), extrap: {emax}')
     # ax2=ax.twinx()
     ax.set_ylabel('Cumulative area (M$km^2$)')
@@ -319,6 +333,8 @@ if __name__ == '__main__':
     # ax.set_xticks(X)
 
     # print(f'Area in two smallest bins: {np.sum(d06[:2])/1e6}\nArea in three largest: {np.sum(d06[-3:])/1e6}')
+    [ax.get_figure().savefig(
+        f'/Volumes/thebe/pic/GlobalLAD_D16_HL_PLD_v{v}', transparent=True, dpi=300) for ext in ['.png', '.pdf']]
 
     ###########################
     ## Create Table
