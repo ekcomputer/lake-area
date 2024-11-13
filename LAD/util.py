@@ -25,7 +25,7 @@ TODO
 * Make sure Example notebooks still work.
 '''
 
-from scipy.interpolate import interpn
+from scipy.interpolate import griddata
 import matplotlib.patches as mpatches
 from seaborn import objects as so
 import os
@@ -757,11 +757,13 @@ def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='s
     lat_nan = lat[nan_mask]
 
     # Stack longitudes and latitudes to form the (nx2) array
-    xi = np.vstack([lon_nan, lat_nan]).T
+    xi = np.vstack([lat_nan, lon_nan]).T
     
     
-    fills = interpn((da.longitude.data, da.latitude.data), da[tvar].data.T, xi, method='nearest', bounds_error=True, fill_value=None) # change bounds error and [:,:, 0] # da.time.data
-    
+    fills = interpn((da.latitude.data, da.longitude.data), da[tvar].data.transpose(1,2, 0), xi, method='nearest', bounds_error=False, fill_value=None) # change bounds error and [:,:, 0] 12 months # da.time.data
+    # also returns nans: griddata((lat.flatten(), lon.flatten()), da[tvar].data[0,:,:].flatten(), xi, method='nearest')
+    #                   interp = LinearNDInterpolator(np.vstack([lat.flatten(), lon.flatten()]).T, da[tvar].data[0,:,:].flatten(), fill_value=-99)
+    #                   interpRG = RegularGridInterpolator((da.latitude.data, da.longitude.data), da[tvar].data[0,:,:], method='linear', bounds_error=False, fill_value=None)
     
     da_filled = da.interpolate_na(dim='longitude', method='nearest')
     da_sorted = da.sortby('latitude')
@@ -788,7 +790,7 @@ def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='s
         gdf_lakes[[f'ERA5_{tvar}_{mnth:02}' for mnth in mth_list]
                   ] = np.vstack(temps).reshape((n_rows, n_cols))
 
-        ## Fill any nans with mean
+        ## [Fill any remaining nans with mean]
         for mnth in mth_list:
             gdf_lakes[f'ERA5_{tvar}_{mnth:02}'].fillna(
                 gdf_lakes[f'ERA5_{tvar}_{mnth:02}'].mean(), inplace=True)
