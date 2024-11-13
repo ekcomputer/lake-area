@@ -32,6 +32,17 @@ lad_hr_pth = '../sample_data/CIR_Canadian_Shield.shp'
 lad_from_shp = LAD.from_shapefile(lad_hr_pth, area_var='Area', name='CIR', region_var='Region4')
 ```
 
+### Sample workflows
+
+Sample workflow scripts are provided, but users will have to change path names and pre-process some of the input datasets.
+
+| Script | Purpose |
+|----------|----------|
+| [runBatchZonalHist_GLAKES.py](runBatchZonalHist_GLAKES.py)  | Uses Google Earth engine zonal histogram function to calculate intersection between lake boundaries and the Global Surface Water Occurence Dataset (GSWO, Pekel et al., 2016) in order to estimate aquatic vegetation coverage. Lakes come from the GLAKES dataset ()  |
+| [runBatchZonalHist_PLD.py](runBatchZonalHist_PLD.py)  | As above, but lakes come from the SWOT Prior Lakes Dataset (PLD, Wang et al., 2024). |
+| [runLAD.py](runLAD.py)  | Entire workflow for predicting methane emissions from inventoried and non-inventoried lakes, using HydroLAKES (Messager et al., 2016) data.   |
+| [runLAD_PLD.py](runLAD_PLD.py)  | As above, but using the PLD dataset.  |
+
 ### Further documentation in progress
 Documentation and sample data sets still need to be created for predicting methane emissions based on temperature and lake area. There are also some pre-processing steps, which led to the sample data sets, which are not documented.
 
@@ -76,10 +87,20 @@ Kyzivat., E.D. and Smith, L.C. (2023). Parameters and code for estimating methan
 2.	Kyzivat, E.D. and Smith, L.C. A closer look at the effects of lake area, aquatic vegetation, and double-counted wetlands on pan-Arctic lake methane emissions estimates. In press at *Geophysical Research Letters*. [https://doi.org/10.1029/2023GL104825](https://doi.org/10.1029/2023GL104825)
 ## References
 
-Sample data comes from the following sources: 
+__Sample data comes from the following sources:__ 
 
 Kyzivat, E. D., Smith, L. C., Pitcher, L. H., Fayne, J. V., Cooley, S. W., Topp, S. N., Langhorst, T., Harlan, M. E., Cooper, M. G., Gleason, C. J., & Pavelsky, T. M. (2019). ABoVE: AirSWOT Water Masks from color-infrared Imagery over Alaska and Canada, 2017. In ORNL DAAC. ORNL DAAC. https://doi.org/10.3334/ORNLDAAC/1707
 
 Kyzivat, E. D., Smith, L. C., Huang, C., Wang, C., Langhorst, T., Fayne, J. V., Harlan, M. E., Ishitsuka, Y., Feng, D., Dolan, W., Pitcher, L. H., & Pavelsky, T. M. (2021). ABoVE: UAVSAR Lake and wetland classification for Yukon Flats, Peace-Athabasca Delta, and Canadian Shield, 2017-2019. ORNL Distributed Active Archive Center. https://doi.org/10.3334/ORNLDAAC/1883
 
 Messager, M. L., Lehner, B., Grill, G., Nedeva, I., & Schmitt, O. (2016). Estimating the volume and age of water stored in global lakes using a geo-statistical approach. Nature Communications, 7, 1–11. https://doi.org/10.1038/ncomms13603
+
+__Other references__:
+
+Messager, M. L., Lehner, B., Grill, G., Nedeva, I. & Schmitt, O. Estimating the volume and age of water stored in global lakes using a geo-statistical approach. Nature Communications 7, 1–11 (2016).
+
+Pekel, J.-F., Cottam, A., Gorelick, N., & Belward, A. S. (2016). High-resolution mapping of global surface water and its long-term changes. Nature, 540(December), 418–436. https://doi.org/10.1038/nature20584
+
+Pi, X., Luo, Q., Feng, L., Xu, Y., Tang, J., Liang, X., Ma, E., Cheng, R., Fensholt, R., Brandt, M., Cai, X., Gibson, L., Liu, J., Zheng, C., Li, W., & Bryan, B. A. (2022). Mapping global lake dynamics reveals the emerging roles of small lakes. Nature Communications, 13(1), 1–12. https://doi.org/10.1038/s41467-022-33239-3
+
+Wang, J. et al. The Surface Water and Ocean Topography Mission (SWOT) Prior Lake Database (PLD): Lake Mask and Operational Auxiliaries. h(2023) doi:10.22541/au.170258987.72387777/v1.

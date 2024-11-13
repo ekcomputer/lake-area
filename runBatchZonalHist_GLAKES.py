@@ -75,8 +75,9 @@ offset_upper = step
 ######################
 #### Operations
 ######################
-# runGlakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir, name_lat, name_lon,
+# runLakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir, name_lat, name_lon,
 #                   offset_upper, offset_lower, crs_wkt, scale, tile_scale, ee_value_raster_pth, nWorkers)
 
 loadJoined = True
-CombineProcessGlakes(analysis_dir, ee_zones_pths, loadJoined, id_var)
+CombineProcessLakes(
+    analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoined, id_var)

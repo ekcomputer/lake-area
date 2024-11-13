@@ -4,7 +4,6 @@ import os
 import math
 import numpy as np
 from scipy import stats
-from statsmodels.formula.api import ols
 from glob import glob
 from matplotlib import pyplot as plt
 import matplotlib as mpl
@@ -25,7 +24,7 @@ mpl.rcParams['pdf.fonttype'] = 42
 ## Plotting functions
 
 ## Common
-temperature_metric = 'ERA5_stl1'
+# temperature_metric = 'ERA5_stl1'
 use_low_oc = True  # If false, use to compare to mutually-exclusive double-counted areas with Oc < 50%
 # No effect, because computed in prep_data.ipynb. Factor to multiply D flux and divide E flux to fill in missing pathway e.g. (1.2)
 eb_scaling = 0.580
@@ -39,6 +38,14 @@ def findNearest(arr, val):
     # find the index of minimum element from the array
     index = difference_array.argmin()
     return index
+
+
+def validateStr(str_or_list):
+    '''convert a string to a single entry list, if necessary'''
+    assert isinstance(str_or_list, str) or isinstance(str_or_list, list)
+    if isinstance(str_or_list, str):
+        str_or_list = [str_or_list]
+    return str_or_list
 
 
 def ECDFByValue(values, values_for_sum=None, reverse=True):
@@ -289,38 +296,6 @@ def public_attrs(self):
 def interval_geometric_mean(interval):
     '''calculate the geometric mean of an interval'''
     return math.sqrt(interval.left * interval.right)
-
-
-def loadBAWLD_CH4():
-    ## Load
-    df = pd.read_csv('/Volumes/thebe/Other/Kuhn-olefeldt-BAWLD/BAWLD-CH4/data/ek_out/BAWLD_CH4_Aquatic_ERA5.csv',
-                     encoding="ISO-8859-1", dtype={'CH4.E.FLUX ': 'float'}, na_values='-')
-    len0 = len(df)
-
-    ## Add total open water flux column
-    df['CH4.E.FLUX'].fillna(df['CH4.D.FLUX'] * eb_scaling, inplace=True)
-    df['CH4.D.FLUX'].fillna(df['CH4.E.FLUX'] / eb_scaling, inplace=True)
-    df['CH4.DE.FLUX'] = df['CH4.D.FLUX'] + df['CH4.E.FLUX']
-
-    ## Filter and pre-process
-    # df.query("SEASON == 'Icefree' ", inplace=True)  # and `D.METHOD` == 'CH'
-    df.dropna(subset=['SA', 'CH4.DE.FLUX', temperature_metric],
-              inplace=True)  # 'TEMP'
-
-    ## if I want transformed y as its own var
-    # df['CH4.DE.FLUX.LOG'] = np.log10(df['CH4.DE.FLUX']+1)
-
-    ## print filtering
-    len1 = len(df)
-    print(f'Filtered out {len0-len1} BAWLD-CH4 values ({len1} remaining).')
-    # print(f'Variables: {df.columns}')
-
-    ## Linear models (regression)
-    # 'Seasonal.Diff.Flux' 'CH4.D.FLUX'
-    formula = f"np.log10(Q('CH4.DE.FLUX')+0.01) ~ np.log10(SA) + {temperature_metric}"
-    model = ols(formula=formula, data=df).fit()
-
-    return model
 
 
 def computeLAV(df: pd.DataFrame, ref_dfs: list, names: list, extreme_regions_lev=None, use_zero_oc=False, use_low_oc=True) -> True:
@@ -600,7 +575,7 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             If provided, will transform numeric regions to text
         computeArea : Boolean, default:False
             If provided, will compute Area from geometry. Doesn't need a crs (but make sure it is equal-area projection), but needs user input for 'areaConversionFactor.'
-        other_vars : list, optional
+        other_vars : str or list, optional
             If provided, LAD will retain these columns.
         '''
 
@@ -645,6 +620,7 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         ##  Retain other vars, if provided
         if other_vars is not None:
+            other_vars = validateStr(other_vars)
             columns += [col for col in other_vars]
         # remove duplicate columns (does it change order?)
         columns = np.unique(columns)
@@ -719,7 +695,8 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         ##  Retain other vars, if provided
         if 'other_vars' in kwargs:
-            columns += [col for col in kwargs['other_vars']]
+            other_vars = validateStr(kwargs['other_vars'])
+            columns += [col for col in other_vars]
 
         read_geometry = False
         if 'computeArea' in kwargs:
@@ -729,7 +706,8 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
             path, read_geometry=read_geometry, use_arrow=True, columns=columns)
         if name is None:
             name = os.path.basename(path).replace(
-                '.shp', '').replace('.zip', '')
+                '.shp', '').replace(
+                '.gdb', '').replace('.zip', '')
         return cls(df, name=name, area_var=area_var, region_var=region_var, idx_var=idx_var, **kwargs)
 
     @classmethod
@@ -886,7 +864,7 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         assert not ref_LAD.isTruncated, "ref_LAD shouldn't already be truncated, because it needs to happen inside this function."
         assert self.isTruncated, "To be explicit, truncate self, which indicates which region to extrapolate to."
         # auto run area_fraction
-        assert limit < self.truncationLimits[0], f"Limit ({limit}) is >= the lower truncation limit of LAD ({self.truncationLimits[0]}), so use area_fraction() method instead."
+        assert limit < self.truncationLimits[0], f"Limit ({limit}) is >= the lower truncation limit of LAD ({self.truncationLimits[0]}), so use area_fraction() method instead." # TODO: add case for this
         assert limit > bottomLim, f"'limit' ({limit}) must be > bottomLim ({bottomLim})."
         assert emax >= self.truncationLimits[
             0], f"emax ({emax}) should be >= the top truncation limit of self ({self.truncationLimits[1]})"
@@ -1057,6 +1035,8 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
         '''
         Predict methane flux based on area bins and temperature.
 
+        The temperature for extrapolated lakes in unknown locations is approximated with the main temperature of the known lakes. Units assume regression model gives flux in mg CH4 / m2 / day
+
         TODO: 
             * Use temp as a df variable, not common attribute
             * Lazy algorithm- only compute if self._Total_flux_Tg_yr not present
@@ -1081,9 +1061,9 @@ class LAD(pd.core.frame.DataFrame):  # inherit from df? pd.DataFrame #
 
         ## Flux (areal, mgCH4/m2/day)
         self['est_mg_m2_day'] = 10**(model.params.Intercept +
-                                     model.params['np.log10(SA)'] *
+                                     model.params.iloc[1] *
                                      np.log10(self.Area_km2)
-                                     + model.params[temperature_metric] * self.Temp_K) - 0.01  # jja, ann, son, mam
+                                     + model.params.iloc[2] * self.Temp_K) - 0.01  # jja, ann, son, mam
 
         ## Flux (flux rate, gCH4/day)
         self['est_g_day'] = self.est_mg_m2_day * self.Area_km2 * \
@@ -1880,9 +1860,9 @@ class BinnedLAD():
 
         ## Flux (areal, mgCH4/m2/day)
         est_mg_m2_day = 10**(model.params.Intercept +
-                             model.params['np.log10(SA)'] *
+                             model.params.iloc[1] *
                              np.log10(geom_mean_areas)
-                             + model.params[temperature_metric] * self.Temp_K) - 0.01  # jja, ann, son, mam # no uncertainty yet
+                             + model.params.iloc[2] * self.Temp_K) - 0.01  # jja, ann, son, mam # no uncertainty yet
 
         ## Flux (flux rate, gCH4/day)
         est_g_day_mean, est_g_day_low, est_g_day_high = [est_mg_m2_day * self.binnedAreas.loc[:, stat] * 1e3 for stat in [

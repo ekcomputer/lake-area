@@ -14,9 +14,18 @@ TODO
 * add test for batchZonalHist using HydroLakes data
 * Use dask for more steps
 * Put last bits in functions
-* Test on HydroLAKES.
+* Write test for HydroLAKES.
+* Auto re-run when GEE downloads have error message
+* Check for corrupted error csvs after each download instead of seperately in own function.
+* Run in dask instead of using binned_statistic
+* Fix interpolation using griddata
+* Vectorize pullTemp so it can operate on multiple locations at once
+* Add index region extrapolation graphics to readme (as gif?)
+* Test extrapolated_area_fraction- giving me answer of nearly 0 when I don't expect it.
+* Make sure Example notebooks still work.
 '''
 
+from scipy.interpolate import NearestNDInterpolator
 import matplotlib.patches as mpatches
 from seaborn import objects as so
 import os
@@ -25,8 +34,13 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from scipy.stats import binned_statistic
-
+import xarray as xr
+import cdsapi
+import urllib3
+import subprocess
+import shutil
 from retry import retry
+# import timeout_decorator
 import geopandas as gpd
 import pandas as pd
 import dask.dataframe as dd
@@ -35,11 +49,20 @@ import geemap
 from matplotlib import pyplot as plt
 import seaborn as sns
 import pyogrio
+from warnings import warn
 from tqdm import tqdm
+import pyproj
+from shapely.geometry import Polygon
+from shapely.ops import transform
+try:  # if no internet connection
+    ## Register with ee using high-valume (and high-latency) endpoint
+    # NOT 'https://earthengine.googleapis.com'
+    ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com')
+except:
+    warn(UserWarning("EE not initialized."))
+    pass
 
-## Register with ee using high-valume (and high-latency) endpoint
-# NOT 'https://earthengine.googleapis.com'
-ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com')
+mth_list = np.arange(1, 13)
 
 # def getRequests(index_file):
 #     ''' Based on unique lat/long indexes in BAWLD'''
@@ -90,7 +113,9 @@ def getRequests(lat_range, lon_range, step=0.5):
 # (tries=7, delay=1, backoff=3)
 
 
+# @timeout_decorator.timeout(6, use_signals=False)
 @retry(tries=3, delay=2, backoff=10)
+# Skip files that take too long to run. Re-run later wiwth different scale.
 def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper, crs, scale, tile_scale, ee_zones_pth, ee_value_raster_pth, out_dir):
     '''
     getResult _summary_
@@ -131,12 +156,13 @@ def batchZonalHist(index, coords, name_lat, name_lon, offset_lower, offset_upper
 
     ## I/O
     out_pth = os.path.join(
-        out_dir, f'GL_zStats_Oc_Long{coords[0]}_Lat{coords[1]}.csv')
+        out_dir, f'lake_zstats_Oc_Long{coords[0]}_Lat{coords[1]}.csv')
 
     ## Don't overwrite if starting again
     if os.path.exists(out_pth + '.txt'):
         return
-    # check if an error message was downloaded instead and thus renders the @retry useless
+
+    # check if an error message was downloaded instead and thus renders the file useless
     if os.path.exists(out_pth):
         with open(out_pth, 'r') as file:
             first_line = file.readline()
@@ -226,7 +252,7 @@ def ensure_unique_ids(df: pd.DataFrame, id_var: str) -> pd.DataFrame:
     ------
     AssertionError
         If duplicate values are found for `id_var`.
-    
+
     Example usage:
     ------
     df = pd.DataFrame(...)
@@ -245,8 +271,8 @@ def ensure_unique_ids(df: pd.DataFrame, id_var: str) -> pd.DataFrame:
     return df
 
 
-def runGlakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir, name_lat, name_lon, offset_upper, offset_lower, crs_wkt, scale, tile_scale, ee_value_raster_pth, nWorkers, regions=None):
-    '''Custom I/O operations to load four GLAKES files in .gdb format, clipping by 40 degN latitude.
+def runLakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir, name_lat, name_lon, offset_upper, offset_lower, crs_wkt, scale, tile_scale, ee_value_raster_pth, nWorkers, regions=None):
+    '''Custom I/O operations to load mutliple PLD files in .gdb format, clipping by 40 degN latitude.
     Calls functions via GEE in parallel using geemap toolbox.'''
     for j, ee_zones_pth in enumerate(ee_zones_pths):
         lat_range, lon_range = lat_ranges[j], lon_ranges[j]
@@ -260,7 +286,6 @@ def runGlakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir,
             os.makedirs(dir, exist_ok=True)
         ## View expected number of results
         coord_list = getRequests(lat_range, lon_range, step)  # index_file
-        print(f'Number of items: {len(coord_list)}')
 
         ## Run function
         print(
@@ -305,28 +330,94 @@ def runGlakesByRegion(ee_zones_pths, lat_ranges, lon_ranges, step, analysis_dir,
     print('\nFinished all regions.\n---------------------------------')
 
 
-def CombineProcessGlakes(analysis_dir, ee_zones_pths, loadJoined, id_var):
-    '''Load and piece together with dask, write out .gdb files with new binned Occurrence attributes. (START HERE if not running GEE part).'''
+def cleanCSVs(analysis_dir):
+    """
+    Clean CSV files in a directory.
+
+    This function walks through the specified directory and its subdirectories, and attempts to open and read each CSV file using pandas.
+    If an error occurs while opening a file, the filename is printed.
+    If the first line of a file starts with '{', it indicates that the file is not in a valid CSV format and it is deleted.
+
+    Parameters:
+    analysis_dir: str
+        Root directory (with possible subdirs) to check
+
+    Returns:
+    None
+    """
+    for root, dirs, files in os.walk(analysis_dir):
+        for file in files:
+            if file.endswith('.csv'):
+                try:
+                    # Try opening the file using pandas
+                    pth = os.path.join(root, file)
+                    pd.read_csv(pth)
+                except Exception as e:
+                    # Print the filename if there is an error
+                    with open(pth, 'r') as file:
+                        first_line = file.readline()
+                    if first_line.startswith('{'):  # 401 error in JSON format
+                        os.remove(file.name)
+                        print(
+                            f"Deleted error file: {pth}")
+                    else:
+                        print(
+                            f"Error opening file: {pth}")
+
+
+def MakeUniqueIndex(df, idxs):
+    '''Pandas can only merge on a single columns'''
+
+
+def CombineProcessLakes(analysis_dir, lake_inventory_pth, ee_zones_pths, loadJoined, id_var, lat_min=40, join_how='left', lat_var='Lat', regions=None):
+    '''
+    CombineProcessLakes: Load and piece together with dask individual csv outputs from GEE zonal histogram, write out .gdb files with new binned Occurrence attributes. (START HERE if not running GEE part).
+
+    Saves memory by loading in different regions at a time.
+    Parameters
+    ----------
+    analysis_dir : str
+        _description_
+    lake_inventory_pth : str
+        A priori lake inventory in OGR-readable geospatial format (e.g. .shp, .gdb)
+    ee_zones_pths : str or array of str
+        Directory containing gee output as csvs.
+    loadJoined : bool
+        Whether to bypass the merging process and load the final product
+    id_var : str
+        ID variable used in lake dataset.
+    lat_min : int, optional
+       only process north of this latitude, by default 40
+    join_how : str, optional
+        gpd join method, by default 'left'
+    lat_var : str, optional
+        Name of latitude variable, by default 'Lat'
+    '''
+
     # latter argument suggested by dask error and it fixes it! # usecols=[id_var]
     gdf_join_binned_pth = os.path.join(
-        analysis_dir, 'GL_zStats_Oc_binned.gdb')
+        analysis_dir, 'lake_zstats_Oc_binned.gdb')  # final merged output path
     if not loadJoined:
         gdfs = []  # init
-
-        ## Load shapefile to join
-        # lake_inventory = gpd.read_file(lake_inventory_pth,
-        #                                engine='pyogrio')  # bbox=(-180, 40, 180, 90)) # bbox can speed loading
-
         for j, ee_zones_pth in enumerate(ee_zones_pths):
-            region = os.path.basename(ee_zones_pth).split('/')[-1]
+            if regions is not None:
+                assert len(ee_zones_pths) == len(
+                    regions), "ee_zones_pths must have same length as regions."
+                region = regions[j]
+            else:
+                region = os.path.basename(ee_zones_pth).split(
+                    '/')[-1]  # assumes ee_zones_pths have unique names
             print(f'Loading region: {region}.')
-
-            lake_inventory = gpd.read_file(f"/Volumes/metis/Datasets/GLAKES/GLAKES/GLAKES_{region.replace('GLAKES_','')}.shp",
-                                           engine='pyogrio', bbox=(-180, 40, 180, 80))
+            lake_inventory = gpd.read_file(lake_inventory_pth,
+                                           engine='pyogrio', bbox=(-180, lat_min, 180, 80))
             table_dir = os.path.join(analysis_dir, region, 'tables')
             tile_dir = os.path.join(analysis_dir, region, 'tiles')
+            print(f'Loading tiles...')
             ddf = dd.read_csv(f"{tile_dir}/*.csv", assume_missing=True,
                               on_bad_lines='skip', dtype={'system:index': 'object'})
+            ## For testing:
+            # ddf = dd.read_csv(f"{tile_dir}/*Lat45.0.csv", assume_missing=True,
+            #                   on_bad_lines='skip', dtype={'system:index': 'object'})  # Testing
 
             ## convert to pandas df
             df = ddf.compute()
@@ -346,6 +437,7 @@ def CombineProcessGlakes(analysis_dir, ee_zones_pths, loadJoined, id_var):
             # oc_column_vals
 
             ## Bin occurrence
+            print('Rebinning...')
             bStat = binned_statistic(
                 oc_column_vals, values=df.iloc[:, oc_columns], statistic=np.nansum, bins=[0, 5, 50, 95, 100])
             bStat
@@ -354,54 +446,72 @@ def CombineProcessGlakes(analysis_dir, ee_zones_pths, loadJoined, id_var):
                 df.loc[:, 'Class_sum']).values * 100  # , index=df.index) # df binned
             dfB[id_var] = df[id_var]
             dfB['Class_sum'] = df.Class_sum
+            if isinstance(id_var, list):
+                for var in id_var:
+                    dfB[var] = df[var]
             dfB = ensure_unique_ids(dfB, id_var)
 
             ## Filter columns
             cols_to_keep = df.columns[[('Class' in c) or (
-                id_var in c) for c in df.columns]]
+                c in id_var) for c in df.columns]]
 
             ## Join files
             # gdf_join_full = lake_inventory.merge(df[cols_to_keep], left_on='Hylak_id',
             #                           right_on='Hylak_id', how='inner', validate='one_to_one')
 
-            # Merge the GLAKES data with the dataframe 'df' based on the common attribute 'id_var'
+            # Merge the PLD data with the dataframe 'df' based on the common attribute 'id_var'
             # gdf_join_full = lake_inventory.merge(df[cols_to_keep], on=id_var,
             #                                     how='inner', validate='one_to_one')
             gdf_join_binned = lake_inventory.merge(dfB, on=id_var,
-                                                   how='left', validate='one_to_one')
-            gdf_join_binned.query('Lat > 40', inplace=True)
+                                                   how=join_how, validate='one_to_one')
+            gdf_join_binned.query(f'{lat_var} > {lat_min}', inplace=True)
 
             ## Write out full shapefile (slowww...52 minutes, 3.4 GB [without pyogrio])
-            # gdf_join_full_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.shp')
+            # gdf_join_full_pth = os.path.join(analysis_dir, 'lake_zstats_Oc_full.shp')
             # gdf_join_full.to_file(gdf_join_full_pth, engine='pyogrio')
 
             # Save the merged data to a new geodatabase in the same location
-            # gdf_join_full_pth = os.path.join(analysis_dir, 'GL_zStats_Oc_full.gdb')
+            # gdf_join_full_pth = os.path.join(analysis_dir, 'lake_zstats_Oc_full.gdb')
             # gdf_join_full.to_file(
             #     gdf_join_full_pth, driver='OpenFileGDB', engine='pyogrio')
 
-            gdf_join_binned_pth = os.path.join(
-                table_dir, f"GL_zStats_Oc_binned_{region.replace('GLAKES_','')}.gdb")
-            gdf_join_binned.to_file(gdf_join_binned_pth,
-                                    driver='OpenFileGDB', engine='pyogrio')
+            gdf_join_binned_tmp_pth = os.path.join(
+                table_dir, f"lake_zstats_Oc_binned_{region.replace('_1simpl','')}.shp")
+            gdf_join_binned.to_file(gdf_join_binned_tmp_pth,
+                                    engine='pyogrio')  # driver='OpenFileGDB',
+            print(f'Saved region to: {gdf_join_binned_tmp_pth}')
             gdfs.append(gdf_join_binned)
 
-        # write out combined
-        gdf_join_binned = pd.concat(gdfs)
+        ## Combine
+        gdf_join_binned = pd.concat(gdfs)  # re-use variable name
         del gdfs  # save mem
-        gdf_join_binned.crs = gdf_join_binned.crs
-        gdf_join_binned.to_file(gdf_join_binned_pth,
-                                driver='OpenFileGDB', engine='pyogrio')
 
-    ## Go straight to loading # HERE
-    if loadJoined:
+        ## Check for duplicates in combined file
+        gdf_join_binned.drop_duplicates(
+            subset=id_var, keep='first', inplace=True)
+
+        ## Write out combined
+        gdf_join_binned.crs = gdf_join_binned.crs
+        try:
+            gdf_join_binned.to_file(gdf_join_binned_pth,
+                                    driver='OpenFileGDB', engine='pyogrio')
+        except:
+            gdf_join_binned.to_file(gdf_join_binned_pth.replace('.gdb', '.shp'),
+                                    engine='pyogrio')
+        print(f'Saved merged file to: {gdf_join_binned_pth}')
+
+    ## Go straight to loading
+    else:
+        print('Loading existing joined zonal stats...')
         gdf_join_binned = gpd.read_file(
             gdf_join_binned_pth, engine='pyogrio', read_geometry=False)
 
-    ## Filter in only lakes > 40 N
+    ## Filter in only lakes > 40 N (and no NaNs)
     nanfilter = np.isnan(gdf_join_binned['Oc_5_50'])
     print(f"Contains {np.sum(nanfilter)} Na\'s.")
     nanindex = gdf_join_binned[nanfilter].index
+
+    ## Manually add Caspian Sea which is often too large to process in GEE: only runs for lakes with NaN
     input_dict = {'Class_sum': 82155, 'Oc_0_5': 0.05,
                   'Oc_5_50': 0.05, 'Oc_50_95': 10.0, 'Oc_95_100': 89.9}
     for key, value in input_dict.items():
@@ -413,3 +523,296 @@ def CombineProcessGlakes(analysis_dir, ee_zones_pths, loadJoined, id_var):
     print(f"Mean double-counting: {means[:2].sum():0.3} %")
     pass
 
+
+def list2strList(item):
+    if isinstance(item, int):  # single year
+        item = [item]
+    return list(map(str, item))
+
+
+def downloadERA5(cds_dir, yrs, vars, mnths, grid, bbox, dataset='reanalysis-era5-land-monthly-means', output_name='temperatures.nc'):
+    ## Need to register with CDS beforehand, and save login key to ~/.cdsapirc
+    # downloads dataset: https://cds.climate.copernicus.eu/cdsapp#!/dataset/reanalysis-era5-single-levels-monthly-means?tab=overview
+    # ['lake_bottom_temperature', 'skin_temperature', 'soil_temperature_level_4', 'soil_temperature_level_1', '2m_temperature']
+    # dataset you want to read
+    # reanalysis-era5-pressure-levels-monthly-means
+    # grid: [0.25, 0.25] is native res # lon lat
+    # bbxo: N,W,S,E
+
+    # parse output_name
+    if not output_name.endswith('.nc'):
+        output_name += '.nc'
+
+    # Suppress only InsecureRequestWarning
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    ## Use Climate Data Services API
+    cds = cdsapi.Client()
+    # test.grib causes xarray loading issues...
+    cds_pth = os.path.join(cds_dir, "download.netcdf.zip")
+
+    ## Convert to string format for API
+    years = list2strList(yrs)
+    months = list2strList(mnths)
+
+    # api parameters
+    params = {
+        "format": "netcdf",
+        "product_type": "monthly_averaged_reanalysis",
+        "variable": vars,  # K - 273.15
+        'year': years,
+        'month': months,
+        "time": "00:00",
+        'format': 'netcdf.zip',
+        "grid": grid,
+        "area": bbox,
+    }
+    # retrieves the path to the file (Can skip this cell)
+    fl = cds.retrieve(dataset, params, cds_pth)
+
+    # Unzip the file
+    subprocess.run(["unzip", cds_pth, "-d", cds_dir], check=True)
+
+    # Define the original and new file paths
+    original_file_path = os.path.join(cds_dir, 'data.nc')
+    new_file_path = os.path.join(cds_dir, output_name)
+
+    # Move (rename) the file
+    shutil.move(original_file_path, new_file_path)
+
+    return new_file_path
+
+
+def parseYearsMonths(years=None, months=None):
+    ''' 
+    Helper function that returns a list of years and months (as ints) based on the input format.
+    
+    Years are 4-digit numeric, and months are spelled out. Both can accept ranges or ','or'/'-sep lists.
+    Used as argument to downloadERA5 and for joining in temps to a DataFrame.'''
+
+    ## pre-parse months
+    # years=years.replace('/', ',')
+
+    years_list = []
+    month_dict = {
+        'January': '01', 'February': '02', 'March': '03', 'April': '04',
+        'May': '05', 'June': '06', 'July': '07', 'August': '08',
+        'September': '09', 'October': '10', 'November': '11', 'December': '12'
+    }
+
+    if years is not None:
+        years = years.replace('/', ',').replace('–',
+                                                '-')  # fix weird characters
+        for item in years.split(','):
+            if '-' in item:
+                start, end = list(map(int, item.split('-')))
+                years_list.extend([i for i in range(start, end + 1)])
+            else:
+                years_list.append(int(item.strip()))
+    else:
+        years_list = None
+
+    if months is not None:
+        months = months.replace('/', ',').replace('–', '-')  # pre-parse
+        months_list = []
+        for item in months.split(','):
+            if '-' in item:
+                start, end = item.split('-')
+                if start.strip().isnumeric():
+                    start_month = int(start.strip())
+                else:
+                    start_month = int(month_dict[start.strip()])
+                if end.strip().isnumeric():
+                    end_month = int(end.strip())
+                else:
+                    end_month = int(month_dict[end.strip()])
+                months_list.extend(
+                    [i for i in range(start_month, end_month + 1)])
+            else:
+                if item.strip().isnumeric():
+                    month_entry = int(item.strip())
+                else:
+                    month_entry = int(month_dict[item.strip()])
+                months_list.append(month_entry)
+    else:
+        months_list = None
+
+    ## Convert to int
+    # years_list = list(map(int, years_list))
+    # months_list = list(map(int, months_list))
+
+    return years_list, months_list
+
+
+def pullTemp(df, da, lat_var='LAT', long_var='LONG', year_var=None, month_var=None, var='lblt', year=None, annual_mean=True):
+    '''
+    Merges in ERA5 temperature to an array based on 'LAT' and 'LONG' fields.
+
+    Works for both lake inventory df or a specific list of lakes df (such as from a GHG emissions dataset) 
+    
+    Parameters
+    ----------
+    df : pd.DataFrame 
+        df with lat, long, year, month fields as named below
+    da : xarray.DataSet
+        ERA5 data
+    lat : str
+        Field name to use for latitude (called "latitude" in ERA5)
+    long : str
+        Field name to use for longitude (called "longitude" in ERA5)
+    year : str
+        Field name to use for year of observation (comes from "time" in ERA5)
+    month : str
+        Field namae to use for month of observation (comes from "time" in ERA5)
+    var : str ('lblt)
+        One of: 'lblt' 'skt', 'stl4', 'stl1', 't2m'
+    annual_mean : Bool (True)
+        Take the mean of all months. Otherwise, return individual monthly values.
+    
+    Returns
+    -------
+    None
+
+    Function appends new temp field onto dataset fields. If 'year' is given, 'year_var' and 'month_var' are ignored and all months are used for average.
+    
+    '''
+    lt = df[lat_var]
+    ln = df[long_var]
+    if year is not None:  # manual year supplied
+        yr_list = [year]
+        month_list = mth_list  # pull from global var
+    else:
+        # Get latitude, longitude, year, and month from the row
+        # yr_list = parseYears(df[year_var]) # in case a range or list of years
+        # mth_list = parseTimes(df[month_var]) # in case a range of months
+        yr_list, month_list = parseYearsMonths(df[year_var], df[month_var])
+
+    # Select the temperature data from ERA5 using the given coordinates and time
+    # da_tmp = da[var].where(da['time.year'].isin(yr), drop=True).sel(latitude=lt, longitude=ln, method='nearest')
+
+    temprs = da[var].sel(latitude=lt, longitude=ln, method='nearest').sel(
+        time=(da['time.year'].isin(yr_list)) & (da['time.month'].isin(month_list)))
+
+    ## reduce, if needed
+    if annual_mean:
+        tempr = temprs.mean(dim='time')
+    else:
+        tempr = temprs
+    return tempr.values
+
+
+def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='stl1', fields_to_read=None, year_var=None, month_var=None, year=None, extension=None, suffix='temps', annual_mean=True, read_kwargs=None, write_kwargs=None):
+    '''
+    AddReanalysisTemps Adds temperatures to ds_pth from temps_pth and writes out to input directory as new shapefile.
+
+    Writes out to file in same format as input. lat/lon vars refer to dataset in ds_pth (e.g. a shapefile or csv)
+    Parameters
+    ----------
+    ds_pth : str
+        geospatial dataset
+    temps_pth : str
+        .nc dataset
+    '''
+    print('Loading files...')
+    if extension is None:
+        extension = Path(ds_pth).suffix
+    if fields_to_read is not None:
+        columns = fields_to_read
+    else:
+        columns = []
+
+    if Path(ds_pth).suffix == '.csv':
+        if columns == []:
+            columns = None  # reformat to use pandas default
+        gdf_lakes = pd.read_csv(ds_pth, usecols=columns, na_values=['-', '-'])
+    else:
+        gdf_lakes = gpd.read_file(ds_pth,
+                                  engine='pyogrio', read_geometry=True, columns=columns, **read_kwargs)  # , columns=[id_var, lat_var, lon_var])
+    gdf_lakes.dropna(
+        subset=[var for var in [year_var, month_var] if var is not None], inplace=True)
+    da = xr.load_dataset(temps_pth)
+    # #######
+    # da_filled = da.copy()
+    # valid = np.all(~np.isnan(values), 0)
+    # for i in range(len(da.shape[0])):
+    #     values = da[tvar][i, :, :]
+    #     values.data.flatten()[valid.data.flatten()]
+
+    # values_clean = values[valid]
+    # points_clean = np.append() points[valid]
+    # grid_z0 = griddata(points_clean, values_clean, (grid_x, grid_y), method='linear')
+    # TODO: try converting xarray to pd
+    # #######
+    ## Fill NaNs in climate data (for coastal measurements) # TODO clean this up
+    da_filled = da.interpolate_na(dim='longitude', method='nearest')
+    da_sorted = da.sortby('latitude')
+    da_filled_lat = da_sorted.interpolate_na(dim='latitude', method='nearest')
+    da_filled = da_filled.combine_first(da_filled_lat)
+
+    print('Adding temperatures...')
+    temps = gdf_lakes.apply(lambda row: pullTemp(row, da_filled, lat_var=lat_var,
+                                                 long_var=long_var, month_var=month_var,
+                                                 var=tvar, year_var=year_var, year=year,
+                                                 annual_mean=annual_mean), axis=1)  # .astype('float')
+    print('Filling NaNs...')
+    if annual_mean:
+        gdf_lakes[f'ERA5_{tvar}'] = temps.astype('float')
+
+        ## Fill nans with mean
+        gdf_lakes[f'ERA5_{tvar}'].fillna(
+            gdf_lakes[f'ERA5_{tvar}'].mean(), inplace=True)
+    else:
+
+        # Convert to a nx12 array
+        n_rows = temps.shape[0]
+        n_cols = len(temps[0])
+        gdf_lakes[[f'ERA5_{tvar}_{mnth:02}' for mnth in mth_list]
+                  ] = np.vstack(temps).reshape((n_rows, n_cols))
+
+        ## Fill any nans with mean
+        for mnth in mth_list:
+            gdf_lakes[f'ERA5_{tvar}_{mnth:02}'].fillna(
+                gdf_lakes[f'ERA5_{tvar}_{mnth:02}'].mean(), inplace=True)
+
+
+    ## Write out
+    pth_out = ds_pth.replace(extension, f'_{suffix}{extension}')
+    print(f'Writing out...')
+    if isinstance(gdf_lakes, gpd.GeoDataFrame):
+        gdf_lakes.to_file(pth_out, **write_kwargs)  # , engine='pyogrio')
+    elif isinstance(gdf_lakes, pd.DataFrame):
+        gdf_lakes.to_csv(pth_out, **write_kwargs)
+    else:
+        raise ValueError('Unrecognized format.')
+    print(f'Saved temps file to: {pth_out}')
+
+    # def grid_area(lon, lat, width=0.5, epsg=6931):
+    #     src_crs = pyproj.CRS.from_epsg(4326)
+    #     tgt_crs = pyproj.CRS.from_epsg(epsg)  # NSIDC EASE GRID
+    #     w = width / 2
+    #     polygon = Polygon([
+    #         [lon - w, lat - w],
+    #         [lon + w, lat - w],
+    #         [lon + w, lat + w],
+    #         [lon - w, lat + w],
+    #         [lon - w, lat - w],
+    #     ])
+    #     project = pyproj.Transformer.from_crs(
+    #         src_crs, tgt_crs, always_xy=True).transform
+    #     ea_polygon = transform(project, polygon)
+    #     return ea_polygon.area
+
+
+def grid_area(lat, width=0.5):
+    '''
+    in m2
+
+    Only works for one hemisphere at a time (cells can't cross equator)
+    
+    '''
+    Re = 6371000  # m
+    ## check against online calculator https://www.engr.scu.edu/~emaurer/tools/calc_cell_area_cgi.pl
+    return width / 360 * (np.sin(np.deg2rad(lat + width / 2)) - np.sin(np.deg2rad(lat - width / 2))) / 2 * (4 * np.pi * Re**2)
+
+
+pass

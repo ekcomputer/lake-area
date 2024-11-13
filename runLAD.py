@@ -12,6 +12,7 @@ import argparse
 from scipy.stats import pearsonr
 from sklearn.metrics import mean_squared_error
 from LAD.LAD import *
+from LAD.util import loadBAWLD_CH4
 
 ## Testing mode or no.
 parser = argparse.ArgumentParser()
@@ -786,7 +787,12 @@ pass
 * Fix runtime div by 0 warnings
 * Publish to pypi
 * install tests for mac - copy geospatial
-
+* LAD.predictFlux(): if not using extrapolated, be sure to return output in same format with mean/low/high pandas structure
+* For gridding data: 
+    - smart gap-filling of temperature data
+    - Smart gridding based on rasterizing LAD to a finer grid and then merging to netcdf grid
+    - Accelerating script to run faster when adding 12 months of data... and writing predictFlux() function to predict for 12 months
+    - clean up output netCDFs by removing unncecessary index coordinates
 NOTES:
 * Every time a create an LAD() object in a function from an existing LAD (e.g. making a copy), I should pass it the public attributes of its parent, or they will be lost.
 '''
