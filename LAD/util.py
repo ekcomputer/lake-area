@@ -25,7 +25,7 @@ TODO
 * Make sure Example notebooks still work.
 '''
 
-from scipy.interpolate import NearestNDInterpolator
+from scipy.interpolate import interpn
 import matplotlib.patches as mpatches
 from seaborn import objects as so
 import os
@@ -701,7 +701,7 @@ def pullTemp(df, da, lat_var='LAT', long_var='LONG', year_var=None, month_var=No
     return tempr.values
 
 
-def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='stl1', fields_to_read=None, year_var=None, month_var=None, year=None, extension=None, suffix='temps', annual_mean=True, read_kwargs=None, write_kwargs=None):
+def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='stl1', fields_to_read=None, year_var=None, month_var=None, year=None, extension=None, suffix='temps', annual_mean=True, read_kwargs={}, write_kwargs=None):
     '''
     AddReanalysisTemps Adds temperatures to ds_pth from temps_pth and writes out to input directory as new shapefile.
 
@@ -712,7 +712,7 @@ def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='s
         geospatial dataset
     temps_pth : str
         .nc dataset
-    '''
+    '''    
     print('Loading files...')
     if extension is None:
         extension = Path(ds_pth).suffix
@@ -731,6 +731,8 @@ def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='s
     gdf_lakes.dropna(
         subset=[var for var in [year_var, month_var] if var is not None], inplace=True)
     da = xr.load_dataset(temps_pth)
+    assert [val in da.coords for val in ['longitude', 'latitude']], "Netcdf file needs temperature coordinates ['time'], 'latitude', 'longitude', in that order."
+
     # #######
     # da_filled = da.copy()
     # valid = np.all(~np.isnan(values), 0)
@@ -744,6 +746,23 @@ def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='s
     # TODO: try converting xarray to pd
     # #######
     ## Fill NaNs in climate data (for coastal measurements) # TODO clean this up
+    # Extract longitude and latitude coordinates
+    lon, lat = np.meshgrid(da['longitude'].values, da['latitude'].values, indexing='xy')
+
+    # Find indices where data is NaN
+    nan_mask = np.isnan(da[tvar].values[0,  :, :]) if da[tvar].ndim ==3 else np.isnan(da[tvar].values)
+
+    # Extract longitudes and latitudes of NaN cells
+    lon_nan = lon[nan_mask]
+    lat_nan = lat[nan_mask]
+
+    # Stack longitudes and latitudes to form the (nx2) array
+    xi = np.vstack([lon_nan, lat_nan]).T
+    
+    
+    fills = interpn((da.longitude.data, da.latitude.data), da[tvar].data.T, xi, method='nearest', bounds_error=True, fill_value=None) # change bounds error and [:,:, 0] # da.time.data
+    
+    
     da_filled = da.interpolate_na(dim='longitude', method='nearest')
     da_sorted = da.sortby('latitude')
     da_filled_lat = da_sorted.interpolate_na(dim='latitude', method='nearest')
@@ -779,9 +798,9 @@ def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='s
     pth_out = ds_pth.replace(extension, f'_{suffix}{extension}')
     print(f'Writing out...')
     if isinstance(gdf_lakes, gpd.GeoDataFrame):
-        gdf_lakes.to_file(pth_out, **write_kwargs)  # , engine='pyogrio')
+        gdf_lakes.to_file(pth_out, **write_kwargs) if write_kwargs else gdf_lakes.to_file(pth_out)  # , engine='pyogrio')
     elif isinstance(gdf_lakes, pd.DataFrame):
-        gdf_lakes.to_csv(pth_out, **write_kwargs)
+        gdf_lakes.to_csv(pth_out, **write_kwargs) if write_kwargs else gdf_lakes.to_csv(pth_out)
     else:
         raise ValueError('Unrecognized format.')
     print(f'Saved temps file to: {pth_out}')
