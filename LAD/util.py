@@ -733,49 +733,32 @@ def AddReanalysisTemps(ds_pth, temps_pth, lat_var='lat', long_var='lon', tvar='s
     da = xr.load_dataset(temps_pth)
     assert [val in da.coords for val in ['longitude', 'latitude']], "Netcdf file needs temperature coordinates ['time'], 'latitude', 'longitude', in that order."
 
-    # #######
-    # da_filled = da.copy()
-    # valid = np.all(~np.isnan(values), 0)
-    # for i in range(len(da.shape[0])):
-    #     values = da[tvar][i, :, :]
-    #     values.data.flatten()[valid.data.flatten()]
-
-    # values_clean = values[valid]
-    # points_clean = np.append() points[valid]
-    # grid_z0 = griddata(points_clean, values_clean, (grid_x, grid_y), method='linear')
-    # TODO: try converting xarray to pd
-    # #######
     ## Fill NaNs in climate data (for coastal measurements) # TODO clean this up
-    # Extract longitude and latitude coordinates
-    lon, lat = np.meshgrid(da['longitude'].values, da['latitude'].values, indexing='xy')
-
     # Find indices where data is NaN
     nan_mask = np.isnan(da[tvar].values[0,  :, :]) if da[tvar].ndim ==3 else np.isnan(da[tvar].values)
-
-    # Extract longitudes and latitudes of NaN cells
-    lon_nan = lon[nan_mask]
-    lat_nan = lat[nan_mask]
-
-    # Stack longitudes and latitudes to form the (nx2) array
-    xi = np.vstack([lat_nan, lon_nan]).T
     
-    
-    fills = interpn((da.latitude.data, da.longitude.data), da[tvar].data.transpose(1,2, 0), xi, method='nearest', bounds_error=False, fill_value=None) # change bounds error and [:,:, 0] 12 months # da.time.data
-    # also returns nans: griddata((lat.flatten(), lon.flatten()), da[tvar].data[0,:,:].flatten(), xi, method='nearest')
-    #                   interp = LinearNDInterpolator(np.vstack([lat.flatten(), lon.flatten()]).T, da[tvar].data[0,:,:].flatten(), fill_value=-99)
-    #                   interpRG = RegularGridInterpolator((da.latitude.data, da.longitude.data), da[tvar].data[0,:,:], method='linear', bounds_error=False, fill_value=None)
-    
-    da_filled = da.interpolate_na(dim='longitude', method='nearest')
-    da_sorted = da.sortby('latitude')
-    da_filled_lat = da_sorted.interpolate_na(dim='latitude', method='nearest')
-    da_filled = da_filled.combine_first(da_filled_lat)
+    print('Interpolating any nans...')
+    if np.any(nan_mask):
+        # Extract longitudes and latitudes of NaN cells
+        lon, lat = np.meshgrid(da['longitude'].values, da['latitude'].values, indexing='xy')
+        lon_nan = lon[nan_mask]
+        lat_nan = lat[nan_mask]
+        xi = np.vstack([lat_nan, lon_nan]).T
+        if da[tvar].ndim == 2:
+            fills = griddata((lat[~nan_mask], lon[~nan_mask]), da[tvar].data[~nan_mask], xi, method='nearest')
+            da[tvar][nan_mask] = fills
+        elif da[tvar].ndim == 3:
+            for month in da[tvar].data:
+                fills = griddata((lat[~nan_mask], lon[~nan_mask]), month[~nan_mask], xi, method='nearest')
+                month[nan_mask] = fills
+        else:
+            raise(ValueError)
 
     print('Adding temperatures...')
-    temps = gdf_lakes.apply(lambda row: pullTemp(row, da_filled, lat_var=lat_var,
+    temps = gdf_lakes.apply(lambda row: pullTemp(row, da, lat_var=lat_var,
                                                  long_var=long_var, month_var=month_var,
                                                  var=tvar, year_var=year_var, year=year,
                                                  annual_mean=annual_mean), axis=1)  # .astype('float')
-    print('Filling NaNs...')
     if annual_mean:
         gdf_lakes[f'ERA5_{tvar}'] = temps.astype('float')
 
