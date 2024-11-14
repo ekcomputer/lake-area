@@ -13,7 +13,8 @@ lad_lr_pth = 'sample_data/HydroLAKESv10_Sweden.shp'
 lad_lr_oc_pth = 'sample_data/HydroLAKESv10_Sweden_Occurrence.csv.gz'
 lev_pth = 'sample_data/LEV_Canadian_Shield.shp'
 lev_csv_pth = 'sample_data/LEV_Canadian_Shield_train_s.csv'
-
+# era5_pth = '/Volumes/thebe/Ch4/ERA5/cds/ERA5_3var_2017_30N.nc'
+era5_pth = 'sample_data/ERA5_stl1_2022_global.nc'
 
 class TestLAD(unittest.TestCase):
     ''' TODO: add more tests, starting with predicting emissions (need to include temperatures in sample data)'''
@@ -159,3 +160,15 @@ class TestUtils(unittest.TestCase):
         # Check the values of the first and last few requests
         self.assertListEqual(requests[0].tolist(), [30., -120.])
         self.assertListEqual(requests[-1].tolist(), [39.5, -110.5])
+
+    def test_AddReanalysisTemps(self):
+        AddReanalysisTemps('sample_data/HydroLAKESv10_Sweden.shp',  # '/Volumes/metis/Datasets/SWOT_PLD/SWOT_PLD_v103_beta/edk_out/CH4/output/Zonal-hist/lake_zstats_Oc_binned.shp', # '/Volumes/thebe/Ch4/ERA5/cds/temperatures.nc'
+            era5_pth,
+            fields_to_read=['Shape', 'lake_id',
+                            'lake_num', 'Pour_long', 'Pour_lat', 'ref_area'],
+            year=2017,
+            suffix='temps2017_test',
+            annual_mean=True,
+            lat_var='Pour_lat',
+            long_var='Pour_long',
+            )
